@@ -1,0 +1,11 @@
+[package]
+name = "rna_pred_rust"
+version = "0.0.1"
+
+[[bin]]
+name = "rna_pred_rust"
+path = "src/main.rs"
+
+[dependencies]
+ndarray = "*"
+tree_iterators_rs = "1.2.1"
