@@ -8,4 +8,5 @@ path = "src/main.rs"
 
 [dependencies]
 ndarray = "*"
+num_enum = "0.7.2"
 tree_iterators_rs = "1.2.1"
