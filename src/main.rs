@@ -6,79 +6,19 @@ extern crate tree_iterators_rs;
 
 use expm::expm;
 use logsumexp::LogSumExp;
-use ndarray::{prelude::*, s};
+use ndarray::prelude::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::{convert::TryFrom, iter::FromIterator};
 use tree_iterators_rs::prelude::*;
 
+mod data_types;
+mod tree;
+
+use crate::data_types::*;
+use crate::tree::*;
 // use pyo3
 
 /* TODO optimize numeric enum */
-#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
-#[repr(u8)]
-pub enum Residue {
-    None = 0,
-    A,
-    C,
-    G,
-    T,
-}
-
-impl Residue {
-    /* TODO: magic value */
-    const TOTAL: usize = 5;
-}
-
-/* TODO #[repr(u8)] */
-#[derive(Debug)]
-struct ResiduePair(Residue, Residue);
-
-type Entry = Residue;
-/* TODO: f32 not allowed by expm crate. That crate is only used for debugging purposes though. */
-type Float = f64;
-
-#[derive(Debug)]
-pub struct FelsensteinNode_std<const TOTAL: usize> {
-    log_p: [Float; TOTAL],
-    distance: Float,
-}
-#[derive(Debug)]
-pub struct FelsensteinNode_ndarray {
-    log_p: Array1<Float>,
-    distance: Float,
-}
-
-fn log_indicator<const TOTAL: usize>(entry: Entry) -> [Float; TOTAL] {
-    let mut arr = [Float::NEG_INFINITY; TOTAL];
-    arr[entry as usize] = 0 as Float;
-    arr
-}
-
-fn log_indicator_ndarray(entry: Entry) -> Array1<Float> {
-    let mut arr = Array1::from_elem((Entry::TOTAL,), Float::NEG_INFINITY);
-    arr[entry as usize] = 0 as Float;
-    arr
-}
-
-impl<const TOTAL: usize> From<Entry> for FelsensteinNode_std<TOTAL> {
-    fn from(entry: Entry) -> Self {
-        FelsensteinNode_std {
-            log_p: log_indicator(entry),
-            distance: 1.0,
-        }
-    }
-}
-
-impl From<Entry> for FelsensteinNode_ndarray {
-    fn from(entry: Entry) -> Self {
-        FelsensteinNode_ndarray {
-            log_p: log_indicator_ndarray(entry),
-            distance: 1.0,
-        }
-    }
-}
-
-type FelsensteinNode = FelsensteinNode_ndarray;
 
 pub fn create_example_binary_tree<const TOTAL: usize>() -> BinaryTreeNode<FelsensteinNode> {
     BinaryTreeNode {
@@ -230,12 +170,17 @@ pub fn main() {
 
     let log_prior_example = Array1::from_elem((TOT,), (1 as Float / TOT as Float).ln());
 
+    /*
     root.dfs_postorder_iter_mut().map(|fdata| {
         if let Some(log_p) = log_prob_subtree(rate_matrix_example.view(), fdata) {
             fdata.log_p = log_p
         }
     });
     let log_likelihood = (root.value.log_p + log_prior_example).iter().ln_sum_exp();
+
+    println!("log prior: {log_prior_example}");
+    println!("{log_likelihood}");
+    */
 
     /*
     let dfs_debug = root
@@ -245,7 +190,6 @@ pub fn main() {
         .join(", ");
     println!("{dfs_debug}");
     */
-    println!("{log_likelihood}");
 
     /* println!("Total: {}", Residue::TOTAL);
     let test_res = Residue::G;
@@ -258,4 +202,5 @@ pub fn main() {
         test_num
     );
     println! {"test_res_2 = {:?}", test_res_2}; */
+    tree::test_tree();
 }
