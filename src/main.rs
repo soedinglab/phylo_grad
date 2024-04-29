@@ -96,13 +96,12 @@ fn log_prob_subtree<const TOTAL: usize>(
         }
         (Some(left), None) => {
             let mut array2 = left.value.log_p.to_owned().insert_axis(Axis(1));
-            array2 = array2 + log_transition(rate_matrix, left.value.distance).insert_axis(Axis(0));
+            array2 = array2 + log_transition(rate_matrix, left.value.distance);
             Some(logsumexp_a2(array2.view()))
         }
         (None, Some(right)) => {
             let mut array2 = right.value.log_p.to_owned().insert_axis(Axis(1));
-            array2 =
-                array2 + log_transition(rate_matrix, right.value.distance).insert_axis(Axis(0));
+            array2 = array2 + log_transition(rate_matrix, right.value.distance);
             Some(logsumexp_a2(array2.view()))
         }
         (None, None) => None,
