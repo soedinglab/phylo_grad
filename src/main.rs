@@ -20,54 +20,6 @@ use crate::tree::*;
 
 /* TODO optimize numeric enum */
 
-pub fn create_example_binary_tree<const TOTAL: usize>() -> BinaryTreeNode<FelsensteinNode> {
-    BinaryTreeNode {
-        value: FelsensteinNode::from(Residue::A),
-        left: Some(Box::new(BinaryTreeNode {
-            value: FelsensteinNode::from(Residue::C),
-            left: Some(Box::new(BinaryTreeNode {
-                value: FelsensteinNode::from(Residue::G),
-                left: None,
-                right: None,
-            })),
-            right: Some(Box::new(BinaryTreeNode {
-                value: FelsensteinNode::from(Residue::G),
-                left: None,
-                right: None,
-            })),
-        })),
-        right: Some(Box::new(BinaryTreeNode {
-            value: FelsensteinNode::from(Residue::C),
-            left: Some(Box::new(BinaryTreeNode {
-                value: FelsensteinNode::from(Residue::G),
-                left: None,
-                right: None,
-            })),
-            right: Some(Box::new(BinaryTreeNode {
-                value: FelsensteinNode::from(Residue::G),
-                left: Some(Box::new(BinaryTreeNode {
-                    value: FelsensteinNode::from(Residue::T),
-                    left: None,
-                    right: Some(Box::new(BinaryTreeNode {
-                        value: FelsensteinNode::from(Residue::None),
-                        left: Some(Box::new(BinaryTreeNode {
-                            value: FelsensteinNode::from(Residue::A),
-                            left: None,
-                            right: Some(Box::new(BinaryTreeNode {
-                                value: FelsensteinNode::from(Residue::C),
-                                left: None,
-                                right: None,
-                            })),
-                        })),
-                        right: None,
-                    })),
-                })),
-                right: None,
-            })),
-        })),
-    }
-}
-
 /*
 fn logsumexp_array<D1: ndarray::Dimension, D2: ndarray::Dimension>(&array: &Array<Float, D1>, axis: Axis) -> Array<Float, D2> {
     /* Expand into an iterator */
@@ -117,42 +69,40 @@ fn log_transition(rate_matrix: ArrayView2<Float>, t: Float) -> Array2<Float> {
 /* Should this get &mut root and modify it in place instead? */
 fn log_prob_subtree<const TOTAL: usize>(
     rate_matrix: ArrayView2<Float>,
-    root: &BinaryTreeNode<FelsensteinNode>,
+    node: &BinaryTreeNode<FelsensteinNode>,
 ) -> Option<Array1<Float>> {
-    match (&root.left, &root.right) {
+    match (&node.left, &node.right) {
         (Some(left), Some(right)) =>
         // logsumexp_b,c (log_p(left, b) + log_transition(b, a, left.distance) + log_p(right, c) + log_transition(c, a, right.distance))
         // Vectorized: order: b, c, a -> logsumexp( (log_p(left)[:, -1, -1] + log_p(right)[-1, :, -1] + log_transition(left.distance)[:, -1,  :] + log_transition(right.distance)[-1, :, :]).flatten(dim=[0, 1]))
         {
-            let mut array3: Array3<Float> = (*left)
+            let mut array3: Array3<Float> = left
                 .value
                 .log_p
                 .to_owned()
                 .insert_axis(Axis(1))
                 .insert_axis(Axis(2));
             array3 = array3
-                + (*right)
+                + right
                     .value
                     .log_p
                     .view()
                     .insert_axis(Axis(0))
                     .insert_axis(Axis(2));
+            array3 = array3 + log_transition(rate_matrix, left.value.distance).insert_axis(Axis(1));
             array3 =
-                array3 + log_transition(rate_matrix, (*left).value.distance).insert_axis(Axis(1));
-            array3 =
-                array3 + log_transition(rate_matrix, (*right).value.distance).insert_axis(Axis(0));
+                array3 + log_transition(rate_matrix, right.value.distance).insert_axis(Axis(0));
             Some(logsumexp_a3(array3.view()))
         }
         (Some(left), None) => {
-            let mut array2 = (*left).value.log_p.to_owned().insert_axis(Axis(1));
-            array2 =
-                array2 + log_transition(rate_matrix, (*left).value.distance).insert_axis(Axis(0));
+            let mut array2 = left.value.log_p.to_owned().insert_axis(Axis(1));
+            array2 = array2 + log_transition(rate_matrix, left.value.distance).insert_axis(Axis(0));
             Some(logsumexp_a2(array2.view()))
         }
         (None, Some(right)) => {
-            let mut array2 = (*right).value.log_p.to_owned().insert_axis(Axis(1));
+            let mut array2 = right.value.log_p.to_owned().insert_axis(Axis(1));
             array2 =
-                array2 + log_transition(rate_matrix, (*right).value.distance).insert_axis(Axis(0));
+                array2 + log_transition(rate_matrix, right.value.distance).insert_axis(Axis(0));
             Some(logsumexp_a2(array2.view()))
         }
         (None, None) => None,

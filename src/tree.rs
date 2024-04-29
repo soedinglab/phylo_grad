@@ -1,24 +1,5 @@
-/* Tree data:
-- a container with arbitrary access
-- holding Felsenstein_data
-    Implementation:
-// Beware: ownership (need to be able to return both a mutable and an immutable child ref)
-// Seems like we won't be able to implement the .left() method on the tree node,
-as it requires the tree root, and we don't want to store it in the child. However, this is
-a static dispatch problem: can we use the tree as a generic parameter of the node?
-*/
-
-/* Choose implementation based on how sparse the input tree is:
-- if it is not sparse, use a fixed-size array.
-- if it is moderately sparse, use a sparse vector.
-- if it is very sparse, use pointers.
-*/
-
-/* TODO check how sparse are the tree inputs that Benjamin has */
-
-/* TODO check the constraint on leaves count wrt type size */
-
 use crate::data_types::*;
+use crate::tree_iterators_rs::prelude::*;
 
 impl<const TOTAL: usize> FelsensteinNodeStd<TOTAL> {
     fn trivial() -> Self {
@@ -31,31 +12,33 @@ impl<const TOTAL: usize> FelsensteinNodeStd<TOTAL> {
 
 #[derive(Debug)]
 struct TreeFixed<Data, const TREE_SIZE: usize> {
-    data: [Data; TREE_SIZE],
+    data: [Option<Data>; TREE_SIZE],
 }
 
 /* Implement as a trait to have common interface? */
 type Id = usize;
 impl<const TREE_SIZE: Id, const TOTAL: usize> TreeFixed<FelsensteinNodeStd<TOTAL>, TREE_SIZE> {
-    fn left(id: Id) -> Option<Id> {
+    fn left(self, id: Id) -> Option<Id> {
         let left_id = id * 2 + 1;
-        if left_id < TREE_SIZE {
-            return Some(left_id);
-        } else {
+        if left_id >= TREE_SIZE {
             return None;
         }
+        if self.data[id].is_none() {
+            return None;
+        } // (!) Check that the tree element is non-empty
+        Some(id)
     }
     fn right(id: Id) -> Option<Id> {
         let right_id = id * 2 + 2;
         if right_id < TREE_SIZE {
-            return Some(right_id);
+            Some(right_id)
         } else {
-            return None;
+            None
         }
     }
     fn trivial() -> Self {
-        let data = [FelsensteinNodeStd::<TOTAL>::trivial(); TREE_SIZE];
-        Self { data: data }
+        let data = [Some(FelsensteinNodeStd::<TOTAL>::trivial()); TREE_SIZE];
+        Self { data }
     }
 }
 
@@ -73,3 +56,51 @@ impl<'a, T> MutBorrowedTreeNode<'a> for tree_fixed<T> where Self: 'a {
     type MutBorrowedChildren
 }
 */
+
+pub fn create_example_binary_tree<const TOTAL: usize>() -> BinaryTreeNode<FelsensteinNode> {
+    BinaryTreeNode {
+        value: FelsensteinNode::from(Residue::A),
+        left: Some(Box::new(BinaryTreeNode {
+            value: FelsensteinNode::from(Residue::C),
+            left: Some(Box::new(BinaryTreeNode {
+                value: FelsensteinNode::from(Residue::G),
+                left: None,
+                right: None,
+            })),
+            right: Some(Box::new(BinaryTreeNode {
+                value: FelsensteinNode::from(Residue::G),
+                left: None,
+                right: None,
+            })),
+        })),
+        right: Some(Box::new(BinaryTreeNode {
+            value: FelsensteinNode::from(Residue::C),
+            left: Some(Box::new(BinaryTreeNode {
+                value: FelsensteinNode::from(Residue::G),
+                left: None,
+                right: None,
+            })),
+            right: Some(Box::new(BinaryTreeNode {
+                value: FelsensteinNode::from(Residue::G),
+                left: Some(Box::new(BinaryTreeNode {
+                    value: FelsensteinNode::from(Residue::T),
+                    left: None,
+                    right: Some(Box::new(BinaryTreeNode {
+                        value: FelsensteinNode::from(Residue::None),
+                        left: Some(Box::new(BinaryTreeNode {
+                            value: FelsensteinNode::from(Residue::A),
+                            left: None,
+                            right: Some(Box::new(BinaryTreeNode {
+                                value: FelsensteinNode::from(Residue::C),
+                                left: None,
+                                right: None,
+                            })),
+                        })),
+                        right: None,
+                    })),
+                })),
+                right: None,
+            })),
+        })),
+    }
+}
