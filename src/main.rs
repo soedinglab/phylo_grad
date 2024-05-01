@@ -1,7 +1,9 @@
+#![allow(unused, dead_code)]
 extern crate expm;
 extern crate logsumexp;
 extern crate ndarray;
 extern crate num_enum;
+extern crate serde;
 extern crate tree_iterators_rs;
 
 use expm::expm;
@@ -12,9 +14,11 @@ use std::{convert::TryFrom, iter::FromIterator};
 use tree_iterators_rs::prelude::*;
 
 mod data_types;
+mod io;
 mod tree;
 
 use crate::data_types::*;
+use crate::io::*;
 use crate::tree::*;
 // use pyo3
 
@@ -108,7 +112,23 @@ fn log_prob_subtree<const TOTAL: usize>(
     }
 }
 pub fn main() {
-    const TOT: usize = Entry::TOTAL;
+    let mut i = 0i32;
+    let mut record_reader = read_csv("/home/jora/src/rust/bad_tree.txt").unwrap();
+    let input = record_reader
+        .deserialize::<RecordTuple>()
+        .map(|x| match x {
+            Ok(rt) => Ok(InputTreeNode::from(rt)),
+            Err(E) => Err(E),
+        })
+        .collect::<Result<Vec<InputTreeNode>, _>>();
+    dbg!(&input.unwrap()[0..4]);
+
+    /*
+    let res = ResidueExtended::B;
+    println!("{:?}", res.to_log_p());
+    */
+
+    /* const TOT: usize = Entry::TOTAL;
 
     let root = create_example_binary_tree::<{ TOT }>();
 
@@ -117,7 +137,9 @@ pub fn main() {
             * (Array::<Float, _>::ones((TOT, TOT)) - Array::<Float, _>::eye(TOT));
     dbg!(rate_matrix_example);
 
+
     let log_prior_example = Array1::from_elem((TOT,), (1 as Float / TOT as Float).ln());
+    */
 
     /*
     root.dfs_postorder_iter_mut().map(|fdata| {
@@ -151,5 +173,4 @@ pub fn main() {
         test_num
     );
     println! {"test_res_2 = {:?}", test_res_2}; */
-    tree::test_tree();
 }

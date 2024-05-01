@@ -1,6 +1,25 @@
 use crate::data_types::*;
 use crate::tree_iterators_rs::prelude::*;
 
+/* Tree root has three children. In our implementaion the root always has
+fixed id (0 or -1), and its parent attribute points at the third child.
+*/
+
+type Id = u16;
+pub struct TreeNode<Id> {
+    parent: Id,
+    distance: Float,
+    left: Option<Id>,
+    right: Option<Id>,
+}
+
+pub struct TreeFixed<const N_NODES: usize, Id> {
+    nodes: [TreeNode<Id>; N_NODES],
+}
+
+/* --------------------------- */
+
+/*
 impl<const TOTAL: usize> FelsensteinNodeStd<TOTAL> {
     fn trivial() -> Self {
         FelsensteinNodeStd {
@@ -16,7 +35,6 @@ struct TreeFixed<Data, const TREE_SIZE: usize> {
 }
 
 /* Implement as a trait to have common interface? */
-type Id = usize;
 impl<const TREE_SIZE: Id, const TOTAL: usize> TreeFixed<FelsensteinNodeStd<TOTAL>, TREE_SIZE> {
     fn left(self, id: Id) -> Option<Id> {
         let left_id = id * 2 + 1;
@@ -50,14 +68,10 @@ pub fn test_tree() {
         TreeFixed::<FelsensteinNodeStd<TOTAL>, SIZE>::trivial();
     dbg!(tree.data);
 }
-/*
-impl<'a, T> MutBorrowedTreeNode<'a> for tree_fixed<T> where Self: 'a {
-    type MutBorrowedValue = &'a mut tree_fixed<T>;
-    type MutBorrowedChildren
-}
 */
 
-pub fn create_example_binary_tree<const TOTAL: usize>() -> BinaryTreeNode<FelsensteinNode> {
+/*
+pub fn create_example_binary_tree() -> BinaryTreeNode<FelsensteinNode> {
     BinaryTreeNode {
         value: FelsensteinNode::from(Residue::A),
         left: Some(Box::new(BinaryTreeNode {
@@ -104,3 +118,4 @@ pub fn create_example_binary_tree<const TOTAL: usize>() -> BinaryTreeNode<Felsen
         })),
     }
 }
+*/
