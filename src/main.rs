@@ -4,14 +4,12 @@ extern crate logsumexp;
 extern crate ndarray;
 extern crate num_enum;
 extern crate serde;
-extern crate tree_iterators_rs;
 
 use expm::expm;
 use logsumexp::LogSumExp;
 use ndarray::prelude::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use std::{convert::TryFrom, iter::FromIterator};
-use tree_iterators_rs::prelude::*;
+use std::{convert::TryFrom, error::Error, iter::FromIterator};
 
 mod data_types;
 mod io;
@@ -71,6 +69,7 @@ fn log_transition(rate_matrix: ArrayView2<Float>, t: Float) -> Array2<Float> {
 }
 
 /* Should this get &mut root and modify it in place instead? */
+/*
 fn log_prob_subtree<const TOTAL: usize>(
     rate_matrix: ArrayView2<Float>,
     node: &BinaryTreeNode<FelsensteinNode>,
@@ -111,66 +110,39 @@ fn log_prob_subtree<const TOTAL: usize>(
         (None, None) => None,
     }
 }
+*/
 pub fn main() {
-    let mut i = 0i32;
-    let mut record_reader = read_csv("/home/jora/src/rust/bad_tree.txt").unwrap();
-    let input = record_reader
-        .deserialize::<RecordTuple>()
-        .map(|x| match x {
-            Ok(rt) => Ok(InputTreeNode::from(rt)),
-            Err(E) => Err(E),
+    let data_path = "data/tree_topological.csv";
+    let mut record_reader = read_preprocessed_csv(data_path).unwrap();
+    let input: (Vec<TreeNode>, Vec<Option<Vec<ResidueExtended>>>) = record_reader
+        .deserialize::<PreprocessedRecord>()
+        .map(|x| -> Result<InputTuple, Box<dyn Error>> {
+            let y = x?;
+            Ok(InputTuple::from(y))
         })
-        .collect::<Result<Vec<InputTreeNode>, _>>();
-    dbg!(&input.unwrap()[0..4]);
+        .map(|x| x.unwrap())
+        .unzip();
+
+    let (tree, sequences) = input;
+
+    dbg!(&tree[0..5]);
+    dbg!(&sequences[0..5]);
+
+    dbg!(&tree.last());
+    dbg!(&sequences.last());
 
     /*
-    let res = ResidueExtended::B;
-    println!("{:?}", res.to_log_p());
+    let data_path = "data/tree_topological.csv";
+    let mut record_reader = read_preprocessed_csv(data_path).unwrap();
+    let input = record_reader
+        .deserialize::<PreprocessedRecord>()
+        .map(|x| -> Result<InputTuple, Box<dyn Error>> {
+            let y = x?;
+            Ok(InputTuple::from(y))
+        })
+        .collect::<Result<Vec<InputTuple>, _>>();
+    let vector = input.unwrap();
+    dbg!(&vector[0..5]);
+    dbg!(&vector.last());
     */
-
-    /* const TOT: usize = Entry::TOTAL;
-
-    let root = create_example_binary_tree::<{ TOT }>();
-
-    let rate_matrix_example = Array::<Float, _>::eye(TOT)
-        - (1 as Float / (TOT - 1) as Float)
-            * (Array::<Float, _>::ones((TOT, TOT)) - Array::<Float, _>::eye(TOT));
-    dbg!(rate_matrix_example);
-
-
-    let log_prior_example = Array1::from_elem((TOT,), (1 as Float / TOT as Float).ln());
-    */
-
-    /*
-    root.dfs_postorder_iter_mut().map(|fdata| {
-        if let Some(log_p) = log_prob_subtree(rate_matrix_example.view(), fdata) {
-            fdata.log_p = log_p
-        }
-    });
-    let log_likelihood = (root.value.log_p + log_prior_example).iter().ln_sum_exp();
-
-    println!("log prior: {log_prior_example}");
-    println!("{log_likelihood}");
-    */
-
-    /*
-    let dfs_debug = root
-        .dfs_postorder_iter()
-        .map(|fdata| std::fmt::format(format_args!("{:?}", fdata)))
-        .collect::<Vec<String>>()
-        .join(", ");
-    println!("{dfs_debug}");
-    */
-
-    /* println!("Total: {}", Residue::TOTAL);
-    let test_res = Residue::G;
-    let test_num = u8::from(test_res);
-    let test_num_2 = 2u8;
-    let test_res_2 = Residue::try_from(test_num_2).unwrap();
-    println!(
-        "Entry has size {}, value {:?}",
-        std::mem::size_of_val(&test_res),
-        test_num
-    );
-    println! {"test_res_2 = {:?}", test_res_2}; */
 }

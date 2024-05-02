@@ -7,25 +7,26 @@ use std::path::Path;
 
 /* For fixing the tree */
 use crate::data_types::*;
-use crate::tree_iterators_rs::prelude::*;
+use crate::tree::TreeNode;
 use serde::Deserialize;
 use std::convert::TryFrom;
 
-#[derive(Debug, Deserialize)]
-pub struct RecordTuple(Option<i32>, Option<Float>, Option<String>);
+/* TODO #[serde(flatten)] */
 
-#[derive(Debug)]
-pub struct InputTreeNode {
-    parent: Option<usize>,
-    distance: Option<Float>,
+#[derive(Debug, Deserialize)]
+pub struct PreprocessedRecord {
+    parent: usize,
     left: Option<usize>,
     right: Option<usize>,
-    sequence: Option<Vec<ResidueExtended>>,
+    distance: Option<Float>,
+    sequence: Option<String>,
 }
 
-impl From<RecordTuple> for InputTreeNode {
-    fn from(value: RecordTuple) -> Self {
-        let sequence = match value.2 {
+pub type InputTuple = (TreeNode, Option<Vec<ResidueExtended>>);
+
+impl From<PreprocessedRecord> for InputTuple {
+    fn from(input: PreprocessedRecord) -> Self {
+        let enum_sequence = match input.sequence {
             Some(str) => Some(
                 str.chars()
                     .map(ResidueExtended::from)
@@ -34,74 +35,38 @@ impl From<RecordTuple> for InputTreeNode {
             None => None,
         };
 
-        let parent = match value.0 {
-            Some(integer) => {
-                if integer > 0 {
-                    Some(integer as usize)
-                } else {
-                    None
-                }
-            }
-            None => None,
+        let distance: Float = match input.distance {
+            Some(d) => d,
+            None => -1.0,
         };
 
-        Self {
-            parent: parent,
-            distance: value.1,
-            left: None,
-            right: None,
-            sequence: sequence,
-        }
+        (
+            TreeNode {
+                parent: input.parent,
+                left: input.left,
+                right: input.right,
+                distance: distance,
+            },
+            enum_sequence,
+        )
     }
 }
 
-pub fn binary_tree_from_file<P>(
-    filename: P,
-) -> Result<BinaryTreeNode<InputTreeNode>, Box<dyn Error>>
+pub fn read_preprocessed_csv<P>(filename: P) -> Result<csv::Reader<BufReader<File>>, Box<dyn Error>>
 where
     P: AsRef<Path>,
 {
-    let root = BinaryTreeNode {
-        value: InputTreeNode {
-            parent: None,
-            distance: None,
-            left: None,
-            right: None,
-            sequence: None,
-        },
-        left: None,
-        right: None,
-    };
-
-    let mut record_reader = read_csv(filename).unwrap();
-    let mut input = record_reader
-        .deserialize::<RecordTuple>()
-        .map(|x| match x {
-            Ok(rt) => Ok(InputTreeNode::from(rt)),
-            Err(E) => Err(E),
-        })
-        .collect::<Result<Vec<InputTreeNode>, _>>();
-    for itn in input? {
-        let parent = itn.parent;
-    }
-    Ok(root)
+    let file = File::open(filename)?;
+    let mut bufreader = BufReader::new(file);
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(bufreader);
+    Ok(rdr)
 }
 
-/* Goal:
-- Read the first line
-- Parse the remaining lines as csv
-- Create a TreeFixed instance, a distance array and a 2d sequence array of enums
-- - Fill the child pointers
-- - - Handle the root node having three children
-*/
-
-/* pub fn transform_to_postorder<P>(in_path: P, out_path: P) -> Result<(), Box<dyn Error>>
-where
-    P: AsRef<Path>,
-{
-
-}
-*/
+/* TODO remove */
+#[derive(Debug, Deserialize)]
+pub struct RecordTuple(Option<i32>, Option<Float>, Option<String>);
 
 pub fn read_csv<P>(filename: P) -> Result<csv::Reader<BufReader<File>>, Box<dyn Error>>
 where
