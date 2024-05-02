@@ -36,7 +36,7 @@ impl From<RecordTuple> for InputTreeNode {
 
         let parent = match value.0 {
             Some(integer) => {
-                if integer > 0 {
+                if integer >= 0 {
                     Some(integer as usize)
                 } else {
                     None
