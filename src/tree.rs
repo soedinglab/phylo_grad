@@ -13,4 +13,4 @@ pub struct TreeNodeId<Id> {
     pub distance: Float,
 }
 
-pub type TreeNode = TreeNodeId<usize>;
+pub type TreeNode = TreeNodeId<Id>;

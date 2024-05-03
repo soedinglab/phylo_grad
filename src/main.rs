@@ -1,4 +1,7 @@
 #![allow(unused, dead_code)]
+//extern crate arrayvec;
+extern crate blas_src;
+extern crate csv;
 extern crate expm;
 extern crate logsumexp;
 extern crate ndarray;
@@ -68,81 +71,128 @@ fn log_transition(rate_matrix: ArrayView2<Float>, t: Float) -> Array2<Float> {
     result
 }
 
-/* Should this get &mut root and modify it in place instead? */
-/*
-fn log_prob_subtree<const TOTAL: usize>(
+/* TODO operate on vectors lazily, perhaps with a buffer, only evaluate when collecting into Array1 at the end. */
+/* TODO rewrite to accept individual values */
+/* TODO avoid conversion from fixed-size array to ndarray */
+
+fn forward_node(
+    id: Id,
+    tree: &[TreeNode],
+    log_p: &[Option<LogPType>],
     rate_matrix: ArrayView2<Float>,
-    node: &BinaryTreeNode<FelsensteinNode>,
 ) -> Option<Array1<Float>> {
-    match (&node.left, &node.right) {
+    let node = &tree[id];
+    match (node.left, node.right) {
         (Some(left), Some(right)) =>
         // logsumexp_b,c (log_p(left, b) + log_transition(b, a, left.distance) + log_p(right, c) + log_transition(c, a, right.distance))
         // Vectorized: order: b, c, a -> logsumexp( (log_p(left)[:, -1, -1] + log_p(right)[-1, :, -1] + log_transition(left.distance)[:, -1,  :] + log_transition(right.distance)[-1, :, :]).flatten(dim=[0, 1]))
         {
-            let mut array3: Array3<Float> = left
-                .value
-                .log_p
-                .to_owned()
+            let log_p_left = log_p[left].unwrap();
+            let log_p_right = log_p[right].unwrap();
+            let mut array3: Array3<Float> = log_p_left
+                .iter()
+                .cloned()
+                .collect::<Array1<Float>>()
                 .insert_axis(Axis(1))
-                .insert_axis(Axis(2));
+                .insert_axis(Axis(2))
+                .broadcast((Entry::DIM, Entry::DIM, Entry::DIM))
+                .unwrap()
+                .to_owned();
             array3 = array3
-                + right
-                    .value
-                    .log_p
-                    .view()
+                + log_p_right
+                    .iter()
+                    .cloned()
+                    .collect::<Array1<Float>>()
                     .insert_axis(Axis(0))
                     .insert_axis(Axis(2));
-            array3 = array3 + log_transition(rate_matrix, left.value.distance).insert_axis(Axis(1));
+            array3 = array3 + log_transition(rate_matrix, tree[left].distance).insert_axis(Axis(1));
             array3 =
-                array3 + log_transition(rate_matrix, right.value.distance).insert_axis(Axis(0));
+                array3 + log_transition(rate_matrix, tree[right].distance).insert_axis(Axis(0));
             Some(logsumexp_a3(array3.view()))
         }
         (Some(left), None) => {
-            let mut array2 = left.value.log_p.to_owned().insert_axis(Axis(1));
-            array2 = array2 + log_transition(rate_matrix, left.value.distance);
+            let log_p_left = log_p[left].unwrap();
+            let mut array2 = log_p_left
+                .iter()
+                .cloned()
+                .collect::<Array1<Float>>()
+                .insert_axis(Axis(1))
+                .broadcast((Entry::DIM, Entry::DIM))
+                .unwrap()
+                .to_owned();
+            array2 = array2 + log_transition(rate_matrix, tree[left].distance);
             Some(logsumexp_a2(array2.view()))
         }
         (None, Some(right)) => {
-            let mut array2 = right.value.log_p.to_owned().insert_axis(Axis(1));
-            array2 = array2 + log_transition(rate_matrix, right.value.distance);
+            let log_p_right = log_p[right].unwrap();
+            let mut array2 = log_p_right
+                .iter()
+                .cloned()
+                .collect::<Array1<Float>>()
+                .insert_axis(Axis(1))
+                .broadcast((Entry::DIM, Entry::DIM))
+                .unwrap()
+                .to_owned();
+            array2 = array2 + log_transition(rate_matrix, tree[right].distance);
             Some(logsumexp_a2(array2.view()))
         }
         (None, None) => None,
     }
 }
-*/
+
+fn rate_matrix_example() -> Array2<Float> {
+    const DIM: usize = Entry::DIM;
+    let rate_matrix_example = Array::<Float, _>::eye(DIM)
+        - (1 as Float / (DIM - 1) as Float)
+            * (Array::<Float, _>::ones((DIM, DIM)) - Array::<Float, _>::eye(DIM));
+    rate_matrix_example
+}
 pub fn main() {
     let data_path = "data/tree_topological.csv";
     let mut record_reader = read_preprocessed_csv(data_path).unwrap();
-    let input: (Vec<TreeNode>, Vec<Option<Vec<ResidueExtended>>>) = record_reader
-        .deserialize::<PreprocessedRecord>()
-        .map(|x| -> Result<InputTuple, Box<dyn Error>> {
-            let y = x?;
-            Ok(InputTuple::from(y))
-        })
-        .map(|x| x.unwrap())
-        .unzip();
+    /* TODO handle result */
+    let tree;
+    let mut sequences;
+    (tree, sequences) = deserialize_tree(&mut record_reader);
 
-    let (tree, sequences) = input;
+    let num_nodes = tree.len();
+    /* TODO terrible */
+    let num_leaves = sequences.partition_point(|x| !x.is_empty());
+    sequences.truncate(num_leaves);
 
-    dbg!(&tree[0..5]);
-    dbg!(&sequences[0..5]);
+    let seq_length = sequences[0].len();
 
-    dbg!(&tree.last());
-    dbg!(&sequences.last());
+    let mut sequences_tmp = Vec::new();
+
+    for i in 0..num_leaves {
+        sequences_tmp.extend_from_slice(&sequences[i]);
+    }
+
+    let mut sequences_2d = Array2::from_shape_vec((num_leaves, seq_length), sequences_tmp).unwrap();
+    /* (!) Does this convert to column major? Seems like it doesn't, as the result has rows with strides=[119] */
+    sequences_2d = sequences_2d.t().to_owned();
+
+    let column = sequences_2d.index_axis(Axis(0), 0);
+    let mut log_p: Vec<Option<[Float; Entry::DIM]>> =
+        column.iter().map(|x| Some(Entry::to_log_p(x))).collect();
+    log_p.resize(num_nodes, None);
+
+    let mut rate_matrix = rate_matrix_example();
+
+    let result_nd = forward_node(num_leaves, &tree, &log_p, rate_matrix.view());
+    dbg!(result_nd);
 
     /*
-    let data_path = "data/tree_topological.csv";
-    let mut record_reader = read_preprocessed_csv(data_path).unwrap();
-    let input = record_reader
-        .deserialize::<PreprocessedRecord>()
-        .map(|x| -> Result<InputTuple, Box<dyn Error>> {
-            let y = x?;
-            Ok(InputTuple::from(y))
-        })
-        .collect::<Result<Vec<InputTuple>, _>>();
-    let vector = input.unwrap();
-    dbg!(&vector[0..5]);
-    dbg!(&vector.last());
+    for i in num_leaves..num_nodes {
+        let blah = forward_node(i, &tree, &log_p, rate_matrix.view());
+        ...
+    }
     */
+
+    /*
+    let slice = &column.slice(s![100..120]);
+    println!("{:?}", &slice);
+    println!("{:?}", &log_p[100..120]);
+    */
+    //println!("{:?} -> {:?}", &column[0], &log_p[0]);
 }

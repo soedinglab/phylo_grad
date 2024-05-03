@@ -7,14 +7,17 @@ name = "rna_pred_rust"
 path = "src/main.rs"
 
 [dependencies]
+#arrayvec = {version = "0.7.4", features = ["serde"]}
+blas-src = { version = "0.9", features = ["openblas"]}
+#blas-sys = { version = "*",  default-features=false, features=["openblas"] }
 csv = "1.3.0"
 expm = "0.1.1"
 logsumexp = "0.1.0"
 nalgebra = "0.32.5"
 # Very old version, the one expm uses
-ndarray = "0.12"
+ndarray = {version = "0.12", features=["blas"]}
 #ndarray = "0.15.6"
 num_enum = "0.7.2"
 rand = "0.8.5"
 serde = { version = "1.0.199", features = ["derive"] }
-tree_iterators_rs = { version = "1.2.1", features = ["serde"] }
+#tree_iterators_rs = { version = "1.2.1", features = ["serde"] }
