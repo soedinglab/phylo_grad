@@ -31,8 +31,7 @@ where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
-    let mut argument = rate_matrix.map(Float::exp).clone_owned();
-    argument *= t;
+    let argument = rate_matrix.map(Float::exp) * t;
     let matrix_exp = argument.exp();
     matrix_exp.map(Float::ln)
 }
