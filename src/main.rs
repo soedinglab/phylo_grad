@@ -1,14 +1,14 @@
 #![allow(unused, dead_code)]
 //extern crate arrayvec;
-extern crate blas_src;
+//extern crate blas_src;
 extern crate csv;
-extern crate expm;
 extern crate logsumexp;
+extern crate nalgebra as na;
 extern crate ndarray;
+
 extern crate num_enum;
 extern crate serde;
 
-use expm::expm;
 use logsumexp::LogSumExp;
 use ndarray::prelude::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -23,131 +23,121 @@ use crate::io::*;
 use crate::tree::*;
 // use pyo3
 
-/* TODO optimize numeric enum */
-
-/*
-fn logsumexp_array<D1: ndarray::Dimension, D2: ndarray::Dimension>(&array: &Array<Float, D1>, axis: Axis) -> Array<Float, D2> {
-    /* Expand into an iterator */
-    /* TODO rewrite */
-    let index = axis.index();
-    let mut dim_result = Vec::<usize>::new();
-    dim_result.extend(&array.shape()[..index]);
-    dim_result.extend(&array.shape()[index+1..]);
-    let mut result = unsafe{ ndarray::Array::<Float, _>::uninitialized(dim_result) };
-    array.axis_iter(axis).map(LogSumExp::ln_sum_exp).
-} */
-
-fn logsumexp_a1(array: ArrayView1<Float>) -> Float {
-    array.iter().ln_sum_exp()
-}
-
-fn logsumexp_a2(array: ArrayView2<Float>) -> Array1<Float> {
-    /* Contracts the first axis */
-    /* TODO accept Axis */
-    /* expand in an iterator over the remaining axis, apply logsumexp_a1, collect into array */
-    array
-        .axis_iter(Axis(1))
-        .map(logsumexp_a1)
-        .collect::<Array1<Float>>()
-}
-
-/* TODO SPEED think how this is stored in the memory */
-fn logsumexp_a3(array: ArrayView3<Float>) -> Array1<Float> {
-    /* Contracts the first two axes */
-    array
-        .axis_iter(Axis(2))
-        .map(|x| x.iter().ln_sum_exp())
-        .collect::<Array1<Float>>()
-}
-
-/* Should we always get array outputs via a &mut argument? */
-fn log_transition(rate_matrix: ArrayView2<Float>, t: Float) -> Array2<Float> {
-    let mut result = unsafe { ndarray::Array2::uninitialized(rate_matrix.dim()) };
-    /* Is this correct? */
-    let mut argument = rate_matrix.to_owned();
+fn log_transition<const DIM: usize>(
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    t: Float,
+) -> na::SMatrix<Float, DIM, DIM>
+where
+    na::Const<DIM>: na::ToTypenum,
+    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
+{
+    let mut argument = rate_matrix.map(Float::exp).clone_owned();
     argument *= t;
-    expm(&argument, &mut result);
-    result.map_inplace(|x| *x = x.ln());
-    result
+    let matrix_exp = argument.exp();
+    matrix_exp.map(Float::ln)
 }
 
-/* TODO operate on vectors lazily, perhaps with a buffer, only evaluate when collecting into Array1 at the end. */
-/* TODO rewrite to accept individual values */
-/* TODO avoid conversion from fixed-size array to ndarray */
+fn _child_input<const DIM: usize>(
+    log_p_na: na::SVector<Float, DIM>,
+    distance: Float,
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+) -> na::SVector<Float, DIM>
+where
+    na::Const<DIM>: na::ToTypenum,
+    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
+{
+    /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
+    let log_transition = log_transition(rate_matrix, distance);
+    na::SVector::<Float, DIM>::from_iterator(
+        (0..DIM).map(|a| (log_p_na + log_transition.column(a)).iter().ln_sum_exp()),
+    )
+}
 
-fn forward_node(
+/* TODO duplicate code */
+fn forward_node<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
-    log_p: &[Option<LogPType>],
-    rate_matrix: ArrayView2<Float>,
-) -> Option<Array1<Float>> {
+    log_p: &[Option<[Float; DIM]>],
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+) -> Option<[Float; DIM]>
+where
+    na::Const<DIM>: na::ToTypenum,
+    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
+{
     let node = &tree[id];
     match (node.left, node.right) {
-        (Some(left), Some(right)) =>
-        // logsumexp_b,c (log_p(left, b) + log_transition(b, a, left.distance) + log_p(right, c) + log_transition(c, a, right.distance))
-        // Vectorized: order: b, c, a -> logsumexp( (log_p(left)[:, -1, -1] + log_p(right)[-1, :, -1] + log_transition(left.distance)[:, -1,  :] + log_transition(right.distance)[-1, :, :]).flatten(dim=[0, 1]))
-        {
+        (Some(left), Some(right)) => {
             let log_p_left = log_p[left].unwrap();
+            let log_p_left_nalgebra = na::SVector::<_, DIM>::from(log_p_left);
+
             let log_p_right = log_p[right].unwrap();
-            let mut array3: Array3<Float> = log_p_left
-                .iter()
-                .cloned()
-                .collect::<Array1<Float>>()
-                .insert_axis(Axis(1))
-                .insert_axis(Axis(2))
-                .broadcast((Entry::DIM, Entry::DIM, Entry::DIM))
-                .unwrap()
-                .to_owned();
-            array3 = array3
-                + log_p_right
-                    .iter()
-                    .cloned()
-                    .collect::<Array1<Float>>()
-                    .insert_axis(Axis(0))
-                    .insert_axis(Axis(2));
-            array3 = array3 + log_transition(rate_matrix, tree[left].distance).insert_axis(Axis(1));
-            array3 =
-                array3 + log_transition(rate_matrix, tree[right].distance).insert_axis(Axis(0));
-            Some(logsumexp_a3(array3.view()))
+            let log_p_right_nalgebra = na::SVector::<_, DIM>::from(log_p_right);
+
+            let result = _child_input(log_p_left_nalgebra, tree[left].distance, rate_matrix)
+                + _child_input(log_p_right_nalgebra, tree[right].distance, rate_matrix);
+            Some(<[Float; DIM]>::from(result))
         }
         (Some(left), None) => {
             let log_p_left = log_p[left].unwrap();
-            let mut array2 = log_p_left
-                .iter()
-                .cloned()
-                .collect::<Array1<Float>>()
-                .insert_axis(Axis(1))
-                .broadcast((Entry::DIM, Entry::DIM))
-                .unwrap()
-                .to_owned();
-            array2 = array2 + log_transition(rate_matrix, tree[left].distance);
-            Some(logsumexp_a2(array2.view()))
+            let log_p_left_nalgebra = na::SVector::<_, DIM>::from(log_p_left);
+
+            let result = _child_input(log_p_left_nalgebra, tree[left].distance, rate_matrix);
+            Some(<[Float; DIM]>::from(result))
         }
         (None, Some(right)) => {
             let log_p_right = log_p[right].unwrap();
-            let mut array2 = log_p_right
-                .iter()
-                .cloned()
-                .collect::<Array1<Float>>()
-                .insert_axis(Axis(1))
-                .broadcast((Entry::DIM, Entry::DIM))
-                .unwrap()
-                .to_owned();
-            array2 = array2 + log_transition(rate_matrix, tree[right].distance);
-            Some(logsumexp_a2(array2.view()))
+            let log_p_right_nalgebra = na::SVector::<_, DIM>::from(log_p_right);
+
+            let result = _child_input(log_p_right_nalgebra, tree[right].distance, rate_matrix);
+            Some(<[Float; DIM]>::from(result))
         }
         (None, None) => None,
     }
 }
 
-fn rate_matrix_example() -> Array2<Float> {
+fn forward_root<const DIM: usize>(
+    id: Id,
+    tree: &[TreeNode],
+    log_p: &[Option<[Float; DIM]>],
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+) -> [Float; DIM]
+where
+    na::Const<DIM>: na::ToTypenum,
+    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
+{
+    let root = &tree[id];
+
+    let children = match (root.left, root.right) {
+        (Some(child_2), Some(child_3)) => vec![root.parent, child_2, child_3],
+        (Some(child_2), None) => vec![root.parent, child_2],
+        (None, Some(child_2)) => vec![root.parent, child_2],
+        (None, None) => vec![root.parent],
+    };
+
+    let result: na::SVector<Float, DIM> = children
+        .into_iter()
+        .map(|child| {
+            let log_p_child = log_p[child].unwrap();
+            let log_p_child_nalgebra = na::SVector::<_, DIM>::from(log_p_child);
+            _child_input(log_p_child_nalgebra, tree[child].distance, rate_matrix)
+        })
+        .sum();
+    <[Float; DIM]>::from(result)
+}
+
+fn rate_matrix_example() -> RateType {
     const DIM: usize = Entry::DIM;
-    let rate_matrix_example = Array::<Float, _>::eye(DIM)
+    let rate_matrix_example = RateType::identity()
         - (1 as Float / (DIM - 1) as Float)
-            * (Array::<Float, _>::ones((DIM, DIM)) - Array::<Float, _>::eye(DIM));
+            * (RateType::from_element(1.0 as Float) - RateType::identity());
     rate_matrix_example
 }
+
 pub fn main() {
+    /* Placeholder values */
+    let log_prior = [0.25 as Float; Entry::DIM].map(Float::ln);
+    let rate_matrix = rate_matrix_example();
+
     let data_path = "data/tree_topological.csv";
     let mut record_reader = read_preprocessed_csv(data_path).unwrap();
     /* TODO handle result */
@@ -177,22 +167,15 @@ pub fn main() {
         column.iter().map(|x| Some(Entry::to_log_p(x))).collect();
     log_p.resize(num_nodes, None);
 
-    let mut rate_matrix = rate_matrix_example();
-
-    let result_nd = forward_node(num_leaves, &tree, &log_p, rate_matrix.view());
-    dbg!(result_nd);
-
-    /*
-    for i in num_leaves..num_nodes {
-        let blah = forward_node(i, &tree, &log_p, rate_matrix.view());
-        ...
+    for i in num_leaves..(num_nodes - 1) {
+        let log_p_new = forward_node(i, &tree, &log_p, rate_matrix.as_view()).unwrap();
+        log_p[i] = Some(log_p_new);
     }
-    */
+    let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, rate_matrix.as_view());
 
-    /*
-    let slice = &column.slice(s![100..120]);
-    println!("{:?}", &slice);
-    println!("{:?}", &log_p[100..120]);
-    */
-    //println!("{:?} -> {:?}", &column[0], &log_p[0]);
+    let log_likelihood = (0..Entry::DIM)
+        .map(|i| log_p_root[i] + log_prior[i])
+        .ln_sum_exp();
+
+    println!("Log likelihood = {}", log_likelihood);
 }
