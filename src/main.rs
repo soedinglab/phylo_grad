@@ -47,7 +47,8 @@ where
 {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
     let log_transition = log_transition(rate_matrix, distance);
-    /* Is this better or worse than adding two nalgebra vectors and taking logsumexp? */
+    /* Is this better or worse than adding two nalgebra vectors and taking logsumexp?
+    What is the optimal way to access a matrix? */
     let mut result = [0.0 as Float; DIM];
     for a in (0..DIM) {
         result[a] = (0..DIM)
@@ -63,7 +64,7 @@ fn forward_node<const DIM: usize>(
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-) -> Option<[Float; DIM]>
+) -> Result<[Float; DIM], Box<dyn Error>>
 where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
@@ -81,19 +82,19 @@ where
             for a in (0..DIM) {
                 result[a] = child_input_left[a] + child_input_right[a];
             }
-            Some(result)
+            Ok(result)
         }
         (Some(left), None) => {
             let log_p_left = log_p[left].unwrap();
             let result = _child_input(&log_p_left, tree[left].distance, rate_matrix);
-            Some(result)
+            Ok(result)
         }
         (None, Some(right)) => {
             let log_p_right = log_p[right].unwrap();
             let result = _child_input(&log_p_right, tree[right].distance, rate_matrix);
-            Some(result)
+            Ok(result)
         }
-        (None, None) => None,
+        (None, None) => Err(Box::new(FelsensteinError::LEAF)),
     }
 }
 
@@ -179,6 +180,7 @@ pub fn main() {
         log_p[i] = Some(log_p_new);
     }
     let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, rate_matrix.as_view());
+    log_p[num_leaves - 1] = Some(log_p_root);
 
     let log_likelihood = (0..Entry::DIM)
         .map(|i| log_p_root[i] + log_prior[i])

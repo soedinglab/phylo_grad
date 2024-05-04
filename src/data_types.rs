@@ -96,6 +96,21 @@ impl From<char> for ResidueExtended {
 #[derive(Debug)]
 struct ResiduePair(Residue, Residue);
 
+#[derive(Debug)]
+pub enum FelsensteinError {
+    LogicError(&'static str),
+}
+impl FelsensteinError {
+    pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
+}
+impl std::fmt::Display for FelsensteinError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self::LogicError(str) = self;
+        write!(f, "{}", str)
+    }
+}
+impl std::error::Error for FelsensteinError {}
+
 pub type Entry = ResidueExtended;
 /* TODO: f32 not allowed by expm crate. That crate is only used for debugging purposes though. */
 pub type Float = f64;
