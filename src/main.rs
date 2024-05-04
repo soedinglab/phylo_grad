@@ -37,7 +37,7 @@ where
 }
 
 fn _child_input<const DIM: usize>(
-    log_p_na: na::SVector<Float, DIM>,
+    log_p: &[Float; DIM],
     distance: Float,
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SVector<Float, DIM>
@@ -47,9 +47,12 @@ where
 {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
     let log_transition = log_transition(rate_matrix, distance);
-    na::SVector::<Float, DIM>::from_iterator(
-        (0..DIM).map(|a| (log_p_na + log_transition.column(a)).iter().ln_sum_exp()),
-    )
+    /* Is this better or worse than adding two nalgebra vectors and taking logsumexp? */
+    na::SVector::<Float, DIM>::from_iterator((0..DIM).map(|a| {
+        (0..DIM)
+            .map(|b| (log_p[b] + log_transition[(a, b)]))
+            .ln_sum_exp()
+    }))
 }
 
 /* TODO duplicate code */
@@ -67,27 +70,22 @@ where
     match (node.left, node.right) {
         (Some(left), Some(right)) => {
             let log_p_left = log_p[left].unwrap();
-            let log_p_left_nalgebra = na::SVector::<_, DIM>::from(log_p_left);
-
             let log_p_right = log_p[right].unwrap();
-            let log_p_right_nalgebra = na::SVector::<_, DIM>::from(log_p_right);
 
-            let result = _child_input(log_p_left_nalgebra, tree[left].distance, rate_matrix)
-                + _child_input(log_p_right_nalgebra, tree[right].distance, rate_matrix);
+            let result = _child_input(&log_p_left, tree[left].distance, rate_matrix)
+                + _child_input(&log_p_right, tree[right].distance, rate_matrix);
             Some(<[Float; DIM]>::from(result))
         }
         (Some(left), None) => {
             let log_p_left = log_p[left].unwrap();
-            let log_p_left_nalgebra = na::SVector::<_, DIM>::from(log_p_left);
 
-            let result = _child_input(log_p_left_nalgebra, tree[left].distance, rate_matrix);
+            let result = _child_input(&log_p_left, tree[left].distance, rate_matrix);
             Some(<[Float; DIM]>::from(result))
         }
         (None, Some(right)) => {
             let log_p_right = log_p[right].unwrap();
-            let log_p_right_nalgebra = na::SVector::<_, DIM>::from(log_p_right);
 
-            let result = _child_input(log_p_right_nalgebra, tree[right].distance, rate_matrix);
+            let result = _child_input(&log_p_right, tree[right].distance, rate_matrix);
             Some(<[Float; DIM]>::from(result))
         }
         (None, None) => None,
@@ -106,19 +104,20 @@ where
 {
     let root = &tree[id];
 
-    let children = match (root.left, root.right) {
-        (Some(child_2), Some(child_3)) => vec![root.parent, child_2, child_3],
-        (Some(child_2), None) => vec![root.parent, child_2],
-        (None, Some(child_2)) => vec![root.parent, child_2],
-        (None, None) => vec![root.parent],
-    };
+    let mut children = Vec::with_capacity(3);
+    children.push(root.parent);
+    if let Some(child) = root.left {
+        children.push(child);
+    }
+    if let Some(child) = root.right {
+        children.push(child);
+    }
 
     let result: na::SVector<Float, DIM> = children
         .into_iter()
         .map(|child| {
             let log_p_child = log_p[child].unwrap();
-            let log_p_child_nalgebra = na::SVector::<_, DIM>::from(log_p_child);
-            _child_input(log_p_child_nalgebra, tree[child].distance, rate_matrix)
+            _child_input(&log_p_child, tree[child].distance, rate_matrix)
         })
         .sum();
     <[Float; DIM]>::from(result)
