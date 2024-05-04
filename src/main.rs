@@ -14,10 +14,12 @@ use ndarray::prelude::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::{convert::TryFrom, error::Error, iter::FromIterator};
 
+mod autograd;
 mod data_types;
 mod io;
 mod tree;
 
+use crate::autograd::*;
 use crate::data_types::*;
 use crate::io::*;
 use crate::tree::*;
@@ -58,7 +60,8 @@ where
     result
 }
 
-/* TODO duplicate code */
+/// forward_node expects that the node tree[id] is non-terminal!
+/// To initialize a leaf node, call Entry::to_log_p().
 fn forward_node<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
@@ -70,6 +73,7 @@ where
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
     let node = &tree[id];
+    /* TODO duplicate code */
     match (node.left, node.right) {
         (Some(left), Some(right)) => {
             let log_p_left = log_p[left].unwrap();
@@ -142,6 +146,7 @@ fn rate_matrix_example() -> RateType {
 }
 
 pub fn main() {
+    /* TODO get rid of Options */
     /* Placeholder values */
     let log_prior = [0.25 as Float; Entry::DIM].map(Float::ln);
     let rate_matrix = rate_matrix_example();
@@ -170,21 +175,40 @@ pub fn main() {
     /* (!) Does this convert to column major? Seems like it doesn't, as the result has rows with strides=[119] */
     sequences_2d = sequences_2d.t().to_owned();
 
-    let column = sequences_2d.index_axis(Axis(0), 0);
-    let mut log_p: Vec<Option<[Float; Entry::DIM]>> =
-        column.iter().map(|x| Some(Entry::to_log_p(x))).collect();
-    log_p.resize(num_nodes, None);
+    let mut log_likelihood = 0.0 as Float;
+    let mut grad_log_prior = [0.0 as Float; Entry::DIM];
+    for (column_id, column) in sequences_2d.axis_iter(Axis(0)).enumerate() {
+        let mut log_p: Vec<Option<[Float; Entry::DIM]>> =
+            column.iter().map(|x| Some(Entry::to_log_p(x))).collect();
+        log_p.resize(num_nodes, None);
 
-    for i in num_leaves..(num_nodes - 1) {
-        let log_p_new = forward_node(i, &tree, &log_p, rate_matrix.as_view()).unwrap();
-        log_p[i] = Some(log_p_new);
+        for i in num_leaves..(num_nodes - 1) {
+            let log_p_new = forward_node(i, &tree, &log_p, rate_matrix.as_view()).unwrap();
+            log_p[i] = Some(log_p_new);
+        }
+        let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, rate_matrix.as_view());
+        log_p[num_leaves - 1] = Some(log_p_root);
+
+        /* TODO macro */
+        let mut _BACKWARD_likelihood_lse_arg = [0.0 as Float; Entry::DIM];
+        for i in (0..Entry::DIM) {
+            _BACKWARD_likelihood_lse_arg[i] = log_p_root[i] + log_prior[i];
+        }
+        let log_likelihood_column = _BACKWARD_likelihood_lse_arg.iter().ln_sum_exp();
+
+        softmax_inplace(&mut _BACKWARD_likelihood_lse_arg);
+        for i in (0..Entry::DIM) {
+            grad_log_prior[i] += _BACKWARD_likelihood_lse_arg[i];
+        }
+
+        /*
+        let log_likelihood_column = (0..Entry::DIM)
+            .map(|i| log_p_root[i] + log_prior[i])
+            .ln_sum_exp();
+        */
+        log_likelihood += log_likelihood_column;
+        println!("Log likelihood #{} = {}", column_id, log_likelihood_column);
     }
-    let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, rate_matrix.as_view());
-    log_p[num_leaves - 1] = Some(log_p_root);
-
-    let log_likelihood = (0..Entry::DIM)
-        .map(|i| log_p_root[i] + log_prior[i])
-        .ln_sum_exp();
-
     println!("Log likelihood = {}", log_likelihood);
+    println!("Gradient of log_prior = {:?}", grad_log_prior);
 }
