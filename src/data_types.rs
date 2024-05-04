@@ -100,9 +100,7 @@ struct ResiduePair(Residue, Residue);
 pub enum FelsensteinError {
     LogicError(&'static str),
 }
-impl FelsensteinError {
-    pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
-}
+
 impl std::fmt::Display for FelsensteinError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self::LogicError(str) = self;
