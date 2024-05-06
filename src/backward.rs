@@ -1,3 +1,5 @@
+use std::cmp;
+
 use crate::data_types::*;
 
 pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
@@ -14,6 +16,11 @@ pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
 }
 
 pub fn softmax_inplace<const N: usize>(x: &mut [Float; N]) {
+    let x_max = *x.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+
+    for i in (0..N) {
+        x[i] -= x_max;
+    }
     for i in (0..N) {
         x[i] = x[i].exp();
     }

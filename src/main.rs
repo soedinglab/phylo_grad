@@ -27,8 +27,8 @@ use crate::tree::*;
 
 fn rate_matrix_example() -> RateType {
     const DIM: usize = Entry::DIM;
-    let rate_matrix_example = RateType::identity()
-        - (1 as Float / (DIM - 1) as Float)
+    let rate_matrix_example = -RateType::identity()
+        + (1 as Float / (DIM - 1) as Float)
             * (RateType::from_element(1.0 as Float) - RateType::identity());
     rate_matrix_example
 }
@@ -41,8 +41,6 @@ pub fn main() {
 
     let log_prior = [0.25 as Float; Entry::DIM].map(Float::ln);
     let rate_matrix = rate_matrix_example();
-
-    let exp_rate_matrix = rate_matrix.map(Float::exp);
 
     let data_path = if args.len() >= 2 {
         &args[1]
@@ -80,10 +78,10 @@ pub fn main() {
         log_p.resize(num_nodes, None);
 
         for i in num_leaves..(num_nodes - 1) {
-            let log_p_new = forward_node(i, &tree, &log_p, exp_rate_matrix.as_view()).unwrap();
+            let log_p_new = forward_node(i, &tree, &log_p, rate_matrix.as_view()).unwrap();
             log_p[i] = Some(log_p_new);
         }
-        let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, exp_rate_matrix.as_view());
+        let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, rate_matrix.as_view());
         log_p[num_leaves - 1] = Some(log_p_root);
 
         /* TODO macro */
