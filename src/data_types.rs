@@ -110,7 +110,6 @@ impl std::fmt::Display for FelsensteinError {
 impl std::error::Error for FelsensteinError {}
 
 pub type Entry = ResidueExtended;
-/* TODO: f32 not allowed by expm crate. That crate is only used for debugging purposes though. */
 pub type Float = f64;
 pub type Id = usize;
 pub type LogPType = [Float; Entry::DIM];

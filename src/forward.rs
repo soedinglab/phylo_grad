@@ -10,14 +10,14 @@ impl FelsensteinError {
 }
 
 fn log_transition<const DIM: usize>(
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    exp_rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     t: Float,
 ) -> na::SMatrix<Float, DIM, DIM>
 where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
-    let argument = rate_matrix.map(Float::exp) * t;
+    let argument = exp_rate_matrix * t;
     let matrix_exp = argument.exp();
     matrix_exp.map(Float::ln)
 }
@@ -25,14 +25,14 @@ where
 fn _child_input<const DIM: usize>(
     log_p: &[Float; DIM],
     distance: Float,
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    exp_rate_matrix: na::SMatrixView<Float, DIM, DIM>,
 ) -> [Float; DIM]
 where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
-    /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
-    let log_transition = log_transition(rate_matrix, distance);
+    /* result_a = logsumexp_b(log_p(b) + log_transition(exp_rate_matrix, distance)(b, a) ) */
+    let log_transition = log_transition(exp_rate_matrix, distance);
     /* Is this better or worse than adding two nalgebra vectors and taking logsumexp?
     What is the optimal way to access a matrix? */
     let mut result = [0.0 as Float; DIM];
@@ -50,7 +50,7 @@ pub fn forward_node<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    exp_rate_matrix: na::SMatrixView<Float, DIM, DIM>,
 ) -> Result<[Float; DIM], Box<dyn Error>>
 where
     na::Const<DIM>: na::ToTypenum,
@@ -61,10 +61,11 @@ where
     match (node.left, node.right) {
         (Some(left), Some(right)) => {
             let log_p_left = log_p[left].unwrap();
-            let child_input_left = _child_input(&log_p_left, tree[left].distance, rate_matrix);
+            let child_input_left = _child_input(&log_p_left, tree[left].distance, exp_rate_matrix);
 
             let log_p_right = log_p[right].unwrap();
-            let child_input_right = _child_input(&log_p_right, tree[right].distance, rate_matrix);
+            let child_input_right =
+                _child_input(&log_p_right, tree[right].distance, exp_rate_matrix);
 
             let mut result = [0.0 as Float; DIM];
             for a in (0..DIM) {
@@ -74,12 +75,12 @@ where
         }
         (Some(left), None) => {
             let log_p_left = log_p[left].unwrap();
-            let result = _child_input(&log_p_left, tree[left].distance, rate_matrix);
+            let result = _child_input(&log_p_left, tree[left].distance, exp_rate_matrix);
             Ok(result)
         }
         (None, Some(right)) => {
             let log_p_right = log_p[right].unwrap();
-            let result = _child_input(&log_p_right, tree[right].distance, rate_matrix);
+            let result = _child_input(&log_p_right, tree[right].distance, exp_rate_matrix);
             Ok(result)
         }
         (None, None) => Err(Box::new(FelsensteinError::LEAF)),
@@ -90,7 +91,7 @@ pub fn forward_root<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    exp_rate_matrix: na::SMatrixView<Float, DIM, DIM>,
 ) -> [Float; DIM]
 where
     na::Const<DIM>: na::ToTypenum,
@@ -114,7 +115,7 @@ where
             na::SVector::<Float, DIM>::from(_child_input(
                 &log_p_child,
                 tree[child].distance,
-                rate_matrix,
+                exp_rate_matrix,
             ))
         })
         .sum();

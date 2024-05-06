@@ -35,11 +35,20 @@ fn rate_matrix_example() -> RateType {
 
 pub fn main() {
     /* TODO get rid of Options */
+    /* TODO! apply cutoff for distances */
     /* Placeholder values */
+    let args: Vec<String> = std::env::args().collect();
+
     let log_prior = [0.25 as Float; Entry::DIM].map(Float::ln);
     let rate_matrix = rate_matrix_example();
 
-    let data_path = "data/tree_topological.csv";
+    let exp_rate_matrix = rate_matrix.map(Float::exp);
+
+    let data_path = if args.len() >= 2 {
+        &args[1]
+    } else {
+        "data/tree_topological.csv"
+    };
     let mut record_reader = read_preprocessed_csv(data_path).unwrap();
     /* TODO handle result */
     let tree;
@@ -71,10 +80,10 @@ pub fn main() {
         log_p.resize(num_nodes, None);
 
         for i in num_leaves..(num_nodes - 1) {
-            let log_p_new = forward_node(i, &tree, &log_p, rate_matrix.as_view()).unwrap();
+            let log_p_new = forward_node(i, &tree, &log_p, exp_rate_matrix.as_view()).unwrap();
             log_p[i] = Some(log_p_new);
         }
-        let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, rate_matrix.as_view());
+        let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, exp_rate_matrix.as_view());
         log_p[num_leaves - 1] = Some(log_p_root);
 
         /* TODO macro */
