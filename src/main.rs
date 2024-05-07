@@ -60,7 +60,7 @@ pub fn main() {
 
     let seq_length = sequences[0].len();
 
-    let mut sequences_tmp = Vec::new();
+    let mut sequences_tmp = Vec::with_capacity(num_leaves * seq_length);
 
     for i in 0..num_leaves {
         sequences_tmp.extend_from_slice(&sequences[i]);
