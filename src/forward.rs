@@ -9,17 +9,24 @@ impl FelsensteinError {
     pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
 }
 
+pub struct LogTransitionForwardData {
+    pub distance: Float,
+    pub step_1: RateType,
+    pub step_2: RateType,
+}
+
 fn log_transition<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    t: Float,
+    distance: Float,
 ) -> na::SMatrix<Float, DIM, DIM>
 where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
-    let argument = rate_matrix * t;
-    let matrix_exp = argument.exp();
-    matrix_exp.map(Float::ln)
+    let step_1 = rate_matrix * distance;
+    let step_2 = step_1.exp();
+    step_2.map(Float::ln)
+    //forward_data[id].log_transition = (distance, step_1, step_2)
 }
 
 fn _child_input<const DIM: usize>(

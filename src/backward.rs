@@ -1,6 +1,7 @@
 use std::cmp;
 
 use crate::data_types::*;
+use crate::forward::*;
 use crate::na::{Const, DefaultAllocator, Dim, DimAdd, DimMin, DimName, DimSum, ToTypenum}; //SMatrix, SMatrixView
 
 pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
@@ -35,14 +36,14 @@ pub fn softmax_inplace<const N: usize>(x: &mut [Float; N]) {
     }
 }
 
-/* It can't be hard to make this generic over N, right? */
-
-fn d_exp_4x4(
-    argument: na::SMatrixView<Float, 4, 4>,
-    direction: na::SMatrixView<Float, 4, 4>,
-) -> na::SMatrix<Float, 4, 4> {
-    const N: usize = 4;
-    let mut block_triangular = na::SMatrix::<Float, { 2 * N }, { 2 * N }>::zeros();
+/* TODO stability */
+const TWICE_DIM: usize = 2 * Entry::DIM;
+pub fn d_exp(
+    argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+    direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
+    const N: usize = Entry::DIM;
+    let mut block_triangular = na::SMatrix::<Float, TWICE_DIM, TWICE_DIM>::zeros();
 
     block_triangular.index_mut((..N, ..N)).copy_from(&argument);
     block_triangular.index_mut((N.., N..)).copy_from(&argument);
@@ -50,50 +51,39 @@ fn d_exp_4x4(
 
     let exp_combined = block_triangular.exp();
 
+    /* TODO accept &mut result and use copy_from? */
     let dexp: na::SMatrix<Float, N, N> = exp_combined.fixed_view::<N, N>(0, N).clone_owned();
     dexp
 }
 
-/* Wrong! */
+pub fn d_map_ln(
+    argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+    direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
+    /* D_map_ln(argument, direction) = map_recip (argument) \odot direction */
+    let mut rec = argument.map(Float::recip);
+    rec.component_mul_assign(&direction);
+    rec
+}
 
-pub fn d_exp<N>(
-    argument: na::Matrix<Float, N, N, na::ViewStorage<Float, N, N, Const<1>, N>>,
-    direction: na::Matrix<Float, N, N, na::ViewStorage<Float, N, N, Const<1>, N>>,
-) -> na::Matrix<Float, N, N, <DefaultAllocator as na::allocator::Allocator<Float, N, N>>::Buffer>
-where
-    N: ToTypenum + DimName + DimAdd<N>,
-    <N as DimAdd<N>>::Output: DimName,
-    <DefaultAllocator as na::allocator::Allocator<Float, N, N>>::Buffer:
-        na::RawStorage<Float, N, N>,
-    DefaultAllocator: na::allocator::Allocator<f64, <N as na::DimAdd<N>>::Output, <N as na::DimAdd<N>>::Output>
-        + na::allocator::Allocator<Float, N, N>,
-    <N as na::DimAdd<N>>::Output:
-        na::DimMin<<N as na::DimAdd<N>>::Output, Output = <N as na::DimAdd<N>>::Output>,
-    DefaultAllocator: na::allocator::Allocator<(usize, usize), <N as na::DimAdd<N>>::Output>,
-    DefaultAllocator: na::allocator::Allocator<f64, <N as na::DimAdd<N>>::Output>,
-{
-    let n = N::try_to_usize().unwrap();
-    let mut block_triangular = na::Matrix::<
-        Float,
-        <N as DimAdd<N>>::Output,
-        <N as DimAdd<N>>::Output,
-        <DefaultAllocator as na::allocator::Allocator<
-            Float,
-            <N as na::DimAdd<N>>::Output,
-            <N as na::DimAdd<N>>::Output,
-        >>::Buffer,
-    >::zeros();
-    block_triangular.index_mut((..n, ..n)).copy_from(&argument);
-    block_triangular.index_mut((n.., n..)).copy_from(&argument);
-    block_triangular.index_mut((..n, n..)).copy_from(&direction);
-    let exp_combined = block_triangular.exp();
-    /* TODO accept &mut result and use copy_from? */
-    let mut dexp = na::Matrix::<
-        Float,
-        N,
-        N,
-        <DefaultAllocator as na::allocator::Allocator<Float, N, N>>::Buffer,
-    >::zeros();
-    dexp.copy_from(&exp_combined.index((..n, n..)));
-    dexp
+pub fn d_rate_log_transition(
+    forward: &LogTransitionForwardData,
+    direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+) -> RateType {
+    /* result := D_R(log_transition(R, t)) at R=rate, evaluated on 'direction'.
+    Let D = D_rate (since t is constant, we don't care about D_t).
+    (rate, t, step_2) = forward
+    step_1 = forward.step_1()
+
+    backward_1 = D_mul(argument=(rate, t), direction = direction) = t * direction
+    backward_2 = D_exp(argument = step_1, direction = backward_1)
+    result = D_map_ln(argument = step_2, direction = backward_2) */
+    let distance = forward.distance;
+    let step_1 = forward.step_1;
+    let step_2 = forward.step_2;
+
+    let backward_1 = direction * distance;
+    let backward_2 = d_exp(step_1.as_view(), backward_1.as_view());
+    let result = d_map_ln(step_2.as_view(), backward_2.as_view());
+    result
 }
