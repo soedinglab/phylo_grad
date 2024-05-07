@@ -2,7 +2,6 @@ use std::cmp;
 
 use crate::data_types::*;
 use crate::forward::*;
-use crate::na::{Const, DefaultAllocator, Dim, DimAdd, DimMin, DimName, DimSum, ToTypenum}; //SMatrix, SMatrixView
 
 pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
     let mut result = [0 as Float; N];
@@ -70,6 +69,7 @@ pub fn d_map_ln(
 
 pub fn d_rate_log_transition(
     forward: &LogTransitionForwardData<{ Entry::DIM }>,
+    distance: Float,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) -> RateType {
     /* result := D_R(log_transition(R, t)) at R=rate, evaluated on 'direction'.
@@ -80,7 +80,6 @@ pub fn d_rate_log_transition(
     backward_1 = D_mul(argument=(rate, t), direction = direction) = t * direction
     backward_2 = D_exp(argument = step_1, direction = backward_1)
     result = D_map_ln(argument = step_2, direction = backward_2) */
-    let distance = forward.distance;
     let step_1 = forward.step_1;
     let step_2 = forward.step_2;
 

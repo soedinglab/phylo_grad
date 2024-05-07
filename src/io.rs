@@ -6,6 +6,7 @@ use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
 use crate::data_types::*;
+use crate::itertools::multiunzip;
 use crate::tree::TreeNode;
 use serde::Deserialize;
 use std::convert::TryFrom;
@@ -24,7 +25,7 @@ pub struct PreprocessedRecord {
     sequence: Option<String>,
 }
 
-pub type InputTuple = (TreeNode, Vec<ResidueExtended>);
+pub type InputTuple = (TreeNode, Float, Vec<ResidueExtended>);
 
 impl From<PreprocessedRecord> for InputTuple {
     fn from(input: PreprocessedRecord) -> Self {
@@ -46,8 +47,8 @@ impl From<PreprocessedRecord> for InputTuple {
                 parent: input.parent,
                 left: input.left,
                 right: input.right,
-                distance: distance,
             },
+            distance,
             enum_sequence,
         )
     }
@@ -67,11 +68,13 @@ where
 
 pub fn deserialize_tree(
     reader: &mut csv::Reader<BufReader<File>>,
-) -> (Vec<TreeNode>, Vec<Vec<ResidueExtended>>) {
-    let (tree, sequences): (Vec<TreeNode>, Vec<Vec<ResidueExtended>>) = reader
-        .deserialize::<PreprocessedRecord>()
-        .map(|x| x.unwrap())
-        .map(InputTuple::from)
-        .unzip();
-    (tree, sequences)
+) -> (Vec<TreeNode>, Vec<Float>, Vec<Vec<ResidueExtended>>) {
+    let (tree, distances, sequences): (Vec<TreeNode>, Vec<Float>, Vec<Vec<ResidueExtended>>) =
+        multiunzip(
+            reader
+                .deserialize::<PreprocessedRecord>()
+                .map(|x| x.unwrap())
+                .map(InputTuple::from),
+        );
+    (tree, distances, sequences)
 }

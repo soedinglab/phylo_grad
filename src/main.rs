@@ -2,6 +2,7 @@
 //extern crate arrayvec;
 //extern crate blas_src;
 extern crate csv;
+extern crate itertools;
 extern crate logsumexp;
 extern crate nalgebra as na;
 extern crate ndarray;
@@ -33,6 +34,39 @@ fn rate_matrix_example() -> RateType {
     rate_matrix_example
 }
 
+fn forward_column(
+    column: ndarray::ArrayView1<ResidueExtended>,
+    tree: &[TreeNode],
+    distances: &[Float],
+    log_p: &mut Vec<Option<[Float; Entry::DIM]>>,
+    forward_data: &mut Vec<LogTransitionForwardData<{ Entry::DIM }>>,
+    rate_matrix: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+    num_nodes: Id,
+    num_leaves: Id,
+) {
+    forward_data_precompute(forward_data, rate_matrix, distances, (0..num_nodes));
+
+    /* Compared to collect(), this reduces the # of allocation calls
+    but increases peak memory usage; investigate */
+    log_p.clear();
+    log_p.extend(column.iter().map(|x| Some(Entry::to_log_p(x))));
+    log_p.resize(num_nodes, None);
+
+    for i in num_leaves..(num_nodes - 1) {
+        let log_p_new =
+            forward_node(i, &tree, &log_p, rate_matrix.as_view(), &forward_data).unwrap();
+        log_p[i] = Some(log_p_new);
+    }
+    let log_p_root = forward_root(
+        num_nodes - 1,
+        &tree,
+        &log_p,
+        rate_matrix.as_view(),
+        &forward_data,
+    );
+    log_p[num_leaves - 1] = Some(log_p_root);
+}
+
 pub fn main() {
     /* TODO get rid of Options */
     /* TODO! apply cutoff for distances */
@@ -41,6 +75,7 @@ pub fn main() {
 
     let log_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
     let rate_matrix = rate_matrix_example();
+    let distance_threshold = 1e-9 as Float;
 
     let data_path = if args.len() >= 2 {
         &args[1]
@@ -50,13 +85,19 @@ pub fn main() {
     let mut record_reader = read_preprocessed_csv(data_path).unwrap();
     /* TODO handle result */
     let tree;
+    let mut distances;
     let mut sequences;
-    (tree, sequences) = deserialize_tree(&mut record_reader);
+    (tree, distances, sequences) = deserialize_tree(&mut record_reader);
+
+    distances
+        .iter_mut()
+        .for_each(|d| *d = distance_threshold.max(*d));
 
     let num_nodes = tree.len();
 
     let mut forward_data =
         Vec::<LogTransitionForwardData<{ Entry::DIM }>>::with_capacity(num_nodes);
+    let mut log_p = Vec::<Option<[Float; Entry::DIM]>>::with_capacity(num_nodes);
 
     /* TODO terrible */
     let num_leaves = sequences.partition_point(|x| !x.is_empty());
@@ -79,48 +120,31 @@ pub fn main() {
     for (column_id, column) in sequences_2d.axis_iter(Axis(0)).enumerate() {
         /* Right now, this is the same for all columns, but as every column will have its own
         rate matrix, in general we'll have to precompute log_transition for each column*/
-        forward_data_precompute(
+
+        forward_column(
+            column,
+            &tree,
+            &distances,
+            &mut log_p,
             &mut forward_data,
             rate_matrix.as_view(),
-            &tree,
-            (0..num_nodes),
+            num_nodes,
+            num_leaves,
         );
 
-        let mut log_p: Vec<Option<[Float; Entry::DIM]>> =
-            column.iter().map(|x| Some(Entry::to_log_p(x))).collect();
-        log_p.resize(num_nodes, None);
+        let log_p_root = log_p[num_leaves - 1].unwrap();
 
-        for i in num_leaves..(num_nodes - 1) {
-            let log_p_new =
-                forward_node(i, &tree, &log_p, rate_matrix.as_view(), &forward_data).unwrap();
-            log_p[i] = Some(log_p_new);
-        }
-        let log_p_root = forward_root(
-            num_nodes - 1,
-            &tree,
-            &log_p,
-            rate_matrix.as_view(),
-            &forward_data,
-        );
-        log_p[num_leaves - 1] = Some(log_p_root);
-
-        /* TODO macro */
-        let mut _BACKWARD_likelihood_lse_arg = [0.0 as Float; Entry::DIM];
+        let mut forward_data_likelihood_lse_arg = [0.0 as Float; Entry::DIM];
         for i in (0..Entry::DIM) {
-            _BACKWARD_likelihood_lse_arg[i] = log_p_root[i] + log_prior[i];
+            forward_data_likelihood_lse_arg[i] = log_p_root[i] + log_prior[i];
         }
-        let log_likelihood_column = _BACKWARD_likelihood_lse_arg.iter().ln_sum_exp();
+        let log_likelihood_column = forward_data_likelihood_lse_arg.iter().ln_sum_exp();
 
-        softmax_inplace(&mut _BACKWARD_likelihood_lse_arg);
+        softmax_inplace(&mut forward_data_likelihood_lse_arg);
         for i in (0..Entry::DIM) {
-            grad_log_prior[i] += _BACKWARD_likelihood_lse_arg[i];
+            grad_log_prior[i] += forward_data_likelihood_lse_arg[i];
         }
 
-        /*
-        let log_likelihood_column = (0..Entry::DIM)
-            .map(|i| log_p_root[i] + log_prior[i])
-            .ln_sum_exp();
-        */
         log_likelihood += log_likelihood_column;
         println!("Log likelihood #{} = {}", column_id, log_likelihood_column);
     }

@@ -10,8 +10,6 @@ impl FelsensteinError {
 }
 
 pub struct LogTransitionForwardData<const DIM: usize> {
-    /* TODO remove distance from here, get it by id from the tree / the distance vector */
-    pub distance: Float,
     pub step_1: na::SMatrix<Float, DIM, DIM>,
     pub step_2: na::SMatrix<Float, DIM, DIM>,
 }
@@ -28,18 +26,13 @@ where
     let step_2 = step_1.exp();
     //let result = step_2.map(Float::ln);
 
-    LogTransitionForwardData {
-        /* TODO remove */
-        distance,
-        step_1,
-        step_2,
-    }
+    LogTransitionForwardData { step_1, step_2 }
 }
 
 pub fn forward_data_precompute<const DIM: usize, I>(
     forward_data: &mut Vec<LogTransitionForwardData<DIM>>,
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    tree: &[TreeNode],
+    distances: &[Float],
     ids: I,
 ) where
     I: IntoIterator<Item = Id>,
@@ -49,7 +42,7 @@ pub fn forward_data_precompute<const DIM: usize, I>(
     forward_data.clear();
     forward_data.extend(
         ids.into_iter()
-            .map(|id| log_transition_precompute(rate_matrix, tree[id].distance)),
+            .map(|id| log_transition_precompute(rate_matrix, distances[id])),
     );
 }
 

@@ -10,7 +10,6 @@ pub struct TreeNodeId<Id> {
     pub parent: Id,
     pub left: Option<Id>,
     pub right: Option<Id>,
-    pub distance: Float,
 }
 
 pub type TreeNode = TreeNodeId<Id>;
