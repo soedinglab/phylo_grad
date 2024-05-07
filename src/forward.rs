@@ -36,6 +36,23 @@ where
     }
 }
 
+pub fn forward_data_precompute<const DIM: usize, I>(
+    forward_data: &mut Vec<LogTransitionForwardData<DIM>>,
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    tree: &[TreeNode],
+    ids: I,
+) where
+    I: IntoIterator<Item = Id>,
+    na::Const<DIM>: na::ToTypenum,
+    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
+{
+    forward_data.clear();
+    forward_data.extend(
+        ids.into_iter()
+            .map(|id| log_transition_precompute(rate_matrix, tree[id].distance)),
+    );
+}
+
 fn log_transition<const DIM: usize>(
     id: Id,
     forward_data: &[LogTransitionForwardData<DIM>],
@@ -47,11 +64,7 @@ fn _child_input<const DIM: usize>(
     child_id: Id, //only used in forward_data
     log_p: &[Float; DIM],
     forward_data: &[LogTransitionForwardData<DIM>],
-) -> [Float; DIM]
-where
-    na::Const<DIM>: na::ToTypenum,
-    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
-{
+) -> [Float; DIM] {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
     let log_transition = log_transition(child_id, forward_data);
     /* Is this better or worse than adding two nalgebra vectors and taking logsumexp?
@@ -73,11 +86,7 @@ pub fn forward_node<const DIM: usize>(
     log_p: &[Option<[Float; DIM]>],
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     forward_data: &[LogTransitionForwardData<DIM>],
-) -> Result<[Float; DIM], Box<FelsensteinError>>
-where
-    na::Const<DIM>: na::ToTypenum,
-    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
-{
+) -> Result<[Float; DIM], Box<FelsensteinError>> {
     let node = &tree[id];
     /* TODO duplicate code */
     match (node.left, node.right) {
@@ -114,11 +123,7 @@ pub fn forward_root<const DIM: usize>(
     log_p: &[Option<[Float; DIM]>],
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     forward_data: &[LogTransitionForwardData<DIM>],
-) -> [Float; DIM]
-where
-    na::Const<DIM>: na::ToTypenum,
-    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
-{
+) -> [Float; DIM] {
     let root = &tree[id];
 
     let mut children = Vec::with_capacity(3);

@@ -55,6 +55,9 @@ pub fn main() {
 
     let num_nodes = tree.len();
 
+    let mut forward_data =
+        Vec::<LogTransitionForwardData<{ Entry::DIM }>>::with_capacity(num_nodes);
+
     /* TODO terrible */
     let num_leaves = sequences.partition_point(|x| !x.is_empty());
     sequences.truncate(num_leaves);
@@ -68,7 +71,7 @@ pub fn main() {
     }
 
     let mut sequences_2d = Array2::from_shape_vec((num_leaves, seq_length), sequences_tmp).unwrap();
-    /* (!) Does this convert to column major? Seems like it doesn't, as the result has rows with strides=[119] */
+    /* TODO this does not transpose sequences_2d in the memory, fix this */
     sequences_2d = sequences_2d.t().to_owned();
 
     let mut log_likelihood = 0.0 as Float;
@@ -76,9 +79,12 @@ pub fn main() {
     for (column_id, column) in sequences_2d.axis_iter(Axis(0)).enumerate() {
         /* Right now, this is the same for all columns, but as every column will have its own
         rate matrix, in general we'll have to precompute log_transition for each column*/
-        let forward_data: Vec<LogTransitionForwardData<{ Entry::DIM }>> = (0..num_nodes)
-            .map(|id| log_transition_precompute(rate_matrix.as_view(), tree[id].distance))
-            .collect();
+        forward_data_precompute(
+            &mut forward_data,
+            rate_matrix.as_view(),
+            &tree,
+            (0..num_nodes),
+        );
 
         let mut log_p: Vec<Option<[Float; Entry::DIM]>> =
             column.iter().map(|x| Some(Entry::to_log_p(x))).collect();
