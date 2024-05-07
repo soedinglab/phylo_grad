@@ -56,44 +56,27 @@ fn d_exp_4x4(
 
 /* Wrong! */
 
-pub fn d_exp<N>(
-    argument: na::Matrix<Float, N, N, na::ViewStorage<Float, N, N, Const<1>, N>>,
-    direction: na::Matrix<Float, N, N, na::ViewStorage<Float, N, N, Const<1>, N>>,
-) -> na::Matrix<Float, N, N, <DefaultAllocator as na::allocator::Allocator<Float, N, N>>::Buffer>
+pub fn d_exp<const N: usize>(
+    argument: na::SMatrix<Float, N, N>,
+    direction: na::SMatrix<Float, N, N>,
+) -> na::SMatrix<Float, N, N>
 where
-    N: ToTypenum + DimName + DimAdd<N>,
-    <N as DimAdd<N>>::Output: DimName,
-    <DefaultAllocator as na::allocator::Allocator<Float, N, N>>::Buffer:
-        na::RawStorage<Float, N, N>,
-    DefaultAllocator: na::allocator::Allocator<f64, <N as na::DimAdd<N>>::Output, <N as na::DimAdd<N>>::Output>
-        + na::allocator::Allocator<Float, N, N>,
-    <N as na::DimAdd<N>>::Output:
-        na::DimMin<<N as na::DimAdd<N>>::Output, Output = <N as na::DimAdd<N>>::Output>,
-    DefaultAllocator: na::allocator::Allocator<(usize, usize), <N as na::DimAdd<N>>::Output>,
-    DefaultAllocator: na::allocator::Allocator<f64, <N as na::DimAdd<N>>::Output>,
+    [(); {N + N}]:,
+    na::Const<{N + N}> : ToTypenum,
+na::Const<{N + N}> : DimMin<na::Const<{N + N}>, Output = na::Const<{N + N}>>,
+    
 {
-    let n = N::try_to_usize().unwrap();
-    let mut block_triangular = na::Matrix::<
-        Float,
-        <N as DimAdd<N>>::Output,
-        <N as DimAdd<N>>::Output,
-        <DefaultAllocator as na::allocator::Allocator<
-            Float,
-            <N as na::DimAdd<N>>::Output,
-            <N as na::DimAdd<N>>::Output,
-        >>::Buffer,
-    >::zeros();
-    block_triangular.index_mut((..n, ..n)).copy_from(&argument);
-    block_triangular.index_mut((n.., n..)).copy_from(&argument);
-    block_triangular.index_mut((..n, n..)).copy_from(&direction);
+    let mut block_triangular = na::SMatrix::<Float, { N + N }, { N + N }>::zeros();
+    block_triangular.index_mut((..N, ..N)).copy_from(&argument);
+    block_triangular.index_mut((N.., N..)).copy_from(&argument);
+    block_triangular.index_mut((..N, N..)).copy_from(&direction);
     let exp_combined = block_triangular.exp();
     /* TODO accept &mut result and use copy_from? */
-    let mut dexp = na::Matrix::<
+    let mut dexp = na::SMatrix::<
         Float,
         N,
         N,
-        <DefaultAllocator as na::allocator::Allocator<Float, N, N>>::Buffer,
     >::zeros();
-    dexp.copy_from(&exp_combined.index((..n, n..)));
+    dexp.copy_from(&exp_combined.index((..N, N..)));
     dexp
 }
