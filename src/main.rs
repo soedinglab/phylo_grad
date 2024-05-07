@@ -39,7 +39,7 @@ pub fn main() {
     /* Placeholder values */
     let args: Vec<String> = std::env::args().collect();
 
-    let log_prior = [0.25 as Float; Entry::DIM].map(Float::ln);
+    let log_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
     let rate_matrix = rate_matrix_example();
 
     let data_path = if args.len() >= 2 {

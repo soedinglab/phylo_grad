@@ -51,7 +51,7 @@ pub fn forward_node<const DIM: usize>(
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-) -> Result<[Float; DIM], Box<dyn Error>>
+) -> Result<[Float; DIM], Box<FelsensteinError>>
 where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
