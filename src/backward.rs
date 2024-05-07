@@ -67,7 +67,7 @@ pub fn d_map_ln(
 }
 
 pub fn d_rate_log_transition(
-    forward: &LogTransitionForwardData,
+    forward: &LogTransitionForwardData<{ Entry::DIM }>,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) -> RateType {
     /* result := D_R(log_transition(R, t)) at R=rate, evaluated on 'direction'.

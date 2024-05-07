@@ -54,6 +54,10 @@ pub fn main() {
     (tree, sequences) = deserialize_tree(&mut record_reader);
 
     let num_nodes = tree.len();
+
+    let mut forward_data =
+        Vec::<LogTransitionForwardData<{ Entry::DIM }>>::with_capacity(num_nodes);
+
     /* TODO terrible */
     let num_leaves = sequences.partition_point(|x| !x.is_empty());
     sequences.truncate(num_leaves);
@@ -78,10 +82,17 @@ pub fn main() {
         log_p.resize(num_nodes, None);
 
         for i in num_leaves..(num_nodes - 1) {
-            let log_p_new = forward_node(i, &tree, &log_p, rate_matrix.as_view()).unwrap();
+            let log_p_new =
+                forward_node(i, &tree, &log_p, rate_matrix.as_view(), &mut forward_data).unwrap();
             log_p[i] = Some(log_p_new);
         }
-        let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, rate_matrix.as_view());
+        let log_p_root = forward_root(
+            num_nodes - 1,
+            &tree,
+            &log_p,
+            rate_matrix.as_view(),
+            &mut forward_data,
+        );
         log_p[num_leaves - 1] = Some(log_p_root);
 
         /* TODO macro */
