@@ -1,4 +1,5 @@
 #![allow(unused, dead_code)]
+#![feature(generic_const_exprs)]
 //extern crate arrayvec;
 //extern crate blas_src;
 extern crate csv;
