@@ -36,14 +36,16 @@ pub fn softmax_inplace<const N: usize>(x: &mut [Float; N]) {
     }
 }
 
+/* TODO! optimize 'direction' away by replacing it with an index (i, j) */
 /* TODO stability */
-const TWICE_DIM: usize = 2 * Entry::DIM;
 pub fn d_exp(
     argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
     const N: usize = Entry::DIM;
-    let mut block_triangular = na::SMatrix::<Float, TWICE_DIM, TWICE_DIM>::zeros();
+    const TWICE_N: usize = 2 * Entry::DIM;
+
+    let mut block_triangular = na::SMatrix::<Float, TWICE_N, TWICE_N>::zeros();
 
     block_triangular.index_mut((..N, ..N)).copy_from(&argument);
     block_triangular.index_mut((N.., N..)).copy_from(&argument);

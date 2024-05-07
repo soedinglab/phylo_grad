@@ -10,47 +10,50 @@ impl FelsensteinError {
 }
 
 pub struct LogTransitionForwardData<const DIM: usize> {
+    /* TODO remove distance from here, get it by id from the tree / the distance vector */
     pub distance: Float,
     pub step_1: na::SMatrix<Float, DIM, DIM>,
     pub step_2: na::SMatrix<Float, DIM, DIM>,
 }
 
-fn log_transition<const DIM: usize>(
-    child_id: Id,
+pub fn log_transition_precompute<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distance: Float,
-    forward_data: &mut [LogTransitionForwardData<DIM>],
-) -> na::SMatrix<Float, DIM, DIM>
+) -> LogTransitionForwardData<DIM>
 where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
     let step_1 = rate_matrix * distance;
     let step_2 = step_1.exp();
-    let result = step_2.map(Float::ln);
+    //let result = step_2.map(Float::ln);
 
-    forward_data[child_id] = LogTransitionForwardData {
+    LogTransitionForwardData {
+        /* TODO remove */
         distance,
         step_1,
         step_2,
-    };
+    }
+}
 
-    result
+fn log_transition<const DIM: usize>(
+    id: Id,
+    forward_data: &[LogTransitionForwardData<DIM>],
+) -> na::SMatrix<Float, DIM, DIM> {
+    forward_data[id].step_2.map(Float::ln)
 }
 
 fn _child_input<const DIM: usize>(
     child_id: Id, //only used in forward_data
     log_p: &[Float; DIM],
-    distance: Float,
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    forward_data: &mut [LogTransitionForwardData<DIM>],
+    forward_data: &[LogTransitionForwardData<DIM>],
 ) -> [Float; DIM]
 where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
-    let log_transition = log_transition(child_id, rate_matrix, distance, forward_data);
+    let log_transition = log_transition(child_id, forward_data);
     /* Is this better or worse than adding two nalgebra vectors and taking logsumexp?
     What is the optimal way to access a matrix? */
     let mut result = [0.0 as Float; DIM];
@@ -69,7 +72,7 @@ pub fn forward_node<const DIM: usize>(
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    forward_data: &mut [LogTransitionForwardData<DIM>],
+    forward_data: &[LogTransitionForwardData<DIM>],
 ) -> Result<[Float; DIM], Box<FelsensteinError>>
 where
     na::Const<DIM>: na::ToTypenum,
@@ -80,22 +83,10 @@ where
     match (node.left, node.right) {
         (Some(left), Some(right)) => {
             let log_p_left = log_p[left].unwrap();
-            let child_input_left = _child_input(
-                left,
-                &log_p_left,
-                tree[left].distance,
-                rate_matrix,
-                forward_data,
-            );
+            let child_input_left = _child_input(left, &log_p_left, forward_data);
 
             let log_p_right = log_p[right].unwrap();
-            let child_input_right = _child_input(
-                right,
-                &log_p_right,
-                tree[right].distance,
-                rate_matrix,
-                forward_data,
-            );
+            let child_input_right = _child_input(right, &log_p_right, forward_data);
 
             let mut result = [0.0 as Float; DIM];
             for a in (0..DIM) {
@@ -105,24 +96,12 @@ where
         }
         (Some(left), None) => {
             let log_p_left = log_p[left].unwrap();
-            let result = _child_input(
-                left,
-                &log_p_left,
-                tree[left].distance,
-                rate_matrix,
-                forward_data,
-            );
+            let result = _child_input(left, &log_p_left, forward_data);
             Ok(result)
         }
         (None, Some(right)) => {
             let log_p_right = log_p[right].unwrap();
-            let result = _child_input(
-                right,
-                &log_p_right,
-                tree[right].distance,
-                rate_matrix,
-                forward_data,
-            );
+            let result = _child_input(right, &log_p_right, forward_data);
             Ok(result)
         }
         (None, None) => Err(Box::new(FelsensteinError::LEAF)),
@@ -134,7 +113,7 @@ pub fn forward_root<const DIM: usize>(
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    forward_data: &mut [LogTransitionForwardData<DIM>],
+    forward_data: &[LogTransitionForwardData<DIM>],
 ) -> [Float; DIM]
 where
     na::Const<DIM>: na::ToTypenum,
@@ -155,13 +134,7 @@ where
         .into_iter()
         .map(|child| {
             let log_p_child = log_p[child].unwrap();
-            na::SVector::<Float, DIM>::from(_child_input(
-                child,
-                &log_p_child,
-                tree[child].distance,
-                rate_matrix,
-                forward_data,
-            ))
+            na::SVector::<Float, DIM>::from(_child_input(child, &log_p_child, forward_data))
         })
         .sum();
     <[Float; DIM]>::from(result)

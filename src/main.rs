@@ -55,9 +55,6 @@ pub fn main() {
 
     let num_nodes = tree.len();
 
-    let mut forward_data =
-        Vec::<LogTransitionForwardData<{ Entry::DIM }>>::with_capacity(num_nodes);
-
     /* TODO terrible */
     let num_leaves = sequences.partition_point(|x| !x.is_empty());
     sequences.truncate(num_leaves);
@@ -77,13 +74,19 @@ pub fn main() {
     let mut log_likelihood = 0.0 as Float;
     let mut grad_log_prior = [0.0 as Float; Entry::DIM];
     for (column_id, column) in sequences_2d.axis_iter(Axis(0)).enumerate() {
+        /* Right now, this is the same for all columns, but as every column will have its own
+        rate matrix, in general we'll have to precompute log_transition for each column*/
+        let forward_data: Vec<LogTransitionForwardData<{ Entry::DIM }>> = (0..num_nodes)
+            .map(|id| log_transition_precompute(rate_matrix.as_view(), tree[id].distance))
+            .collect();
+
         let mut log_p: Vec<Option<[Float; Entry::DIM]>> =
             column.iter().map(|x| Some(Entry::to_log_p(x))).collect();
         log_p.resize(num_nodes, None);
 
         for i in num_leaves..(num_nodes - 1) {
             let log_p_new =
-                forward_node(i, &tree, &log_p, rate_matrix.as_view(), &mut forward_data).unwrap();
+                forward_node(i, &tree, &log_p, rate_matrix.as_view(), &forward_data).unwrap();
             log_p[i] = Some(log_p_new);
         }
         let log_p_root = forward_root(
@@ -91,7 +94,7 @@ pub fn main() {
             &tree,
             &log_p,
             rate_matrix.as_view(),
-            &mut forward_data,
+            &forward_data,
         );
         log_p[num_leaves - 1] = Some(log_p_root);
 
