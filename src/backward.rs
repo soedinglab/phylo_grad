@@ -5,7 +5,7 @@ use crate::forward::*;
 
 pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
     let mut result = [0 as Float; N];
-    let x_max = *x.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+    let x_max = *x.iter().max_by(|a, b| a.total_cmp(b)).expect("Iterator cannot be empty");
 
     for i in (0..N) {
         result[i] -= x[i] - x_max;
@@ -21,7 +21,7 @@ pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
 }
 
 pub fn softmax_inplace<const N: usize>(x: &mut [Float; N]) {
-    let x_max = *x.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+    let x_max = *x.iter().max_by(|a, b| a.total_cmp(b)).expect("Iterator cannot be empty");
 
     for i in (0..N) {
         x[i] -= x_max;
