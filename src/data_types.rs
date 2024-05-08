@@ -1,7 +1,6 @@
 use std::convert::TryFrom;
 
 use crate::itertools::Itertools;
-use crate::ndarray::prelude::*;
 use crate::num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub trait EntryTrait: Sized + Copy + Clone {
@@ -127,26 +126,12 @@ impl From<(ResidueExtended, ResidueExtended)> for ResiduePair<ResidueExtended> {
     }
 }
 
-/* Can't make generic over Residue  */
-impl EntryTrait for ResiduePair<ResidueExtended> {
-    const DIM: usize = ResidueExtended::DIM * ResidueExtended::DIM;
-    const TOTAL: usize = ResidueExtended::TOTAL * ResidueExtended::TOTAL;
-    const CHARS: usize = ResidueExtended::CHARS * 2;
-    type LogPType = [Float; Self::DIM];
-    fn to_log_p(&self) -> Self::LogPType {
-        let mut result = [0.0 as Float; Self::DIM];
-        let (first, second) = (self.0, self.1);
-        let log_p_first = first.to_log_p();
-        let log_p_second = second.to_log_p();
-        for a in (0..ResidueExtended::DIM) {
-            for b in (0..ResidueExtended::DIM) {
-                result[ResidueExtended::DIM * a + b] = log_p_first[a] + log_p_second[b];
-            }
-        }
-        result
-    }
+impl ResiduePair<ResidueExtended> {
     /* TODO just check length like a normal person? */
-    fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError> {
+    pub fn try_deserialize_string_drop(
+        input: &str,
+        drop: bool,
+    ) -> Result<Vec<Self>, FelsensteinError> {
         let mut tuple_iter = input.chars().tuples::<(_, _)>();
         let result: Result<Vec<Self>, _> = tuple_iter
             .by_ref()
@@ -160,11 +145,36 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
             )
             .collect();
         let remainder = tuple_iter.into_buffer();
-        if remainder.len() != 0 {
+        if !drop && remainder.len() != 0 {
             Err(FelsensteinError::SEQ_LENGTH)
         } else {
             result
         }
+    }
+}
+
+/* Can't make generic over Residue  */
+impl EntryTrait for ResiduePair<ResidueExtended> {
+    const DIM: usize = ResidueExtended::DIM * ResidueExtended::DIM;
+    const TOTAL: usize = ResidueExtended::TOTAL * ResidueExtended::TOTAL;
+    const CHARS: usize = ResidueExtended::CHARS * 2;
+    type LogPType = [Float; Self::DIM];
+
+    fn to_log_p(&self) -> Self::LogPType {
+        let mut result = [0.0 as Float; Self::DIM];
+        let (first, second) = (self.0, self.1);
+        let log_p_first = first.to_log_p();
+        let log_p_second = second.to_log_p();
+        for a in (0..ResidueExtended::DIM) {
+            for b in (0..ResidueExtended::DIM) {
+                result[ResidueExtended::DIM * a + b] = log_p_first[a] + log_p_second[b];
+            }
+        }
+        result
+    }
+
+    fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError> {
+        Self::try_deserialize_string_drop(input, false)
     }
 }
 
@@ -187,7 +197,7 @@ impl std::error::Error for FelsensteinError {}
 
 impl FelsensteinError {
     pub const SEQ_LENGTH: Self =
-        Self::DeserializationError("The sequence length is not divisible by the entry length");
+        Self::DeserializationError("Sequence length not divisible by entry length");
     pub const INVALID_CHAR: Self =
         Self::DeserializationError("Invalid character in residue sequence");
     /*

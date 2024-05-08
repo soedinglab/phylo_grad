@@ -103,16 +103,15 @@ pub fn main() {
     /* TODO get rid of ndarray */
     let num_leaves = sequences_raw.partition_point(|x| !x.is_none());
     sequences_raw.truncate(num_leaves);
-    let seq_length_raw = sequences_raw[0].as_ref().unwrap().len();
-    let seq_length_raw_adjusted = seq_length_raw - (seq_length_raw % Entry::CHARS);
 
     let sequences: Vec<Vec<Entry>> = sequences_raw
         .into_iter()
         .map(|x| x.unwrap())
-        .map(|x: String| Entry::try_deserialize_string(&x[0..seq_length_raw_adjusted]))
+        .map(|x: String| Entry::try_deserialize_string_drop(&x, true))
         .map(|x| x.unwrap())
         .collect();
-
+    //let seq_length_raw = sequences_raw[0].as_ref().unwrap().len();
+    //let seq_length_raw_adjusted = seq_length_raw - (seq_length_raw % Entry::CHARS);
     let seq_length = sequences[0].len();
 
     let mut sequences_tmp = Vec::with_capacity(num_leaves * seq_length);
