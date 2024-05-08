@@ -37,7 +37,7 @@ pub fn softmax_inplace<const N: usize>(x: &mut [Float; N]) {
 
 /* TODO! optimize 'direction' away by replacing it with an index (i, j) */
 /* TODO stability */
-pub fn d_exp(
+fn d_exp(
     argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
@@ -57,7 +57,8 @@ pub fn d_exp(
     dexp
 }
 
-pub fn d_map_ln(
+/* VJP same as JVP (this is a diagonal map) */
+fn d_map_ln(
     argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
@@ -67,7 +68,18 @@ pub fn d_map_ln(
     rec
 }
 
-pub fn d_rate_log_transition(
+fn d_map_ln_vjp(
+    argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+    cotangent_vector: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
+    /* If w = \sum w_kl dy_kl, then
+    map_ln^*(w) = \sum_kl (w_kl / x_kl) dx_kl = map_recip(x) \odot w */
+    let mut rec = argument.map(Float::recip);
+    rec.component_mul_assign(&cotangent_vector);
+    rec
+}
+
+fn d_rate_log_transition(
     forward: &LogTransitionForwardData<{ Entry::DIM }>,
     distance: Float,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
