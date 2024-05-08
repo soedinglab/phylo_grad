@@ -172,9 +172,10 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
         }
         result
     }
-
+    /* TODO this should point to try_deserialize_string_drop(input, false), however,
+    then ResidueExtended and ResiduePair require different code to deserialize. */
     fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError> {
-        Self::try_deserialize_string_drop(input, false)
+        Self::try_deserialize_string_drop(input, true)
     }
 }
 

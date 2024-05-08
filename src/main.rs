@@ -100,7 +100,7 @@ pub fn main() {
     let sequences: Vec<Vec<Entry>> = sequences_raw
         .into_iter()
         .map(|x| x.unwrap())
-        .map(|x: String| Entry::try_deserialize_string_drop(&x, true))
+        .map(|x: String| Entry::try_deserialize_string(&x))
         .map(|x| x.unwrap())
         .collect();
     //let seq_length_raw = sequences_raw[0].as_ref().unwrap().len();
