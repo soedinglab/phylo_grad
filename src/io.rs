@@ -6,7 +6,7 @@ use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
 use crate::data_types::*;
-use crate::itertools::multiunzip;
+use crate::itertools::{multiunzip, process_results};
 use crate::tree::TreeNode;
 use serde::Deserialize;
 use std::convert::TryFrom;
@@ -60,12 +60,10 @@ where
 
 pub fn deserialize_tree(
     reader: &mut csv::Reader<BufReader<File>>,
-) -> (Vec<TreeNode>, Vec<Float>, Vec<Option<String>>) {
-    let (tree, distances, sequences) = multiunzip(
-        reader
-            .deserialize::<InputRecord>()
-            .map(|x| x.unwrap())
-            .map(InputTuple::from),
-    );
-    (tree, distances, sequences)
+) -> Result<(Vec<TreeNode>, Vec<Float>, Vec<Option<String>>), Box<dyn Error>> {
+    let (tree, distances, sequences) =
+        process_results(reader.deserialize::<InputRecord>(), |record| {
+            multiunzip(record.map(InputTuple::from))
+        })?;
+    Ok((tree, distances, sequences))
 }

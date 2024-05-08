@@ -50,7 +50,7 @@ pub enum ResidueExtended {
 impl ResidueExtended {
     pub const U: Self = Self::T;
 }
-/* TODO this should be a try_from that fails in the default case */
+
 impl TryFrom<char> for ResidueExtended {
     type Error = FelsensteinError;
     fn try_from(char: char) -> Result<Self, Self::Error> {

@@ -77,9 +77,9 @@ pub fn forward_node<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    //rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     forward_data: &[LogTransitionForwardData<DIM>],
-) -> Result<[Float; DIM], Box<FelsensteinError>> {
+) -> Result<[Float; DIM], FelsensteinError> {
     let node = &tree[id];
     /* TODO duplicate code */
     match (node.left, node.right) {
@@ -106,7 +106,7 @@ pub fn forward_node<const DIM: usize>(
             let result = _child_input(right, &log_p_right, forward_data);
             Ok(result)
         }
-        (None, None) => Err(Box::new(FelsensteinError::LEAF)),
+        (None, None) => Err(FelsensteinError::LEAF),
     }
 }
 
@@ -114,7 +114,7 @@ pub fn forward_root<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    //rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     forward_data: &[LogTransitionForwardData<DIM>],
 ) -> [Float; DIM] {
     let root = &tree[id];

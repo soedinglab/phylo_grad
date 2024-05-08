@@ -53,17 +53,10 @@ fn forward_column(
     log_p.resize(num_nodes, None);
 
     for i in num_leaves..(num_nodes - 1) {
-        let log_p_new =
-            forward_node(i, &tree, &log_p, rate_matrix.as_view(), &forward_data).unwrap();
+        let log_p_new = forward_node(i, &tree, &log_p, &forward_data).unwrap();
         log_p[i] = Some(log_p_new);
     }
-    let log_p_root = forward_root(
-        num_nodes - 1,
-        &tree,
-        &log_p,
-        rate_matrix.as_view(),
-        &forward_data,
-    );
+    let log_p_root = forward_root(num_nodes - 1, &tree, &log_p, &forward_data);
     log_p[num_leaves - 1] = Some(log_p_root);
 }
 
@@ -73,7 +66,6 @@ pub fn main() {
     /* Placeholder values */
     let log_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
     let rate_matrix = rate_matrix_example();
-    //let rate_matrix = RateType::identity();
     let distance_threshold = 1e-9 as Float;
 
     let data_path = if args.len() >= 2 {
@@ -81,12 +73,13 @@ pub fn main() {
     } else {
         "data/tree_topological.csv"
     };
+
     let mut record_reader = read_preprocessed_csv(data_path).unwrap();
     /* TODO handle result */
     let tree;
     let mut distances;
     let mut sequences_raw;
-    (tree, distances, sequences_raw) = deserialize_tree(&mut record_reader);
+    (tree, distances, sequences_raw) = deserialize_tree(&mut record_reader).unwrap();
 
     distances
         .iter_mut()
