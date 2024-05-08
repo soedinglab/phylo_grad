@@ -35,7 +35,7 @@ fn rate_matrix_example() -> RateType {
 }
 
 fn forward_column(
-    column: ndarray::ArrayView1<ResidueExtended>,
+    column: ndarray::ArrayView1<Entry>,
     tree: &[TreeNode],
     distances: &[Float],
     log_p: &mut Vec<Option<[Float; Entry::DIM]>>,
@@ -68,13 +68,12 @@ fn forward_column(
 }
 
 pub fn main() {
-    /* TODO get rid of Options */
-    /* TODO! apply cutoff for distances */
-    /* Placeholder values */
     let args: Vec<String> = std::env::args().collect();
 
+    /* Placeholder values */
     let log_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
     let rate_matrix = rate_matrix_example();
+    //let rate_matrix = RateType::identity();
     let distance_threshold = 1e-9 as Float;
 
     let data_path = if args.len() >= 2 {
@@ -86,8 +85,8 @@ pub fn main() {
     /* TODO handle result */
     let tree;
     let mut distances;
-    let mut sequences;
-    (tree, distances, sequences) = deserialize_tree(&mut record_reader);
+    let mut sequences_raw;
+    (tree, distances, sequences_raw) = deserialize_tree(&mut record_reader);
 
     distances
         .iter_mut()
@@ -97,11 +96,22 @@ pub fn main() {
 
     let mut forward_data =
         Vec::<LogTransitionForwardData<{ Entry::DIM }>>::with_capacity(num_nodes);
+    /* TODO get rid of Options */
     let mut log_p = Vec::<Option<[Float; Entry::DIM]>>::with_capacity(num_nodes);
 
-    /* TODO terrible */
-    let num_leaves = sequences.partition_point(|x| !x.is_empty());
-    sequences.truncate(num_leaves);
+    /* --- Transposing the sequences --- */
+    /* TODO get rid of ndarray */
+    let num_leaves = sequences_raw.partition_point(|x| !x.is_none());
+    sequences_raw.truncate(num_leaves);
+    let seq_length_raw = sequences_raw[0].as_ref().unwrap().len();
+    let seq_length_raw_adjusted = seq_length_raw - (seq_length_raw % Entry::CHARS);
+
+    let sequences: Vec<Vec<Entry>> = sequences_raw
+        .into_iter()
+        .map(|x| x.unwrap())
+        .map(|x: String| Entry::try_deserialize_string(&x[0..seq_length_raw_adjusted]))
+        .map(|x| x.unwrap())
+        .collect();
 
     let seq_length = sequences[0].len();
 
@@ -114,6 +124,7 @@ pub fn main() {
     let mut sequences_2d = Array2::from_shape_vec((num_leaves, seq_length), sequences_tmp).unwrap();
     /* TODO this does not transpose sequences_2d in the memory, fix this */
     sequences_2d = sequences_2d.t().to_owned();
+    /* --- Finished transposing the sequences --- */
 
     let mut log_likelihood = 0.0 as Float;
     let mut grad_log_prior = [0.0 as Float; Entry::DIM];

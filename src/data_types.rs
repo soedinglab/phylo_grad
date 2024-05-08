@@ -1,7 +1,17 @@
-/* TODO: soft mapping for pairs */
+use std::convert::TryFrom;
 
+use crate::itertools::Itertools;
 use crate::ndarray::prelude::*;
 use crate::num_enum::{IntoPrimitive, TryFromPrimitive};
+
+pub trait EntryTrait: Sized + Copy + Clone {
+    const TOTAL: usize;
+    const DIM: usize;
+    const CHARS: usize;
+    type LogPType;
+    fn to_log_p(&self) -> Self::LogPType;
+    fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError>;
+}
 
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
@@ -17,6 +27,8 @@ impl Residue {
     pub const TOTAL: usize = 5;
     pub const DIM: usize = 5;
 }
+
+/* TODO! either remove the u8-stuff or make it work */
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum ResidueExtended {
@@ -37,11 +49,45 @@ pub enum ResidueExtended {
     V,
 }
 impl ResidueExtended {
-    pub const TOTAL: usize = 15;
-    pub const DIM: usize = 4;
     pub const U: Self = Self::T;
+}
+/* TODO this should be a try_from that fails in the default case */
+impl TryFrom<char> for ResidueExtended {
+    type Error = FelsensteinError;
+    fn try_from(char: char) -> Result<Self, Self::Error> {
+        use ResidueExtended::*;
+        let char: ResidueExtended = match char.to_ascii_uppercase() {
+            'A' => A,
+            'C' => C,
+            'G' => G,
+            'T' => T,
+            'R' => R,
+            'Y' => Y,
+            'S' => S,
+            'W' => W,
+            'K' => K,
+            'M' => M,
+            'B' => B,
+            'D' => D,
+            'H' => H,
+            'V' => V,
+            'U' => ResidueExtended::U,
+            '-' => ResidueExtended::None,
+            '.' => ResidueExtended::None,
+            'N' => ResidueExtended::None,
+            _ => return Err(FelsensteinError::INVALID_CHAR),
+        };
+        Ok(char)
+    }
+}
 
-    pub fn to_log_p(&self) -> [Float; ResidueExtended::DIM] {
+impl EntryTrait for ResidueExtended {
+    const TOTAL: usize = 15;
+    const DIM: usize = 4;
+    const CHARS: usize = 1;
+    type LogPType = [Float; Self::DIM];
+
+    fn to_log_p(&self) -> [Float; Self::DIM] {
         use ResidueExtended::*;
         let prob: [Float; 4] = match &self {
             A => [1.0, 0.0, 0.0, 0.0],
@@ -62,55 +108,95 @@ impl ResidueExtended {
         };
         prob.map(Float::ln)
     }
+    fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError> {
+        let result: Result<Vec<Self>, _> = input.chars().map(Self::try_from).collect();
+        result
+    }
 }
 
-/* TODO this should be a try_from that fails in the default case */
-impl From<char> for ResidueExtended {
-    fn from(char: char) -> Self {
-        use ResidueExtended::*;
-        match char.to_ascii_uppercase() {
-            'A' => A,
-            'C' => C,
-            'G' => G,
-            'T' => T,
-            'R' => R,
-            'Y' => Y,
-            'S' => S,
-            'W' => W,
-            'K' => K,
-            'M' => M,
-            'B' => B,
-            'D' => D,
-            'H' => H,
-            'V' => V,
-            'U' => ResidueExtended::U,
-            //'-' => ResidueExtended::None,
-            //'.' => ResidueExtended::None,
-            //'N' => ResidueExtended::None,
-            _ => ResidueExtended::None,
+#[derive(Debug, Copy, Clone)]
+pub struct ResiduePair<Res>(Res, Res);
+
+impl From<(ResidueExtended, ResidueExtended)> for ResiduePair<ResidueExtended> {
+    fn from(tuple: (ResidueExtended, ResidueExtended)) -> Self {
+        let (first, second) = tuple;
+        Self {
+            0: first,
+            1: second,
         }
     }
 }
 
-/* TODO #[repr(u8)] */
-#[derive(Debug)]
-struct ResiduePair(Residue, Residue);
+/* Can't make generic over Residue  */
+impl EntryTrait for ResiduePair<ResidueExtended> {
+    const DIM: usize = ResidueExtended::DIM * ResidueExtended::DIM;
+    const TOTAL: usize = ResidueExtended::TOTAL * ResidueExtended::TOTAL;
+    const CHARS: usize = ResidueExtended::CHARS * 2;
+    type LogPType = [Float; Self::DIM];
+    fn to_log_p(&self) -> Self::LogPType {
+        let mut result = [0.0 as Float; Self::DIM];
+        let (first, second) = (self.0, self.1);
+        let log_p_first = first.to_log_p();
+        let log_p_second = second.to_log_p();
+        for a in (0..ResidueExtended::DIM) {
+            for b in (0..ResidueExtended::DIM) {
+                result[ResidueExtended::DIM * a + b] = log_p_first[a] + log_p_second[b];
+            }
+        }
+        result
+    }
+    /* TODO just check length like a normal person? */
+    fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError> {
+        let mut tuple_iter = input.chars().tuples::<(_, _)>();
+        let result: Result<Vec<Self>, _> = tuple_iter
+            .by_ref()
+            .map(
+                |(first, second)| -> Result<ResiduePair<ResidueExtended>, _> {
+                    Ok(ResiduePair::from((
+                        ResidueExtended::try_from(first)?,
+                        ResidueExtended::try_from(second)?,
+                    )))
+                },
+            )
+            .collect();
+        let remainder = tuple_iter.into_buffer();
+        if remainder.len() != 0 {
+            Err(FelsensteinError::SEQ_LENGTH)
+        } else {
+            result
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum FelsensteinError {
     LogicError(&'static str),
+    DeserializationError(&'static str),
 }
 
 impl std::fmt::Display for FelsensteinError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self::LogicError(str) = self;
+        let str = match self {
+            Self::LogicError(str) => str,
+            Self::DeserializationError(str) => str,
+        };
         write!(f, "{}", str)
     }
 }
 impl std::error::Error for FelsensteinError {}
 
-pub type Entry = ResidueExtended;
+impl FelsensteinError {
+    pub const SEQ_LENGTH: Self =
+        Self::DeserializationError("The sequence length is not divisible by the entry length");
+    pub const INVALID_CHAR: Self =
+        Self::DeserializationError("Invalid character in residue sequence");
+    /*
+    pub fn invalid_residue(s: &str) -> Self {
+        Self::DeserializationError(format!("Invalid residue:{}", s))
+    }*/
+}
+
+pub type Entry = ResiduePair<ResidueExtended>;
 pub type Float = f64;
 pub type Id = usize;
-pub type LogPType = [Float; Entry::DIM];
 pub type RateType = na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>;

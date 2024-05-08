@@ -14,7 +14,7 @@ pub struct LogTransitionForwardData<const DIM: usize> {
     pub step_2: na::SMatrix<Float, DIM, DIM>,
 }
 
-pub fn log_transition_precompute<const DIM: usize>(
+fn log_transition_precompute<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distance: Float,
 ) -> LogTransitionForwardData<DIM>

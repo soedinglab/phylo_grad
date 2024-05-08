@@ -17,26 +17,18 @@ use std::convert::TryFrom;
 
 /* TODO #[serde(flatten)] */
 #[derive(Debug, Deserialize)]
-pub struct PreprocessedRecord {
+struct InputRecord {
     parent: usize,
     left: Option<usize>,
     right: Option<usize>,
     distance: Option<Float>,
     sequence: Option<String>,
 }
+/* TODO check is_ascii() */
+type InputTuple = (TreeNode, Float, Option<String>);
 
-pub type InputTuple = (TreeNode, Float, Vec<ResidueExtended>);
-
-impl From<PreprocessedRecord> for InputTuple {
-    fn from(input: PreprocessedRecord) -> Self {
-        let enum_sequence = match input.sequence {
-            Some(str) => str
-                .chars()
-                .map(ResidueExtended::from)
-                .collect::<Vec<ResidueExtended>>(),
-            None => Vec::<ResidueExtended>::new(),
-        };
-
+impl From<InputRecord> for InputTuple {
+    fn from(input: InputRecord) -> Self {
         let distance: Float = match input.distance {
             Some(d) => d,
             None => -1.0,
@@ -49,7 +41,7 @@ impl From<PreprocessedRecord> for InputTuple {
                 right: input.right,
             },
             distance,
-            enum_sequence,
+            input.sequence,
         )
     }
 }
@@ -68,13 +60,12 @@ where
 
 pub fn deserialize_tree(
     reader: &mut csv::Reader<BufReader<File>>,
-) -> (Vec<TreeNode>, Vec<Float>, Vec<Vec<ResidueExtended>>) {
-    let (tree, distances, sequences): (Vec<TreeNode>, Vec<Float>, Vec<Vec<ResidueExtended>>) =
-        multiunzip(
-            reader
-                .deserialize::<PreprocessedRecord>()
-                .map(|x| x.unwrap())
-                .map(InputTuple::from),
-        );
+) -> (Vec<TreeNode>, Vec<Float>, Vec<Option<String>>) {
+    let (tree, distances, sequences) = multiunzip(
+        reader
+            .deserialize::<InputRecord>()
+            .map(|x| x.unwrap())
+            .map(InputTuple::from),
+    );
     (tree, distances, sequences)
 }
