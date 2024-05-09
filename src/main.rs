@@ -73,12 +73,9 @@ fn try_entry_sequences_from_strings(
         .for_each(|x| x.unwrap());
     /* TODO get actual length from iterator */
     let seq_length = sequences_flat.len() / num_leaves;
-
-    (
-        num_leaves,
-        seq_length,
-        na::DMatrix::from_vec_generic(na::Dyn(num_leaves), na::Dyn(seq_length), sequences_flat),
-    )
+    let sequences_2d =
+        na::DMatrix::from_vec_generic(na::Dyn(seq_length), na::Dyn(num_leaves), sequences_flat);
+    (num_leaves, seq_length, sequences_2d)
 }
 
 /* TODO get rid of ndarray */
@@ -90,34 +87,6 @@ fn try_entry_sequences_from_strings_ndarray(
 
     let sequences: Vec<Vec<Entry>> = sequences_raw
         .iter()
-        .map(|x| x.as_ref().unwrap())
-        .map(|x: &String| {
-            process_results(Entry::try_deserialize_string_iter(x), |it| -> Vec<Entry> {
-                it.collect()
-            })
-        })
-        .map(|x| x.unwrap())
-        .collect();
-    //let seq_length_raw = sequences_raw[0].as_ref().unwrap().len();
-    //let seq_length_raw_adjusted = seq_length_raw - (seq_length_raw % Entry::CHARS);
-    let seq_length = sequences[0].len();
-
-    let mut sequences_tmp = Vec::with_capacity(num_leaves * seq_length);
-
-    for i in 0..num_leaves {
-        sequences_tmp.extend_from_slice(&sequences[i]);
-    }
-
-    let mut sequences_2d = Array2::from_shape_vec((num_leaves, seq_length), sequences_tmp).unwrap();
-    /* TODO this does not transpose sequences_2d in the memory, fix this */
-    sequences_2d = sequences_2d.t().to_owned();
-    /* --- Finished transposing the sequences : ndarray --- *//* --- Transposing the sequences: ndarray --- */
-    /* TODO get rid of ndarray */
-    let num_leaves = sequences_raw.partition_point(|x| !x.is_none());
-    sequences_raw.truncate(num_leaves);
-
-    let sequences: Vec<Vec<Entry>> = sequences_raw
-        .into_iter()
         .map(|x| x.as_ref().unwrap())
         .map(|x: &String| {
             process_results(Entry::try_deserialize_string_iter(x), |it| -> Vec<Entry> {
@@ -237,12 +206,12 @@ pub fn main() {
     let mut grad_log_prior = [0.0 as Float; Entry::DIM];
 
     //for (column_id, column) in sequences_2d.column_iter().enumerate() {
-    for (column_id, column) in sequences_2d.axis_iter(Axis(0)).enumerate() {
+    for (column_id, column) in sequences_2d_na.transpose().column_iter().enumerate() {
         /* Right now, this is the same for all columns, but as every column will have its own
         rate matrix, in general we'll have to precompute log_transition for each column*/
 
-        forward_column_ndarray(
-            column.view(),
+        forward_column(
+            column.as_view(),
             &tree,
             &distances,
             &mut log_p,
