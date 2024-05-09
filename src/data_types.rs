@@ -3,13 +3,16 @@ use std::convert::TryFrom;
 use crate::itertools::Itertools;
 use crate::num_enum::{IntoPrimitive, TryFromPrimitive};
 
-pub trait EntryTrait: Sized + Copy + Clone {
+pub trait EntryTrait: Sized + Copy + Clone + PartialEq {
     const TOTAL: usize;
     const DIM: usize;
     const CHARS: usize;
     type LogPType;
     fn to_log_p(&self) -> Self::LogPType;
-    fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError>;
+    //fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError>;
+    fn try_deserialize_string_iter<'a>(
+        input: &'a str,
+    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> + 'a;
 }
 
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
@@ -28,7 +31,7 @@ impl Residue {
 }
 
 /* TODO! either remove the u8-stuff or make it work */
-#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum ResidueExtended {
     A,
@@ -107,13 +110,14 @@ impl EntryTrait for ResidueExtended {
         };
         prob.map(Float::ln)
     }
-    fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError> {
-        let result: Result<Vec<Self>, _> = input.chars().map(Self::try_from).collect();
-        result
+    fn try_deserialize_string_iter<'a>(
+        input: &'a str,
+    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> + 'a {
+        input.chars().map(Self::try_from)
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct ResiduePair<Res>(Res, Res);
 
 impl From<(ResidueExtended, ResidueExtended)> for ResiduePair<ResidueExtended> {
@@ -172,10 +176,19 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
         }
         result
     }
-    /* TODO this should point to try_deserialize_string_drop(input, false), however,
-    then ResidueExtended and ResiduePair require different code to deserialize. */
-    fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError> {
-        Self::try_deserialize_string_drop(input, true)
+
+    fn try_deserialize_string_iter<'a>(
+        input: &'a str,
+    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> + 'a {
+        let mut tuple_iter = input.chars().tuples::<(_, _)>();
+        tuple_iter.map(
+            |(first, second)| -> Result<ResiduePair<ResidueExtended>, FelsensteinError> {
+                Ok(ResiduePair::from((
+                    ResidueExtended::try_from(first)?,
+                    ResidueExtended::try_from(second)?,
+                )))
+            },
+        )
     }
 }
 
@@ -207,7 +220,8 @@ impl FelsensteinError {
     }*/
 }
 
-pub type Entry = ResiduePair<ResidueExtended>;
+//pub type Entry = ResiduePair<ResidueExtended>;
+pub type Entry = ResidueExtended;
 pub type Float = f64;
 pub type Id = usize;
 pub type RateType = na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>;
