@@ -131,12 +131,15 @@ pub fn main() {
 
     let tree;
     let mut distances;
-    let mut sequences_raw;
+    let sequences_raw;
     (tree, distances, sequences_raw) = deserialize_tree(&mut record_reader).unwrap();
 
     distances
         .iter_mut()
         .for_each(|d| *d = distance_threshold.max(*d));
+
+    let (num_leaves, seq_length, sequences_2d) =
+        try_entry_sequences_from_strings(&sequences_raw).unwrap();
 
     let num_nodes = tree.len();
 
@@ -144,9 +147,6 @@ pub fn main() {
         Vec::<LogTransitionForwardData<{ Entry::DIM }>>::with_capacity(num_nodes);
     /* TODO get rid of Options */
     let mut log_p = Vec::<Option<[Float; Entry::DIM]>>::with_capacity(num_nodes);
-
-    let (num_leaves, seq_length, sequences_2d) =
-        try_entry_sequences_from_strings(&sequences_raw).unwrap();
 
     let mut log_likelihood = 0.0 as Float;
     let mut grad_log_prior = [0.0 as Float; Entry::DIM];
@@ -166,7 +166,7 @@ pub fn main() {
             num_leaves,
         );
 
-        let log_p_root = log_p[num_leaves - 1].unwrap();
+        let log_p_root = &log_p[num_leaves - 1].unwrap();
 
         let mut forward_data_likelihood_lse_arg = [0.0 as Float; Entry::DIM];
         for i in (0..Entry::DIM) {
