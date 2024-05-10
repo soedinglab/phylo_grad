@@ -105,6 +105,7 @@ fn forward_column(
     log_p.extend(column.iter().map(|x| Some(Entry::to_log_p(x))));
     log_p.resize(num_nodes, None);
 
+    /* TODO remove copy */
     for i in num_leaves..(num_nodes - 1) {
         let log_p_new = forward_node(i, &tree, &log_p, &forward_data).unwrap();
         log_p[i] = Some(log_p_new);

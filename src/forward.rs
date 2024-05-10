@@ -53,7 +53,7 @@ fn log_transition<const DIM: usize>(
     forward_data[id].step_2.map(Float::ln)
 }
 
-fn _child_input<const DIM: usize>(
+fn child_input<const DIM: usize>(
     child_id: Id, //only used in forward_data
     log_p: &[Float; DIM],
     forward_data: &[LogTransitionForwardData<DIM>],
@@ -85,10 +85,10 @@ pub fn forward_node<const DIM: usize>(
     match (node.left, node.right) {
         (Some(left), Some(right)) => {
             let log_p_left = log_p[left].unwrap();
-            let child_input_left = _child_input(left, &log_p_left, forward_data);
+            let child_input_left = child_input(left, &log_p_left, forward_data);
 
             let log_p_right = log_p[right].unwrap();
-            let child_input_right = _child_input(right, &log_p_right, forward_data);
+            let child_input_right = child_input(right, &log_p_right, forward_data);
 
             let mut result = [0.0 as Float; DIM];
             for a in (0..DIM) {
@@ -98,12 +98,12 @@ pub fn forward_node<const DIM: usize>(
         }
         (Some(left), None) => {
             let log_p_left = log_p[left].unwrap();
-            let result = _child_input(left, &log_p_left, forward_data);
+            let result = child_input(left, &log_p_left, forward_data);
             Ok(result)
         }
         (None, Some(right)) => {
             let log_p_right = log_p[right].unwrap();
-            let result = _child_input(right, &log_p_right, forward_data);
+            let result = child_input(right, &log_p_right, forward_data);
             Ok(result)
         }
         (None, None) => Err(FelsensteinError::LEAF),
@@ -119,21 +119,15 @@ pub fn forward_root<const DIM: usize>(
 ) -> [Float; DIM] {
     let root = &tree[id];
 
-    let mut children = Vec::with_capacity(3);
-    children.push(root.parent);
-    if let Some(child) = root.left {
-        children.push(child);
-    }
-    if let Some(child) = root.right {
-        children.push(child);
+    let mut result = child_input(root.parent, &log_p[root.parent].unwrap(), forward_data);
+    for opt_child in [root.left, root.right] {
+        if let Some(child) = opt_child {
+            let child_input = child_input(child, &log_p[child].unwrap(), forward_data);
+            for i in (0..DIM) {
+                result[i] += child_input[i];
+            }
+        }
     }
 
-    let result: na::SVector<Float, DIM> = children
-        .into_iter()
-        .map(|child| {
-            let log_p_child = log_p[child].unwrap();
-            na::SVector::<Float, DIM>::from(_child_input(child, &log_p_child, forward_data))
-        })
-        .sum();
-    <[Float; DIM]>::from(result)
+    result
 }
