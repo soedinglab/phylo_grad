@@ -130,33 +130,6 @@ impl From<(ResidueExtended, ResidueExtended)> for ResiduePair<ResidueExtended> {
     }
 }
 
-impl ResiduePair<ResidueExtended> {
-    /* TODO just check length like a normal person? */
-    pub fn try_deserialize_string_drop(
-        input: &str,
-        drop: bool,
-    ) -> Result<Vec<Self>, FelsensteinError> {
-        let mut tuple_iter = input.chars().tuples::<(_, _)>();
-        let result: Result<Vec<Self>, _> = tuple_iter
-            .by_ref()
-            .map(
-                |(first, second)| -> Result<ResiduePair<ResidueExtended>, _> {
-                    Ok(ResiduePair::from((
-                        ResidueExtended::try_from(first)?,
-                        ResidueExtended::try_from(second)?,
-                    )))
-                },
-            )
-            .collect();
-        let remainder = tuple_iter.into_buffer();
-        if !drop && remainder.len() != 0 {
-            Err(FelsensteinError::SEQ_LENGTH)
-        } else {
-            result
-        }
-    }
-}
-
 /* Can't make generic over Residue  */
 impl EntryTrait for ResiduePair<ResidueExtended> {
     const DIM: usize = ResidueExtended::DIM * ResidueExtended::DIM;
@@ -177,6 +150,7 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
         result
     }
 
+    /* TODO! will the external function be able to check the buffer? */
     fn try_deserialize_string_iter<'a>(
         input: &'a str,
     ) -> impl Iterator<Item = Result<Self, FelsensteinError>> + 'a {
@@ -220,8 +194,7 @@ impl FelsensteinError {
     }*/
 }
 
-//pub type Entry = ResiduePair<ResidueExtended>;
-pub type Entry = ResidueExtended;
+pub type Entry = ResiduePair<ResidueExtended>;
 pub type Float = f64;
 pub type Id = usize;
 pub type RateType = na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>;
