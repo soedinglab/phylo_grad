@@ -60,7 +60,7 @@ fn child_input<const DIM: usize>(
 ) -> [Float; DIM] {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
     let log_transition = log_transition(child_id, forward_data);
-    /* Is this better or worse than adding two nalgebra vectors and taking logsumexp?
+    /* TODO Is this better or worse than adding two nalgebra vectors and taking logsumexp?
     What is the optimal way to access a matrix? */
     let mut result = [0.0 as Float; DIM];
     for a in (0..DIM) {
@@ -81,32 +81,25 @@ pub fn forward_node<const DIM: usize>(
     forward_data: &[LogTransitionForwardData<DIM>],
 ) -> Result<[Float; DIM], FelsensteinError> {
     let node = &tree[id];
-    /* TODO duplicate code */
-    match (node.left, node.right) {
-        (Some(left), Some(right)) => {
-            let log_p_left = log_p[left].unwrap();
-            let child_input_left = child_input(left, &log_p_left, forward_data);
 
-            let log_p_right = log_p[right].unwrap();
-            let child_input_right = child_input(right, &log_p_right, forward_data);
-
-            let mut result = [0.0 as Float; DIM];
-            for a in (0..DIM) {
-                result[a] = child_input_left[a] + child_input_right[a];
+    let mut opt_running_sum: Option<[Float; DIM]> = None;
+    for opt_child in [node.left, node.right] {
+        if let Some(child) = opt_child {
+            let child_input = child_input(child, &log_p[child].unwrap(), forward_data);
+            match opt_running_sum {
+                Some(ref mut result) => {
+                    for a in (0..DIM) {
+                        result[a] += child_input[a];
+                    }
+                }
+                None => opt_running_sum = Some(child_input),
             }
-            Ok(result)
         }
-        (Some(left), None) => {
-            let log_p_left = log_p[left].unwrap();
-            let result = child_input(left, &log_p_left, forward_data);
-            Ok(result)
-        }
-        (None, Some(right)) => {
-            let log_p_right = log_p[right].unwrap();
-            let result = child_input(right, &log_p_right, forward_data);
-            Ok(result)
-        }
-        (None, None) => Err(FelsensteinError::LEAF),
+    }
+
+    match opt_running_sum {
+        Some(result) => Ok(result),
+        None => Err(FelsensteinError::LEAF),
     }
 }
 
