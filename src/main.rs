@@ -29,19 +29,6 @@ impl FelsensteinError {
     pub const ORDER: Self = Self::DeserializationError("The tree is not topoligically ordered");
 }
 
-fn print_vector<T>(vector: na::DVectorView<T>)
-where
-    T: std::fmt::Debug + Clone,
-{
-    dbg!(
-        &vector
-            .column(0)
-            .iter()
-            .map(|x| (*x).clone())
-            .collect::<Vec<T>>()[0..20]
-    );
-}
-
 fn rate_matrix_example() -> RateType {
     const DIM: usize = Entry::DIM;
     let rate_matrix_example = -RateType::identity()
@@ -97,6 +84,8 @@ fn forward_column(
     num_nodes: Id,
     num_leaves: Id,
 ) {
+    /* Right now, this is the same for all columns, but as every column will have its own
+    rate matrix, in general we'll have to precompute log_transition for each column */
     forward_data_precompute(forward_data, rate_matrix, distances, (0..num_nodes));
 
     /* Compared to collect(), this reduces the # of allocation calls
@@ -119,6 +108,7 @@ pub fn main() {
 
     /* Placeholder values */
     let log_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
+    /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example();
     let distance_threshold = 1e-9 as Float;
 
@@ -153,9 +143,6 @@ pub fn main() {
     let mut grad_log_prior = [0.0 as Float; Entry::DIM];
 
     for (column_id, column) in sequences_2d.transpose().column_iter().enumerate() {
-        /* Right now, this is the same for all columns, but as every column will have its own
-        rate matrix, in general we'll have to precompute log_transition for each column*/
-
         forward_column(
             column.as_view(),
             &tree,

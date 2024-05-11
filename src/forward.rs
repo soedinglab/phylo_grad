@@ -60,13 +60,12 @@ fn child_input<const DIM: usize>(
 ) -> [Float; DIM] {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
     let log_transition = log_transition(child_id, forward_data);
-    /* TODO Is this better or worse than adding two nalgebra vectors and taking logsumexp?
-    What is the optimal way to access a matrix? */
+    /* TODO! Make sure indices are not flipped */
+    let mut col_a;
     let mut result = [0.0 as Float; DIM];
     for a in (0..DIM) {
-        result[a] = (0..DIM)
-            .map(|b| (log_p[b] + log_transition[(a, b)]))
-            .ln_sum_exp()
+        col_a = log_transition.column(a);
+        result[a] = (0..DIM).map(|b| (log_p[b] + col_a[b])).ln_sum_exp()
     }
     result
 }
