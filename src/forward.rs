@@ -1,8 +1,5 @@
-use std::error::Error;
-
-use crate::logsumexp::LogSumExp;
-
 use crate::data_types::*;
+use crate::logsumexp::LogSumExp;
 use crate::tree::*;
 
 impl FelsensteinError {
@@ -62,7 +59,7 @@ fn child_input<const DIM: usize>(
     /* TODO! Make sure indices are not flipped */
     let mut col_a;
     let mut result = [0.0 as Float; DIM];
-    for a in (0..DIM) {
+    for a in 0..DIM {
         col_a = log_transition.column(a);
         result[a] = (0..DIM).map(|b| (log_p[b] + col_a[b])).ln_sum_exp()
     }
@@ -86,7 +83,7 @@ pub fn forward_node<const DIM: usize>(
             let child_input = child_input(child, &log_p[child].unwrap(), forward_data);
             match opt_running_sum {
                 Some(ref mut result) => {
-                    for a in (0..DIM) {
+                    for a in 0..DIM {
                         result[a] += child_input[a];
                     }
                 }
@@ -114,7 +111,7 @@ pub fn forward_root<const DIM: usize>(
     for opt_child in [root.left, root.right] {
         if let Some(child) = opt_child {
             let child_input = child_input(child, &log_p[child].unwrap(), forward_data);
-            for i in (0..DIM) {
+            for i in 0..DIM {
                 result[i] += child_input[i];
             }
         }

@@ -134,19 +134,20 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
         let (first, second) = (self.0, self.1);
         let log_p_first = first.to_log_p();
         let log_p_second = second.to_log_p();
-        for a in (0..ResidueExtended::DIM) {
-            for b in (0..ResidueExtended::DIM) {
+        for a in 0..ResidueExtended::DIM {
+            for b in 0..ResidueExtended::DIM {
                 result[ResidueExtended::DIM * a + b] = log_p_first[a] + log_p_second[b];
             }
         }
         result
     }
 
+    /* TODO remove (replaced by pair_columns_iter) */
     /* TODO! will the external function be able to check the buffer? */
     fn try_deserialize_string_iter(
         input: &str,
     ) -> impl Iterator<Item = Result<Self, FelsensteinError>> {
-        let mut tuple_iter = input.chars().tuples::<(_, _)>();
+        let tuple_iter = input.chars().tuples::<(_, _)>();
         tuple_iter.map(
             |(first, second)| -> Result<ResiduePair<ResidueExtended>, FelsensteinError> {
                 Ok(ResiduePair(

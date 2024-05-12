@@ -1,36 +1,40 @@
-use std::cmp;
-
 use crate::data_types::*;
 use crate::forward::*;
 
 pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
     let mut result = [0 as Float; N];
-    let x_max = *x.iter().max_by(|a, b| a.total_cmp(b)).expect("Iterator cannot be empty");
+    let x_max = *x
+        .iter()
+        .max_by(|a, b| a.total_cmp(b))
+        .expect("Iterator cannot be empty");
 
-    for i in (0..N) {
+    for i in 0..N {
         result[i] -= x[i] - x_max;
     }
-    for i in (0..N) {
+    for i in 0..N {
         result[i] = x[i].exp();
     }
     let scale = result.iter().sum::<Float>().recip();
-    for i in (0..N) {
+    for i in 0..N {
         result[i] *= scale;
     }
     result
 }
 
 pub fn softmax_inplace<const N: usize>(x: &mut [Float; N]) {
-    let x_max = *x.iter().max_by(|a, b| a.total_cmp(b)).expect("Iterator cannot be empty");
+    let x_max = *x
+        .iter()
+        .max_by(|a, b| a.total_cmp(b))
+        .expect("Iterator cannot be empty");
 
-    for i in (0..N) {
+    for i in 0..N {
         x[i] -= x_max;
     }
-    for i in (0..N) {
+    for i in 0..N {
         x[i] = x[i].exp();
     }
     let scale = x.iter().sum::<Float>().recip();
-    for i in (0..N) {
+    for i in 0..N {
         x[i] *= scale
     }
 }
@@ -79,7 +83,7 @@ fn d_map_ln_vjp(
     rec
 }
 
-fn d_rate_log_transition(
+fn d_rate_log_transition_jvp(
     forward: &LogTransitionForwardData<{ Entry::DIM }>,
     distance: Float,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,

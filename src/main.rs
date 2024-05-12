@@ -1,4 +1,4 @@
-#![allow(unused, dead_code, clippy::needless_range_loop)]
+#![allow(dead_code, clippy::needless_range_loop)]
 //extern crate arrayvec;
 //extern crate blas_src;
 extern crate csv;
@@ -11,7 +11,7 @@ extern crate serde;
 
 use itertools::{process_results, Itertools};
 use logsumexp::LogSumExp;
-use std::{error::Error, fmt::Formatter};
+use std::fmt::Formatter;
 
 mod backward;
 mod data_types;
@@ -33,7 +33,7 @@ struct DisplayArray<'a, const N: usize>(&'a [Float; N]);
 impl<'a, const N: usize> std::fmt::Display for DisplayArray<'a, N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "[")?;
-        self.0[0].fmt(f);
+        self.0[0].fmt(f)?;
         for value in &self.0[1..] {
             write!(f, ", ")?;
             value.fmt(f)?;
@@ -101,31 +101,29 @@ fn pair_columns_iter(
         .column_iter()
         .enumerate()
         .tuple_combinations::<(_, _)>()
-        .map(
-            move |(((left_id, left_column), (right_id, right_column)))| {
-                (
-                    (left_id, right_id),
-                    na::DVector::<Entry>::from_iterator(
-                        num_leaves,
-                        std::iter::zip(left_column.iter(), right_column.iter()).map(
-                            |(left_residue, right_residue)| Entry {
-                                0: *left_residue,
-                                1: *right_residue,
-                            },
-                        ),
+        .map(move |((left_id, left_column), (right_id, right_column))| {
+            (
+                (left_id, right_id),
+                na::DVector::<Entry>::from_iterator(
+                    num_leaves,
+                    std::iter::zip(left_column.iter(), right_column.iter()).map(
+                        |(left_residue, right_residue)| Entry {
+                            0: *left_residue,
+                            1: *right_residue,
+                        },
                     ),
-                )
-            },
-        )
+                ),
+            )
+        })
 }
 
 fn forward_column<'a>(
     column: impl Iterator<Item = &'a Entry>,
     tree: &[TreeNode],
-    distances: &[Float],
+    //distances: &[Float],
     log_p: &mut Vec<Option<[Float; Entry::DIM]>>,
     forward_data: &[LogTransitionForwardData<{ Entry::DIM }>],
-    rate_matrix: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+    //rate_matrix: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) {
     /* Compared to collect(), this reduces the # of allocation calls
     but increases peak memory usage; investigate */
@@ -194,16 +192,16 @@ pub fn main() {
         forward_column(
             column.iter(),
             &tree,
-            &distances,
+            //&distances,
             &mut log_p,
             &forward_data,
-            rate_matrix.as_view(),
+            //rate_matrix.as_view(),
         );
 
         let log_p_root = &log_p[num_leaves - 1].unwrap();
 
         let mut forward_data_likelihood_lse_arg = [0.0 as Float; Entry::DIM];
-        for i in (0..Entry::DIM) {
+        for i in 0..Entry::DIM {
             forward_data_likelihood_lse_arg[i] = log_p_root[i] + log_prior[i];
         }
         let log_likelihood_column = forward_data_likelihood_lse_arg.iter().ln_sum_exp();
@@ -211,7 +209,7 @@ pub fn main() {
         softmax_inplace(&mut forward_data_likelihood_lse_arg);
         let grad_log_prior_column = forward_data_likelihood_lse_arg;
 
-        for i in (0..Entry::DIM) {
+        for i in 0..Entry::DIM {
             grad_log_prior[i] += grad_log_prior_column[i];
         }
         log_likelihood += log_likelihood_column;

@@ -2,14 +2,13 @@
 /* https://docs.rs/csv/latest/csv/cookbook/index.html */
 use std::error::Error;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 use crate::data_types::*;
 use crate::itertools::{multiunzip, process_results};
 use crate::tree::TreeNode;
 use serde::Deserialize;
-use std::convert::TryFrom;
 
 /* TODO:
 1. Collect residues into (Vec<Entry>, row_length) instead of Vec<Vec<Entry>>.
@@ -51,8 +50,8 @@ where
     P: AsRef<Path>,
 {
     let file = File::open(filename)?;
-    let mut bufreader = BufReader::new(file);
-    let mut rdr = csv::ReaderBuilder::new()
+    let bufreader = BufReader::new(file);
+    let rdr = csv::ReaderBuilder::new()
         .has_headers(true)
         .from_reader(bufreader);
     Ok(rdr)
