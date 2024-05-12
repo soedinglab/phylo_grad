@@ -41,7 +41,7 @@ pub fn softmax_inplace<const N: usize>(x: &mut [Float; N]) {
 
 /* TODO! optimize 'direction' away by replacing it with an index (i, j) */
 /* TODO stability */
-fn d_exp(
+pub fn d_exp_jvp(
     argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
@@ -58,6 +58,34 @@ fn d_exp(
 
     /* TODO accept &mut result and use copy_from? */
     let dexp: na::SMatrix<Float, N, N> = exp_combined.fixed_view::<N, N>(0, N).clone_owned();
+    dexp
+}
+
+pub fn d_exp_vjp(
+    argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+    cotangent_vector: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
+    /* exp([[X^T, 0], [w, X^T]]) = [[exp(X^T), 0], [w (D_X exp), exp(X^T)]] */
+    const N: usize = Entry::DIM;
+    const TWICE_N: usize = 2 * Entry::DIM;
+
+    let mut block_triangular = na::SMatrix::<Float, TWICE_N, TWICE_N>::zeros();
+
+    let argument_transposed = argument.transpose();
+    block_triangular
+        .index_mut((..N, ..N))
+        .copy_from(&argument_transposed);
+    block_triangular
+        .index_mut((N.., N..))
+        .copy_from(&argument_transposed);
+    block_triangular
+        .index_mut((N.., ..N))
+        .copy_from(&cotangent_vector);
+
+    let exp_combined = block_triangular.exp();
+
+    /* TODO accept &mut result and use copy_from? */
+    let dexp: na::SMatrix<Float, N, N> = exp_combined.fixed_view::<N, N>(N, 0).clone_owned();
     dexp
 }
 
@@ -100,7 +128,7 @@ fn d_rate_log_transition_jvp(
     let step_2 = forward.step_2;
 
     let backward_1 = direction * distance;
-    let backward_2 = d_exp(step_1.as_view(), backward_1.as_view());
+    let backward_2 = d_exp_jvp(step_1.as_view(), backward_1.as_view());
     let result = d_map_ln(step_2.as_view(), backward_2.as_view());
     result
 }

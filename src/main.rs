@@ -29,8 +29,8 @@ impl FelsensteinError {
     pub const ORDER: Self = Self::DeserializationError("The tree is not topoligically ordered");
 }
 
-struct DisplayArray<'a, const N: usize>(&'a [Float; N]);
-impl<'a, const N: usize> std::fmt::Display for DisplayArray<'a, N> {
+struct DisplayArray<'a>(&'a [Float]);
+impl<'a> std::fmt::Display for DisplayArray<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "[")?;
         self.0[0].fmt(f)?;
@@ -38,8 +38,7 @@ impl<'a, const N: usize> std::fmt::Display for DisplayArray<'a, N> {
             write!(f, ", ")?;
             value.fmt(f)?;
         }
-        write!(f, "]")?;
-        Ok(())
+        write!(f, "]")
     }
 }
 
@@ -142,6 +141,31 @@ fn forward_column<'a>(
     log_p[num_leaves - 1] = Some(log_p_root);
 }
 
+fn test_d_exp() {
+    let argument = rate_matrix_example() + RateType::identity();
+    let cotangent_vector =
+        na::SMatrix::<_, { Entry::DIM }, { Entry::DIM }>::from_element(1.0 as Float);
+    let dexp = d_exp_vjp(argument.as_view(), cotangent_vector.as_view());
+
+    println!("d_exp_vjp:");
+    let mut tmp_row: na::SVector<Float, { Entry::DIM }>;
+    for row in dexp.row_iter() {
+        tmp_row = row.transpose().to_owned();
+        println!("{:.4}", DisplayArray(tmp_row.as_slice()));
+    }
+
+    let tangent_vector =
+        na::SMatrix::<_, { Entry::DIM }, { Entry::DIM }>::from_element(1.0 as Float);
+    let dexp_jvp = d_exp_jvp(argument.as_view(), tangent_vector.as_view());
+
+    println!("d_exp_jvp:");
+    let mut tmp_row: na::SVector<Float, { Entry::DIM }>;
+    for row in dexp_jvp.row_iter() {
+        tmp_row = row.transpose().to_owned();
+        println!("{:.4}", DisplayArray(tmp_row.as_slice()));
+    }
+}
+
 pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -150,7 +174,7 @@ pub fn main() {
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example();
     let distance_threshold = 1e-9 as Float;
-    const COL_LIMIT: ColumnId = 1_000_000;
+    const COL_LIMIT: ColumnId = 300;
 
     let data_path = if args.len() >= 2 {
         &args[1]
@@ -171,7 +195,7 @@ pub fn main() {
 
     let residue_sequences_2d = try_residue_sequences_from_strings(&sequences_raw).unwrap();
 
-    let (num_leaves, residue_seq_length) = residue_sequences_2d.shape();
+    let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
 
     let mut forward_data =
