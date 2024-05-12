@@ -29,20 +29,19 @@ where
     LogTransitionForwardData { step_1, step_2 }
 }
 
-pub fn forward_data_precompute<const DIM: usize, I>(
+pub fn forward_data_precompute<const DIM: usize>(
     forward_data: &mut Vec<LogTransitionForwardData<DIM>>,
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distances: &[Float],
-    ids: I,
 ) where
-    I: IntoIterator<Item = Id>,
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
     forward_data.clear();
     forward_data.extend(
-        ids.into_iter()
-            .map(|id| log_transition_precompute(rate_matrix, distances[id])),
+        distances
+            .iter()
+            .map(|dist| log_transition_precompute(rate_matrix, *dist)),
     );
 }
 

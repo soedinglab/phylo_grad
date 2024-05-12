@@ -10,14 +10,14 @@ pub trait EntryTrait: Sized + Copy + Clone + PartialEq {
     type LogPType;
     fn to_log_p(&self) -> Self::LogPType;
     //fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError>;
-    fn try_deserialize_string_iter<'a>(
-        input: &'a str,
-    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> + 'a;
+    fn try_deserialize_string_iter(
+        input: &str,
+    ) -> impl Iterator<Item = Result<Self, FelsensteinError>>;
 }
 
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
-pub enum Residue {
+pub enum Residue5 {
     A,
     C,
     G,
@@ -25,7 +25,7 @@ pub enum Residue {
     None,
 }
 
-impl Residue {
+impl Residue5 {
     pub const TOTAL: usize = 5;
     pub const DIM: usize = 5;
 }
@@ -110,25 +110,16 @@ impl EntryTrait for ResidueExtended {
         };
         prob.map(Float::ln)
     }
-    fn try_deserialize_string_iter<'a>(
-        input: &'a str,
-    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> + 'a {
+    fn try_deserialize_string_iter(
+        input: &str,
+    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> {
         input.chars().map(Self::try_from)
     }
 }
 
+/* PartialEq only needed if we want to store ResiduePair in na::Matrix */
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct ResiduePair<Res>(Res, Res);
-
-impl From<(ResidueExtended, ResidueExtended)> for ResiduePair<ResidueExtended> {
-    fn from(tuple: (ResidueExtended, ResidueExtended)) -> Self {
-        let (first, second) = tuple;
-        Self {
-            0: first,
-            1: second,
-        }
-    }
-}
+pub struct ResiduePair<Res>(pub Res, pub Res);
 
 /* Can't make generic over Residue  */
 impl EntryTrait for ResiduePair<ResidueExtended> {
@@ -137,6 +128,7 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
     const CHARS: usize = ResidueExtended::CHARS * 2;
     type LogPType = [Float; Self::DIM];
 
+    /* TODO! this should be static */
     fn to_log_p(&self) -> Self::LogPType {
         let mut result = [0.0 as Float; Self::DIM];
         let (first, second) = (self.0, self.1);
@@ -151,16 +143,16 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
     }
 
     /* TODO! will the external function be able to check the buffer? */
-    fn try_deserialize_string_iter<'a>(
-        input: &'a str,
-    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> + 'a {
+    fn try_deserialize_string_iter(
+        input: &str,
+    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> {
         let mut tuple_iter = input.chars().tuples::<(_, _)>();
         tuple_iter.map(
             |(first, second)| -> Result<ResiduePair<ResidueExtended>, FelsensteinError> {
-                Ok(ResiduePair::from((
+                Ok(ResiduePair(
                     ResidueExtended::try_from(first)?,
                     ResidueExtended::try_from(second)?,
-                )))
+                ))
             },
         )
     }
@@ -194,7 +186,9 @@ impl FelsensteinError {
     }*/
 }
 
+pub type Residue = ResidueExtended;
 pub type Entry = ResiduePair<ResidueExtended>;
 pub type Float = f64;
+pub type ColumnId = usize;
 pub type Id = usize;
 pub type RateType = na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>;
