@@ -90,7 +90,7 @@ pub fn d_exp_vjp(
 }
 
 /* VJP same as JVP (this is a diagonal map) */
-fn d_map_ln(
+fn d_map_ln_jvp(
     argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
     direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
@@ -129,6 +129,32 @@ fn d_rate_log_transition_jvp(
 
     let backward_1 = direction * distance;
     let backward_2 = d_exp_jvp(step_1.as_view(), backward_1.as_view());
-    let result = d_map_ln(step_2.as_view(), backward_2.as_view());
+    let result = d_map_ln_jvp(step_2.as_view(), backward_2.as_view());
     result
 }
+
+fn d_rate_log_transition_vjp(
+    forward: &LogTransitionForwardData<{ Entry::DIM }>,
+    distance: Float,
+    cotangent_vector: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+) -> RateType {
+    /* log_tr*|y (w) = mul*|rx @ exp*|exp(rx) @ map_ln*|y @ w
+     */
+    let forward_1 = forward.step_1;
+    let forward_2 = forward.step_2;
+
+    let reverse_1 = d_map_ln_vjp(forward_2.as_view(), cotangent_vector);
+    let reverse_2 = d_exp_vjp(forward_1.as_view(), reverse_1.as_view());
+    let result = reverse_2 * distance;
+    result
+}
+
+/*
+fn d_child_input_vjp(
+    forward: &ForwardData<{ Entry::DIM }>,
+    backward: &BackwardData<{ Entry::DIM }>,
+    cotangent_vector: [Float; Entry::DIM],
+) -> RateType {
+    log_p_child = softmax_inplace(&mut cotangent_vector);
+}
+*/

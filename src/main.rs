@@ -91,7 +91,7 @@ fn forward_column<'a>(
     tree: &[TreeNode],
     //distances: &[Float],
     log_p: &mut Vec<Option<[Float; Entry::DIM]>>,
-    forward_data: &[LogTransitionForwardData<{ Entry::DIM }>],
+    forward_data: &ForwardData<{ Entry::DIM }>,
     //rate_matrix: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) {
     /* Compared to collect(), this reduces the # of allocation calls
@@ -168,8 +168,7 @@ pub fn main() {
     let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
 
-    let mut forward_data =
-        Vec::<LogTransitionForwardData<{ Entry::DIM }>>::with_capacity(num_nodes);
+    let mut forward_data = ForwardData::<{ Entry::DIM }>::with_capacity(num_nodes);
     /* TODO get rid of Options */
     let mut log_p = Vec::<Option<[Float; Entry::DIM]>>::with_capacity(num_nodes);
 

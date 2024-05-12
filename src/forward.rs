@@ -6,6 +6,20 @@ impl FelsensteinError {
     pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
 }
 
+pub struct ForwardData<const DIM: usize> {
+    pub log_transition: Vec<LogTransitionForwardData<DIM>>,
+    pub child_input: Vec<ChildInputForwardData<DIM>>,
+}
+
+impl<const DIM: usize> ForwardData<DIM> {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            log_transition: Vec::with_capacity(capacity),
+            child_input: Vec::with_capacity(capacity),
+        }
+    }
+}
+
 pub struct LogTransitionForwardData<const DIM: usize> {
     pub step_1: na::SMatrix<Float, DIM, DIM>,
     pub step_2: na::SMatrix<Float, DIM, DIM>,
@@ -27,15 +41,15 @@ where
 }
 
 pub fn forward_data_precompute<const DIM: usize>(
-    forward_data: &mut Vec<LogTransitionForwardData<DIM>>,
+    forward_data: &mut ForwardData<DIM>,
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distances: &[Float],
 ) where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
 {
-    forward_data.clear();
-    forward_data.extend(
+    forward_data.log_transition.clear();
+    forward_data.log_transition.extend(
         distances
             .iter()
             .map(|dist| log_transition_precompute(rate_matrix, *dist)),
@@ -44,15 +58,23 @@ pub fn forward_data_precompute<const DIM: usize>(
 
 fn log_transition<const DIM: usize>(
     id: Id,
-    forward_data: &[LogTransitionForwardData<DIM>],
+    forward_data: &ForwardData<DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
-    forward_data[id].step_2.map(Float::ln)
+    forward_data.log_transition[id].step_2.map(Float::ln)
 }
+
+pub struct ChildInputForwardData<const DIM: usize> {
+    pub lse_argument: na::SMatrix<Float, DIM, DIM>,
+}
+
+/*fn child_input_precompute<const DIM: usize> {
+
+}*/
 
 fn child_input<const DIM: usize>(
     child_id: Id, //only used in forward_data
     log_p: &[Float; DIM],
-    forward_data: &[LogTransitionForwardData<DIM>],
+    forward_data: &ForwardData<DIM>,
 ) -> [Float; DIM] {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
     let log_transition = log_transition(child_id, forward_data);
@@ -73,7 +95,7 @@ pub fn forward_node<const DIM: usize>(
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
     //rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    forward_data: &[LogTransitionForwardData<DIM>],
+    forward_data: &ForwardData<DIM>,
 ) -> Result<[Float; DIM], FelsensteinError> {
     let node = &tree[id];
 
@@ -103,7 +125,7 @@ pub fn forward_root<const DIM: usize>(
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
     //rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    forward_data: &[LogTransitionForwardData<DIM>],
+    forward_data: &ForwardData<DIM>,
 ) -> [Float; DIM] {
     let root = &tree[id];
 
