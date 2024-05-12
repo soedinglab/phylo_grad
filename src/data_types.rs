@@ -52,6 +52,11 @@ pub enum ResidueExtended {
 }
 impl ResidueExtended {
     pub const U: Self = Self::T;
+    pub fn columns_iter(
+        residue_sequences_2d: &na::DMatrix<Self>,
+    ) -> impl Iterator<Item = (usize, na::DVectorView<Self>)> {
+        residue_sequences_2d.column_iter().enumerate()
+    }
 }
 
 impl TryFrom<char> for ResidueExtended {
@@ -156,6 +161,44 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
                 ))
             },
         )
+    }
+}
+
+/* TODO! It may be more memory-efficient to generate pairs from the slice itself
+rather than from an iterator over it. Also, when the column pairs are provided
+by the user, we need to be able to use those. */
+fn pair_columns_iter(
+    //residue_sequences_2d: na::DMatrixView<Residue>,
+    /* Avoiding the MatrixView questions for now */
+    residue_sequences_2d: &na::DMatrix<Residue>,
+) -> impl Iterator<Item = ((usize, usize), na::DVector<ResiduePair<Residue>>)> + '_ {
+    /* TODO return impl Iterator<Item = impl Iterator<Entry> + 'a> + 'a */
+    let (num_leaves, _) = residue_sequences_2d.shape();
+    residue_sequences_2d
+        .column_iter()
+        .enumerate()
+        .tuple_combinations::<(_, _)>()
+        .map(move |((left_id, left_column), (right_id, right_column))| {
+            (
+                (left_id, right_id),
+                na::DVector::from_iterator(
+                    num_leaves,
+                    std::iter::zip(left_column.iter(), right_column.iter()).map(
+                        |(left_residue, right_residue)| ResiduePair::<Residue> {
+                            0: *left_residue,
+                            1: *right_residue,
+                        },
+                    ),
+                ),
+            )
+        })
+}
+
+impl ResiduePair<ResidueExtended> {
+    pub fn columns_iter(
+        residue_sequences_2d: &na::DMatrix<Residue>,
+    ) -> impl Iterator<Item = ((usize, usize), na::DVector<Self>)> + '_ {
+        pair_columns_iter(residue_sequences_2d)
     }
 }
 

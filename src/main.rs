@@ -9,7 +9,7 @@ extern crate num_enum;
 extern crate serde;
 /* TODO pyo3 */
 
-use itertools::{process_results, Itertools};
+use itertools::process_results;
 use logsumexp::LogSumExp;
 use std::fmt::Formatter;
 
@@ -84,36 +84,6 @@ fn try_residue_sequences_from_strings(
         na::DMatrix::from_vec_generic(na::Dyn(seq_length), na::Dyn(num_leaves), sequences_flat)
             .transpose();
     Ok(sequences_2d)
-}
-
-/* TODO! It may be more memory-efficient to generate pairs from the slice itself
-rather than from an iterator over it. Also, when the column pairs are provided
-by the user, we need to be able to use those. */
-fn pair_columns_iter(
-    //residue_sequences_2d: na::DMatrixView<Residue>,
-    /* Avoiding the MatrixView questions for now */
-    residue_sequences_2d: &na::DMatrix<Residue>,
-) -> impl Iterator<Item = ((ColumnId, ColumnId), na::DVector<Entry>)> + '_ {
-    // -> impl Iterator<Item = impl Iterator<Entry> + 'a> + 'a
-    let (num_leaves, _) = residue_sequences_2d.shape();
-    residue_sequences_2d
-        .column_iter()
-        .enumerate()
-        .tuple_combinations::<(_, _)>()
-        .map(move |((left_id, left_column), (right_id, right_column))| {
-            (
-                (left_id, right_id),
-                na::DVector::<Entry>::from_iterator(
-                    num_leaves,
-                    std::iter::zip(left_column.iter(), right_column.iter()).map(
-                        |(left_residue, right_residue)| Entry {
-                            0: *left_residue,
-                            1: *right_residue,
-                        },
-                    ),
-                ),
-            )
-        })
 }
 
 fn forward_column<'a>(
@@ -207,7 +177,7 @@ pub fn main() {
     let mut grad_log_prior = [0.0 as Float; Entry::DIM];
 
     // for (column_id, column) in sequences_2d.column_iter().enumerate() {
-    for (column_id, column) in pair_columns_iter(&residue_sequences_2d).take(COL_LIMIT) {
+    for (column_id, column) in Entry::columns_iter(&residue_sequences_2d).take(COL_LIMIT) {
         /* Right now, this is the same for all columns, but as every column will have its own
         rate matrix, in general we'll have to precompute log_transition for each column */
         forward_data_precompute(&mut forward_data, rate_matrix.as_view(), &distances);
@@ -239,13 +209,12 @@ pub fn main() {
         log_likelihood += log_likelihood_column;
 
         println!(
-            "Log likelihood #({}, {}) = {:.8}",
-            column_id.0, column_id.1, log_likelihood_column
+            "Log likelihood #{:?} = {:.8}",
+            column_id, log_likelihood_column
         );
         println!(
-            "Gradient of log_prior #({}, {}) = {:.0}",
-            column_id.0,
-            column_id.1,
+            "Gradient of log_prior #{:?} = {:.0}",
+            column_id,
             DisplayArray(&grad_log_prior_column)
         );
     }
