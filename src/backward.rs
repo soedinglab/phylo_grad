@@ -1,6 +1,8 @@
 use crate::data_types::*;
 use crate::forward::*;
 
+const DIM: Id = Entry::DIM;
+
 pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
     let mut result = [0 as Float; N];
     let x_max = *x
@@ -62,11 +64,11 @@ pub fn softmax_inplace(x: &mut [Float]) {
 /* TODO! optimize 'direction' away by replacing it with an index (i, j) */
 /* TODO stability */
 pub fn d_exp_jvp(
-    argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-    direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
-    const N: usize = Entry::DIM;
-    const TWICE_N: usize = 2 * Entry::DIM;
+    argument: na::SMatrixView<Float, DIM, DIM>,
+    direction: na::SMatrixView<Float, DIM, DIM>,
+) -> na::SMatrix<Float, DIM, DIM> {
+    const N: usize = DIM;
+    const TWICE_N: usize = 2 * DIM;
 
     let mut block_triangular = na::SMatrix::<Float, TWICE_N, TWICE_N>::zeros();
 
@@ -82,12 +84,12 @@ pub fn d_exp_jvp(
 }
 
 pub fn d_exp_vjp(
-    argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-    cotangent_vector: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
+    argument: na::SMatrixView<Float, DIM, DIM>,
+    cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
+) -> na::SMatrix<Float, DIM, DIM> {
     /* exp([[X^T, 0], [w, X^T]]) = [[exp(X^T), 0], [w (D_X exp), exp(X^T)]] */
-    const N: usize = Entry::DIM;
-    const TWICE_N: usize = 2 * Entry::DIM;
+    const N: usize = DIM;
+    const TWICE_N: usize = 2 * DIM;
 
     let mut block_triangular = na::SMatrix::<Float, TWICE_N, TWICE_N>::zeros();
 
@@ -111,9 +113,9 @@ pub fn d_exp_vjp(
 
 /* VJP same as JVP (this is a diagonal map) */
 fn d_map_ln_jvp(
-    argument: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-    direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
+    argument: na::SMatrixView<Float, DIM, DIM>,
+    direction: na::SMatrixView<Float, DIM, DIM>,
+) -> na::SMatrix<Float, DIM, DIM> {
     /* D_map_ln(argument, direction) = map_recip (argument) \odot direction */
     let mut rec = argument.map(Float::recip);
     rec.component_mul_assign(&direction);
@@ -132,9 +134,9 @@ fn d_map_ln_vjp<const DIM: usize>(
 }
 
 fn d_rate_log_transition_jvp(
-    forward: &LogTransitionForwardData<{ Entry::DIM }>,
+    forward: &LogTransitionForwardData<DIM>,
     distance: Float,
-    direction: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+    direction: na::SMatrixView<Float, DIM, DIM>,
 ) -> RateType {
     /* result := D_R(log_transition(R, t)) at R=rate, evaluated on 'direction'.
     Let D = D_rate (since t is constant, we don't care about D_t).
@@ -154,9 +156,9 @@ fn d_rate_log_transition_jvp(
 }
 
 fn d_rate_log_transition_vjp(
-    forward: &LogTransitionForwardData<{ Entry::DIM }>,
+    forward: &LogTransitionForwardData<DIM>,
     distance: Float,
-    cotangent_vector: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
+    cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
 ) -> RateType {
     /* log_tr*|y (w) = mul*|rx @ exp*|exp(rx) @ map_ln*|y @ w
      */
@@ -172,17 +174,17 @@ fn d_rate_log_transition_vjp(
 /* TODO! rewrite */
 /* TODO extract iterator, use it to compute d_broadcast (d_lse) */
 fn child_input_forward_data(
-    log_p: &[Float; Entry::DIM],
+    log_p: &[Float; DIM],
     /* TODO get by value */
-    log_transition: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-) -> na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> {
-    let iter = (0..Entry::DIM).map(|a| {
-        let mut col_a: na::SVector<Float, { Entry::DIM }> = log_transition.column(a).into();
-        (0..{ Entry::DIM }).for_each(|b| (col_a[b] += log_p[b]));
+    log_transition: na::SMatrixView<Float, DIM, DIM>,
+) -> na::SMatrix<Float, DIM, DIM> {
+    let iter = (0..DIM).map(|a| {
+        let mut col_a: na::SVector<Float, DIM> = log_transition.column(a).into();
+        (0..DIM).for_each(|b| (col_a[b] += log_p[b]));
         na::SVector::from(softmax_na(col_a.as_view()))
     });
 
-    let mut result = na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::zeros();
+    let mut result = na::SMatrix::<Float, DIM, DIM>::zeros();
     for (a, column) in iter.enumerate() {
         result.column_mut(a).copy_from(&column);
     }
@@ -199,26 +201,22 @@ fn d_broadcast_vjp<const DIM: usize>(
 
 fn d_child_input_vjp(
     id: Id,
-    forward: &ForwardData<{ Entry::DIM }>,
+    forward: &ForwardData<DIM>,
     //backward: &BackwardData<DIM>,
-    cotangent_vector: [Float; Entry::DIM],
+    cotangent_vector: [Float; DIM],
     distance: &[Float],
-    log_p: &[Float; Entry::DIM],
-    log_transition: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-) -> (
-    na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>,
-    na::SVector<Float, { Entry::DIM }>,
-) {
+    log_p: &[Float; DIM],
+    log_transition: na::SMatrixView<Float, DIM, DIM>,
+) -> (na::SMatrix<Float, DIM, DIM>, na::SVector<Float, DIM>) {
     let forward_1 = child_input_forward_data(log_p, log_transition);
     /* TODO! check if this is correct (especially the use of x_column) */
-    let reverse_1_iterator = (0..Entry::DIM)
+    let reverse_1_iterator = (0..DIM)
         .map(|i| {
             let x_column = forward_1.column(i);
-            (0..Entry::DIM).map(move |k| &cotangent_vector[i] * x_column[k])
+            (0..DIM).map(move |k| &cotangent_vector[i] * x_column[k])
         })
         .flatten();
-    let d_log_transition_result =
-        na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_iterator(reverse_1_iterator);
+    let d_log_transition_result = na::SMatrix::<Float, DIM, DIM>::from_iterator(reverse_1_iterator);
 
     let d_rate_result = d_rate_log_transition_vjp(
         &forward.log_transition[id],
