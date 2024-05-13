@@ -117,31 +117,6 @@ fn forward_column<'a>(
     log_p[num_leaves - 1] = Some(log_p_root);
 }
 
-fn test_d_exp() {
-    let argument = rate_matrix_example() + RateType::identity();
-    let cotangent_vector =
-        na::SMatrix::<_, { Entry::DIM }, { Entry::DIM }>::from_element(1.0 as Float);
-    let dexp = d_exp_vjp(argument.as_view(), cotangent_vector.as_view());
-
-    println!("d_exp_vjp:");
-    let mut tmp_row: na::SVector<Float, { Entry::DIM }>;
-    for row in dexp.row_iter() {
-        tmp_row = row.transpose().to_owned();
-        println!("{:.4}", DisplayArray(tmp_row.as_slice()));
-    }
-
-    let tangent_vector =
-        na::SMatrix::<_, { Entry::DIM }, { Entry::DIM }>::from_element(1.0 as Float);
-    let dexp_jvp = d_exp_jvp(argument.as_view(), tangent_vector.as_view());
-
-    println!("d_exp_jvp:");
-    let mut tmp_row: na::SVector<Float, { Entry::DIM }>;
-    for row in dexp_jvp.row_iter() {
-        tmp_row = row.transpose().to_owned();
-        println!("{:.4}", DisplayArray(tmp_row.as_slice()));
-    }
-}
-
 pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 

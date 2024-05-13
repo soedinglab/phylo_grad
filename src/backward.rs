@@ -67,27 +67,6 @@ pub fn softmax_inplace(x: &mut [Float]) {
     }
 }
 
-/* TODO! stability */
-pub fn d_exp_jvp(
-    direction: na::SMatrixView<Float, DIM, DIM>,
-    argument: na::SMatrixView<Float, DIM, DIM>,
-) -> na::SMatrix<Float, DIM, DIM> {
-    const N: usize = DIM;
-    const TWICE_N: usize = 2 * DIM;
-
-    let mut block_triangular = na::SMatrix::<Float, TWICE_N, TWICE_N>::zeros();
-
-    block_triangular.index_mut((..N, ..N)).copy_from(&argument);
-    block_triangular.index_mut((N.., N..)).copy_from(&argument);
-    block_triangular.index_mut((..N, N..)).copy_from(&direction);
-
-    let exp_combined = block_triangular.exp();
-
-    /* TODO accept &mut result and use copy_from? */
-    let dexp: na::SMatrix<Float, N, N> = exp_combined.fixed_view::<N, N>(0, N).clone_owned();
-    dexp
-}
-
 pub fn d_exp_vjp(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     argument: na::SMatrixView<Float, DIM, DIM>,
@@ -116,17 +95,6 @@ pub fn d_exp_vjp(
     dexp
 }
 
-/* VJP same as JVP (this is a diagonal map) */
-fn d_map_ln_jvp<const DIM: usize>(
-    direction: na::SMatrixView<Float, DIM, DIM>,
-    argument: na::SMatrixView<Float, DIM, DIM>,
-) -> na::SMatrix<Float, DIM, DIM> {
-    /* D_map_ln(argument, direction) = map_recip (argument) \odot direction */
-    let mut rec = argument.map(Float::recip);
-    rec.component_mul_assign(&direction);
-    rec
-}
-
 fn d_map_ln_vjp<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     argument: na::SMatrixView<Float, DIM, DIM>,
@@ -136,28 +104,6 @@ fn d_map_ln_vjp<const DIM: usize>(
     let mut rec = argument.map(Float::recip);
     rec.component_mul_assign(&cotangent_vector);
     rec
-}
-
-fn d_rate_log_transition_jvp(
-    direction: na::SMatrixView<Float, DIM, DIM>,
-    distance: Float,
-    forward: &LogTransitionForwardData<DIM>,
-) -> RateType {
-    /* result := D_R(log_transition(R, t)) at R=rate, evaluated on 'direction'.
-    Let D = D_rate (since t is constant, we don't care about D_t).
-    (rate, t, step_2) = forward
-    step_1 = forward.step_1()
-
-    backward_1 = D_mul(argument=(rate, t), direction = direction) = t * direction
-    backward_2 = D_exp(argument = step_1, direction = backward_1)
-    result = D_map_ln(argument = step_2, direction = backward_2) */
-    let forward_1 = forward.step_1;
-    let forward_2 = forward.step_2;
-
-    let backward_1 = direction * distance;
-    let backward_2 = d_exp_jvp(backward_1.as_view(), forward_1.as_view());
-    let result = d_map_ln_jvp(backward_2.as_view(), forward_2.as_view());
-    result
 }
 
 fn d_rate_log_transition_vjp(
