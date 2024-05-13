@@ -182,7 +182,7 @@ fn child_input_forward_data(
         na::SVector::from(softmax_na(col_a.as_view()))
     });
 
-    let mut result: na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }> = log_transition.into();
+    let mut result = na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::zeros();
     for (a, column) in iter.enumerate() {
         result.column_mut(a).copy_from(&column);
     }
@@ -219,13 +219,14 @@ fn d_child_input_vjp(
         .flatten();
     let d_log_transition_result =
         na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_iterator(reverse_1_iterator);
-    let d_log_p_result = d_broadcast_vjp(forward_1.as_view());
 
     let d_rate_result = d_rate_log_transition_vjp(
         &forward.log_transition[id],
         distance[id],
         d_log_transition_result.as_view(),
     );
+
+    let d_log_p_result = d_broadcast_vjp(forward_1.as_view());
 
     (d_rate_result, d_log_p_result)
 }
