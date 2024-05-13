@@ -8,14 +8,14 @@ impl FelsensteinError {
 
 pub struct ForwardData<const DIM: usize> {
     pub log_transition: Vec<LogTransitionForwardData<DIM>>,
-    pub child_input: Vec<ChildInputForwardData<DIM>>,
+    //pub child_input: Vec<ChildInputForwardData<DIM>>,
 }
 
 impl<const DIM: usize> ForwardData<DIM> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             log_transition: Vec::with_capacity(capacity),
-            child_input: Vec::with_capacity(capacity),
+            //child_input: Vec::with_capacity(capacity),
         }
     }
 }
@@ -44,6 +44,7 @@ pub fn forward_data_precompute<const DIM: usize>(
     forward_data: &mut ForwardData<DIM>,
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distances: &[Float],
+    //log_p: &[Option<[Float; DIM]>],
 ) where
     na::Const<DIM>: na::ToTypenum,
     na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
@@ -54,22 +55,54 @@ pub fn forward_data_precompute<const DIM: usize>(
             .iter()
             .map(|dist| log_transition_precompute(rate_matrix, *dist)),
     );
+    /*forward_data.child_input.clear();
+    forward_data.child_input.extend(
+        std::iter::zip(log_p, forward_data.log_transition.iter())
+            .enumerate()
+            .map(|(id, (log_p, log_tr_data))| {
+                let log_tr = log_transition(log_tr_data.step_2.as_view());
+                ChildInputForwardData {
+                    lse_argument: child_input_precompute(log_p, log_tr),
+                }
+            }),
+    );*/
 }
 
 fn log_transition<const DIM: usize>(
-    id: Id,
-    forward_data: &ForwardData<DIM>,
+    step_2: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
-    forward_data.log_transition[id].step_2.map(Float::ln)
+    step_2.map(Float::ln)
 }
 
-pub struct ChildInputForwardData<const DIM: usize> {
+/* pub struct ChildInputForwardData<const DIM: usize> {
     pub lse_argument: na::SMatrix<Float, DIM, DIM>,
+} */
+/* Can also recalculate this */
+pub fn child_input_lse_argument<const DIM: usize>(
+    log_p: &[Float; DIM],
+    log_transition: na::SMatrixView<Float, DIM, DIM>,
+) -> na::SMatrix<Float, DIM, DIM> {
+    let iter = (0..DIM)
+        .map(|a| {
+            let col_a = log_transition.column(a);
+            (0..DIM).map(move |b| (log_p[b] + col_a[b]))
+        })
+        .flatten();
+    let result = na::SMatrix::<_, DIM, DIM>::from_iterator(iter);
+    result
 }
 
-/*fn child_input_precompute<const DIM: usize> {
-
-}*/
+pub fn child_input_from_precomputed<const DIM: usize>(
+    lse_argument: na::SMatrixView<Float, DIM, DIM>,
+) -> [Float; DIM] {
+    let mut col_a;
+    let mut result = [0.0 as Float; DIM];
+    for a in 0..DIM {
+        col_a = lse_argument.column(a);
+        result[a] = col_a.iter().ln_sum_exp();
+    }
+    result
+}
 
 fn child_input<const DIM: usize>(
     child_id: Id, //only used in forward_data
@@ -77,7 +110,7 @@ fn child_input<const DIM: usize>(
     forward_data: &ForwardData<DIM>,
 ) -> [Float; DIM] {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
-    let log_transition = log_transition(child_id, forward_data);
+    let log_transition = log_transition(forward_data.log_transition[child_id].step_2.as_view());
     /* TODO! Make sure indices are not flipped */
     let mut col_a;
     let mut result = [0.0 as Float; DIM];
