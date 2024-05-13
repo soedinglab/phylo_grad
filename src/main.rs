@@ -42,17 +42,20 @@ impl<'a> std::fmt::Display for DisplayArray<'a> {
     }
 }
 
-fn rate_matrix_example() -> RateType {
-    const DIM: usize = Entry::DIM;
-    let rate_matrix_example = -RateType::identity()
+fn rate_matrix_example<const DIM: usize>() -> na::SMatrix<Float, DIM, DIM> {
+    let rate_matrix_example = -na::SMatrix::<Float, DIM, DIM>::identity()
         + (1 as Float / (DIM - 1) as Float)
-            * (RateType::from_element(1.0 as Float) - RateType::identity());
+            * (na::SMatrix::<Float, DIM, DIM>::from_element(1.0 as Float)
+                - na::SMatrix::<Float, DIM, DIM>::identity());
     rate_matrix_example
 }
 
-fn try_residue_sequences_from_strings(
+fn try_residue_sequences_from_strings<Residue>(
     sequences_raw: &[Option<String>],
-) -> Result<na::DMatrix<Residue>, FelsensteinError> {
+) -> Result<na::DMatrix<Residue>, FelsensteinError>
+where
+    Residue: EntryTrait,
+{
     let num_leaves = sequences_raw.partition_point(|x| !x.is_none());
 
     /* TODO remove this line, get the length from the iterator, accept sequences_raw argument as an iterator */
@@ -80,10 +83,13 @@ fn try_residue_sequences_from_strings(
     }
     /* TODO get actual length from iterator, check all lengths are the same */
     let seq_length = sequences_flat.len() / num_leaves;
-    let sequences_2d =
-        na::DMatrix::from_vec_generic(na::Dyn(seq_length), na::Dyn(num_leaves), sequences_flat)
-            .transpose();
-    Ok(sequences_2d)
+    let sequences_2d = na::DMatrix::from_vec_storage(na::VecStorage::new(
+        na::Dyn(seq_length),
+        na::Dyn(num_leaves),
+        sequences_flat,
+    ))
+    .transpose();
+    Ok(sequences_2d.into())
 }
 
 fn forward_column<'a>(
@@ -140,11 +146,11 @@ pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     /* Placeholder values */
-    let log_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
+    let log_p_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
-    let rate_matrix = rate_matrix_example();
+    let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
     let distance_threshold = 1e-9 as Float;
-    const COL_LIMIT: ColumnId = 300;
+    const COL_LIMIT: ColumnId = 1_000_000;
 
     let data_path = if args.len() >= 2 {
         &args[1]
@@ -168,9 +174,27 @@ pub fn main() {
     let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
 
+    /* TODO!! there is an edge case: the height of the whole tree may be smaller than 2.
+    Make sure the loop works correctly in that case. */
+    let id_of_first_height_2_node = num_leaves
+        + tree[num_leaves..].partition_point(|node| {
+            (if let Some(left) = node.left {
+                left < num_leaves
+            } else {
+                true
+            }) && (if let Some(right) = node.right {
+                right < num_leaves
+            } else {
+                true
+            })
+        });
+
     let mut forward_data = ForwardData::<{ Entry::DIM }>::with_capacity(num_nodes);
     /* TODO get rid of Options */
     let mut log_p = Vec::<Option<[Float; Entry::DIM]>>::with_capacity(num_nodes);
+
+    let mut backward_data =
+        Vec::<BackwardData<{ Entry::DIM }>>::with_capacity(num_nodes - num_leaves);
 
     let mut log_likelihood = 0.0 as Float;
     let mut grad_log_prior = [0.0 as Float; Entry::DIM];
@@ -179,6 +203,9 @@ pub fn main() {
     for (column_id, column) in Entry::columns_iter(&residue_sequences_2d).take(COL_LIMIT) {
         /* Right now, this is the same for all columns, but as every column will have its own
         rate matrix, in general we'll have to precompute log_transition for each column */
+
+        backward_data.clear();
+
         forward_data_precompute(&mut forward_data, rate_matrix.as_view(), &distances);
 
         /* TODO get rid of num_nodes and num_leaves */
@@ -195,17 +222,77 @@ pub fn main() {
 
         let mut forward_data_likelihood_lse_arg = [0.0 as Float; Entry::DIM];
         for i in 0..Entry::DIM {
-            forward_data_likelihood_lse_arg[i] = log_p_root[i] + log_prior[i];
+            forward_data_likelihood_lse_arg[i] = log_p_root[i] + log_p_prior[i];
         }
         let log_likelihood_column = forward_data_likelihood_lse_arg.iter().ln_sum_exp();
 
         softmax_inplace(&mut forward_data_likelihood_lse_arg);
         let grad_log_prior_column = forward_data_likelihood_lse_arg;
+        let grad_log_p_root = forward_data_likelihood_lse_arg;
 
         for i in 0..Entry::DIM {
             grad_log_prior[i] += grad_log_prior_column[i];
         }
         log_likelihood += log_likelihood_column;
+        /* Notice that child_input values are always added, so the log_p input for children is always the same.
+        We will therefore store their common grad_log_p in the parent node's BackwardData. */
+        /* TODO!! If the first several operations with the log_p input coincide for the children, optimize them as well. */
+
+        /* root.backward */
+        backward_data.push(BackwardData {
+            grad_log_p: grad_log_p_root,
+            /* TODO remove */
+            grad_rate: na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_element(
+                0.0 as Float,
+            ),
+        });
+        /* node.backward for nodes of height >=2 */
+        for id in (id_of_first_height_2_node..num_nodes - 1).rev() {
+            let parent_id = &tree[id].parent;
+            let parent_backward_id = num_nodes - parent_id - 1;
+            let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
+            let log_p_input = &log_p[id].unwrap();
+            let distance_current = distances[id];
+            let fwd_data_current = &forward_data.log_transition[id];
+            let (grad_rate, grad_log_p) = d_child_input_vjp(
+                grad_log_p_input,
+                distance_current,
+                log_p_input,
+                fwd_data_current,
+                true,
+            );
+            backward_data.push(BackwardData {
+                grad_rate: grad_rate,
+                grad_log_p: grad_log_p.unwrap(),
+            });
+        }
+        /* For nodes of height 2, we only compute grad_rate */
+        for id in (num_leaves..id_of_first_height_2_node).rev() {
+            let parent_id = &tree[id].parent;
+            let parent_backward_id = num_nodes - parent_id - 1;
+            let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
+            let log_p_input = &log_p[id].unwrap();
+            let distance_current = distances[id];
+            let fwd_data_current = &forward_data.log_transition[id];
+            let (grad_rate, _) = d_child_input_vjp(
+                grad_log_p_input,
+                distance_current,
+                log_p_input,
+                fwd_data_current,
+                false,
+            );
+            backward_data.push(BackwardData {
+                grad_rate: grad_rate,
+                grad_log_p: [0.0 as Float; Entry::DIM],
+            });
+        }
+        /* For leaves, we do nothing. */
+
+        let mut grad_rate =
+            na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_element(0.0 as Float);
+        for item in backward_data.iter() {
+            grad_rate += item.grad_rate;
+        }
 
         println!(
             "Log likelihood #{:?} = {:.8}",
@@ -216,6 +303,13 @@ pub fn main() {
             column_id,
             DisplayArray(&grad_log_prior_column)
         );
+
+        println!("Gradient of rate:");
+        let mut tmp_row: na::SVector<Float, { Entry::DIM }>;
+        for row in grad_rate.row_iter() {
+            tmp_row = row.transpose().to_owned();
+            println!("{:8.4}", DisplayArray(tmp_row.as_slice()));
+        }
     }
     println!("Log likelihood = {}", log_likelihood);
     println!(

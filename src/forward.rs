@@ -24,6 +24,11 @@ pub struct LogTransitionForwardData<const DIM: usize> {
     pub step_1: na::SMatrix<Float, DIM, DIM>,
     pub step_2: na::SMatrix<Float, DIM, DIM>,
 }
+impl<const DIM: usize> LogTransitionForwardData<DIM> {
+    pub fn log_transition(&self) -> na::SMatrix<Float, DIM, DIM> {
+        self.step_2.map(Float::ln)
+    }
+}
 
 fn log_transition_precompute<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
@@ -55,7 +60,7 @@ pub fn forward_data_precompute<const DIM: usize>(
             .iter()
             .map(|dist| log_transition_precompute(rate_matrix, *dist)),
     );
-    /*forward_data.child_input.clear();
+    /* forward_data.child_input.clear();
     forward_data.child_input.extend(
         std::iter::zip(log_p, forward_data.log_transition.iter())
             .enumerate()
@@ -65,20 +70,13 @@ pub fn forward_data_precompute<const DIM: usize>(
                     lse_argument: child_input_precompute(log_p, log_tr),
                 }
             }),
-    );*/
-}
-
-fn log_transition<const DIM: usize>(
-    step_2: na::SMatrixView<Float, DIM, DIM>,
-) -> na::SMatrix<Float, DIM, DIM> {
-    step_2.map(Float::ln)
+    ); */
 }
 
 /* pub struct ChildInputForwardData<const DIM: usize> {
     pub lse_argument: na::SMatrix<Float, DIM, DIM>,
 } */
-/* Can also recalculate this */
-pub fn child_input_lse_argument<const DIM: usize>(
+/* pub fn child_input_lse_argument<const DIM: usize>(
     log_p: &[Float; DIM],
     log_transition: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
@@ -102,7 +100,7 @@ pub fn child_input_from_precomputed<const DIM: usize>(
         result[a] = col_a.iter().ln_sum_exp();
     }
     result
-}
+}*/
 
 fn child_input<const DIM: usize>(
     child_id: Id, //only used in forward_data
@@ -110,7 +108,7 @@ fn child_input<const DIM: usize>(
     forward_data: &ForwardData<DIM>,
 ) -> [Float; DIM] {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
-    let log_transition = log_transition(forward_data.log_transition[child_id].step_2.as_view());
+    let log_transition = &forward_data.log_transition[child_id].log_transition();
     /* TODO! Make sure indices are not flipped */
     let mut col_a;
     let mut result = [0.0 as Float; DIM];

@@ -3,7 +3,10 @@ use std::convert::TryFrom;
 use crate::itertools::Itertools;
 use crate::num_enum::{IntoPrimitive, TryFromPrimitive};
 
-pub trait EntryTrait: Sized + Copy + Clone + PartialEq {
+//pub trait Exponentiable
+//pub trait Doubleable
+
+pub trait EntryTrait: Sized + Copy + na::Scalar {
     const TOTAL: usize;
     const DIM: usize;
     const CHARS: usize;
@@ -167,12 +170,12 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
 /* TODO! It may be more memory-efficient to generate pairs from the slice itself
 rather than from an iterator over it. Also, when the column pairs are provided
 by the user, we need to be able to use those. */
+/* TODO return sequence_length and a flat iterator */
 fn pair_columns_iter(
     //residue_sequences_2d: na::DMatrixView<Residue>,
     /* Avoiding the MatrixView questions for now */
     residue_sequences_2d: &na::DMatrix<Residue>,
 ) -> impl Iterator<Item = ((usize, usize), na::DVector<ResiduePair<Residue>>)> + '_ {
-    /* TODO return impl Iterator<Item = impl Iterator<Entry> + 'a> + 'a */
     let (num_leaves, _) = residue_sequences_2d.shape();
     residue_sequences_2d
         .column_iter()
