@@ -9,7 +9,7 @@ extern crate num_enum;
 extern crate serde;
 /* TODO pyo3 */
 
-use itertools::process_results;
+use itertools::{process_results, Itertools};
 use logsumexp::LogSumExp;
 use std::fmt::Formatter;
 
@@ -93,7 +93,7 @@ where
 }
 
 fn forward_column<'a>(
-    column: impl Iterator<Item = &'a Entry>,
+    column: impl Iterator<Item = Entry>,
     tree: &[TreeNode],
     //distances: &[Float],
     log_p: &mut Vec<Option<[Float; Entry::DIM]>>,
@@ -104,7 +104,7 @@ fn forward_column<'a>(
     but increases peak memory usage; investigate */
     let num_nodes = tree.len();
     log_p.clear();
-    log_p.extend(column.map(|x| Some(Entry::to_log_p(x))));
+    log_p.extend(column.map(|x| Some(Entry::to_log_p(&x))));
     let num_leaves = log_p.len();
     log_p.resize(num_nodes, None);
 
@@ -157,21 +157,23 @@ pub fn main() {
     } else {
         "data/tree_topological.csv"
     };
+    let (tree, distances, residue_sequences_2d) = {
+        let mut record_reader = read_preprocessed_csv(data_path).unwrap();
 
-    let mut record_reader = read_preprocessed_csv(data_path).unwrap();
+        let tree;
+        let mut distances;
+        let sequences_raw;
+        (tree, distances, sequences_raw) = deserialize_tree(&mut record_reader).unwrap();
 
-    let tree;
-    let mut distances;
-    let sequences_raw;
-    (tree, distances, sequences_raw) = deserialize_tree(&mut record_reader).unwrap();
+        distances
+            .iter_mut()
+            .for_each(|d| *d = distance_threshold.max(*d));
 
-    distances
-        .iter_mut()
-        .for_each(|d| *d = distance_threshold.max(*d));
+        let residue_sequences_2d = try_residue_sequences_from_strings(&sequences_raw).unwrap();
+        (tree, distances, residue_sequences_2d)
+    };
 
-    let residue_sequences_2d = try_residue_sequences_from_strings(&sequences_raw).unwrap();
-
-    let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
+    let (num_leaves, residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
 
     /* TODO!! there is an edge case: the height of the whole tree may be smaller than 2.
@@ -194,29 +196,31 @@ pub fn main() {
     let mut log_p = Vec::<Option<[Float; Entry::DIM]>>::with_capacity(num_nodes);
 
     let mut backward_data =
-        Vec::<BackwardData<{ Entry::DIM }>>::with_capacity(num_nodes - num_leaves);
+        Vec::<BackwardData<{ Entry::DIM }>>::with_capacity(num_nodes - id_of_first_height_2_node);
 
     let mut log_likelihood = 0.0 as Float;
     let mut grad_log_prior = [0.0 as Float; Entry::DIM];
 
-    // for (column_id, column) in sequences_2d.column_iter().enumerate() {
-    for (column_id, column) in Entry::columns_iter(&residue_sequences_2d).take(COL_LIMIT) {
+    //for (column_id, column) in Entry::columns_iter(&residue_sequences_2d).take(COL_LIMIT) {
+    for column_id in (0..residue_seq_length)
+        .tuple_combinations::<(_, _)>()
+        .take(COL_LIMIT)
+    {
+        let (left_id, right_id) = column_id;
+        let left_half = residue_sequences_2d.column(left_id);
+        let right_half = residue_sequences_2d.column(right_id);
+        let column_iter = std::iter::zip(left_half.iter(), right_half.iter()).map(
+            |(left_residue, right_residue)| ResiduePair::<Residue> {
+                0: *left_residue,
+                1: *right_residue,
+            },
+        );
+
         /* Right now, this is the same for all columns, but as every column will have its own
         rate matrix, in general we'll have to precompute log_transition for each column */
-
-        backward_data.clear();
-
         forward_data_precompute(&mut forward_data, rate_matrix.as_view(), &distances);
 
-        /* TODO get rid of num_nodes and num_leaves */
-        forward_column(
-            column.iter(),
-            &tree,
-            //&distances,
-            &mut log_p,
-            &forward_data,
-            //rate_matrix.as_view(),
-        );
+        forward_column(column_iter, &tree, &mut log_p, &forward_data);
 
         let log_p_root = &log_p[num_leaves - 1].unwrap();
 
@@ -236,17 +240,12 @@ pub fn main() {
         log_likelihood += log_likelihood_column;
         /* Notice that child_input values are always added, so the log_p input for children is always the same.
         We will therefore store their common grad_log_p in the parent node's BackwardData. */
-        /* TODO!! If the first several operations with the log_p input coincide for the children, optimize them as well. */
-        /* TODO: gradients of rate are stored for debugging, eventually we are just going to accumulate them.
-        It is also possible to free grad_log_p's for the previous tree level. */
-
+        /* TODO: it is possible to free grad_log_p's for the previous tree level. */
+        let mut grad_rate_column =
+            na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_element(0.0 as Float);
         /* root.backward */
         backward_data.push(BackwardData {
             grad_log_p: grad_log_p_root,
-            /* TODO remove */
-            grad_rate: na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_element(
-                0.0 as Float,
-            ),
         });
         /* node.backward for nodes of height >=2 */
         for id in (id_of_first_height_2_node..num_nodes - 1).rev() {
@@ -263,8 +262,9 @@ pub fn main() {
                 fwd_data_current,
                 true,
             );
+            grad_rate_column += grad_rate;
             backward_data.push(BackwardData {
-                grad_rate: grad_rate,
+                //grad_rate: grad_rate,
                 grad_log_p: grad_log_p.unwrap(),
             });
         }
@@ -283,18 +283,10 @@ pub fn main() {
                 fwd_data_current,
                 false,
             );
-            backward_data.push(BackwardData {
-                grad_rate: grad_rate,
-                grad_log_p: [0.0 as Float; Entry::DIM],
-            });
+            grad_rate_column += grad_rate;
         }
+        backward_data.clear();
         /* For leaves, we do nothing. */
-
-        let mut grad_rate =
-            na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_element(0.0 as Float);
-        for item in backward_data.iter() {
-            grad_rate += item.grad_rate;
-        }
 
         println!(
             "Log likelihood #{:?} = {:.8}",
@@ -308,7 +300,7 @@ pub fn main() {
 
         println!("Gradient of rate:");
         let mut tmp_row: na::SVector<Float, { Entry::DIM }>;
-        for row in grad_rate.row_iter() {
+        for row in grad_rate_column.row_iter() {
             tmp_row = row.transpose().to_owned();
             println!("{:8.4}", DisplayArray(tmp_row.as_slice()));
         }

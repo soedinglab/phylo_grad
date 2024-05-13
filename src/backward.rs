@@ -6,7 +6,7 @@ const DIM: Id = Entry::DIM;
 pub struct BackwardData<const DIM: usize> {
     pub grad_log_p: [Float; DIM],
     /* TODO remove: we probably don't need to store grad_rates */
-    pub grad_rate: na::SMatrix<Float, DIM, DIM>,
+    //pub grad_rate: na::SMatrix<Float, DIM, DIM>,
 }
 
 pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
