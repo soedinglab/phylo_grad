@@ -237,6 +237,8 @@ pub fn main() {
         /* Notice that child_input values are always added, so the log_p input for children is always the same.
         We will therefore store their common grad_log_p in the parent node's BackwardData. */
         /* TODO!! If the first several operations with the log_p input coincide for the children, optimize them as well. */
+        /* TODO: gradients of rate are stored for debugging, eventually we are just going to accumulate them.
+        It is also possible to free grad_log_p's for the previous tree level. */
 
         /* root.backward */
         backward_data.push(BackwardData {
