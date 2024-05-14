@@ -34,10 +34,7 @@ fn log_transition_precompute_symmetric<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     rate_symmetric_eigen: na::SymmetricEigen<Float, na::Const<DIM>>,
     distance: Float,
-) -> LogTransitionForwardData<DIM>
-where
-    na::Const<DIM>: Exponentiable,
-{
+) -> LogTransitionForwardData<DIM> {
     let step_1 = rate_matrix * distance;
     let new_eigenvalues = (rate_symmetric_eigen.eigenvalues * distance).map(Float::exp);
     let step_2 = na::SymmetricEigen {
@@ -68,7 +65,7 @@ pub fn forward_data_precompute<const DIM: usize>(
     distances: &[Float],
     //log_p: &[Option<[Float; DIM]>],
 ) where
-    na::Const<DIM>: Exponentiable + Decrementable,
+    na::Const<DIM>: Decrementable,
     na::DefaultAllocator:
         na::allocator::Allocator<f64, <na::Const<DIM> as na::DimSub<na::Const<1>>>::Output>,
 {

@@ -9,12 +9,12 @@ impl<T: na::ToTypenum + na::DimMin<Self, Output = Self>> Exponentiable for T {}
 /* This does not work (and shouldn't) */
 pub trait Decrementable
 where
-    Self: na::DimSub<na::Const<1>>,
+    Self: na::ToTypenum + na::DimSub<na::Const<1>>,
 {
 }
 
 impl<T> Decrementable for T where
-    T: na::DimSub<na::Const<1>> //    na::DefaultAllocator: na::allocator::Allocator<f64, <T as na::DimSub<na::Const<1>>>::Output>,
+    T: na::ToTypenum + na::DimSub<na::Const<1>> //    na::DefaultAllocator: na::allocator::Allocator<f64, <T as na::DimSub<na::Const<1>>>::Output>,
 {
 }
 //pub trait Doubleable
