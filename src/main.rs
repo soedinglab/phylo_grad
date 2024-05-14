@@ -275,7 +275,7 @@ pub fn main() {
             DisplayArray(&grad_log_prior_column)
         );
 
-        println!("Gradient of rate:");
+        println!("Gradient of rate #{:?}:", column_id);
         let mut tmp_row: na::SVector<Float, { Entry::DIM }>;
         for row in grad_rate_column.row_iter() {
             tmp_row = row.transpose().to_owned();

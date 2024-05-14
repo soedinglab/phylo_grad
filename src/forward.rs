@@ -30,20 +30,37 @@ impl<const DIM: usize> LogTransitionForwardData<DIM> {
     }
 }
 
-fn log_transition_precompute<const DIM: usize>(
+fn log_transition_precompute_symmetric<const DIM: usize>(
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    rate_symmetric_eigen: na::SymmetricEigen<Float, na::Const<DIM>>,
+    distance: Float,
+) -> LogTransitionForwardData<DIM>
+where
+    na::Const<DIM>: Exponentiable,
+{
+    let step_1 = rate_matrix * distance;
+    let new_eigenvalues = (rate_symmetric_eigen.eigenvalues * distance).map(Float::exp);
+    let step_2 = na::SymmetricEigen {
+        eigenvectors: rate_symmetric_eigen.eigenvectors,
+        eigenvalues: new_eigenvalues,
+    }
+    .recompose();
+    LogTransitionForwardData { step_1, step_2 }
+}
+
+/* fn log_transition_precompute<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distance: Float,
 ) -> LogTransitionForwardData<DIM>
 where
-    na::Const<DIM>: na::ToTypenum,
-    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
+    na::Const<DIM>: Exponentiable,
 {
     let step_1 = rate_matrix * distance;
     let step_2 = step_1.exp();
     //let result = step_2.map(Float::ln);
 
     LogTransitionForwardData { step_1, step_2 }
-}
+} */
 
 pub fn forward_data_precompute<const DIM: usize>(
     forward_data: &mut ForwardData<DIM>,
@@ -51,14 +68,17 @@ pub fn forward_data_precompute<const DIM: usize>(
     distances: &[Float],
     //log_p: &[Option<[Float; DIM]>],
 ) where
-    na::Const<DIM>: na::ToTypenum,
-    na::Const<DIM>: na::DimMin<na::Const<DIM>, Output = na::Const<DIM>>,
+    na::Const<DIM>: Exponentiable + Decrementable,
+    na::DefaultAllocator:
+        na::allocator::Allocator<f64, <na::Const<DIM> as na::DimSub<na::Const<1>>>::Output>,
 {
     forward_data.log_transition.clear();
+    /* What does try_symmetric_eigen() do? */
+    let rate_symmetric_eigen = rate_matrix.symmetric_eigen();
     forward_data.log_transition.extend(
-        distances
-            .iter()
-            .map(|dist| log_transition_precompute(rate_matrix, *dist)),
+        distances.iter().map(|dist| {
+            log_transition_precompute_symmetric(rate_matrix, rate_symmetric_eigen, *dist)
+        }),
     );
     /* forward_data.child_input.clear();
     forward_data.child_input.extend(
