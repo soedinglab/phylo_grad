@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
-use crate::itertools::Itertools;
-use crate::num_enum::{IntoPrimitive, TryFromPrimitive};
+use itertools::Itertools;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub trait Exponentiable: na::ToTypenum + na::DimMin<Self, Output = Self> {}
 impl<T: na::ToTypenum + na::DimMin<Self, Output = Self>> Exponentiable for T {}
@@ -14,7 +14,7 @@ where
 }
 
 impl<T> Decrementable for T where
-    T: na::ToTypenum + na::DimSub<na::Const<1>> //    na::DefaultAllocator: na::allocator::Allocator<f64, <T as na::DimSub<na::Const<1>>>::Output>,
+    T: na::ToTypenum + na::DimSub<na::Const<1>> //    na::DefaultAllocator: na::allocator::Allocator<Float, <T as na::DimSub<na::Const<1>>>::Output>,
 {
 }
 //pub trait Doubleable

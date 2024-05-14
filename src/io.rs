@@ -6,8 +6,8 @@ use std::io::BufReader;
 use std::path::Path;
 
 use crate::data_types::*;
-use crate::itertools::{multiunzip, process_results};
 use crate::tree::TreeNode;
+use ::itertools::{multiunzip, process_results};
 use serde::Deserialize;
 
 /* TODO:
