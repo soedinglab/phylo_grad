@@ -29,8 +29,13 @@ impl FelsensteinError {
     pub const ORDER: Self = Self::DeserializationError("The tree is not topoligically ordered");
 }
 
-struct DisplayArray<'a>(&'a [Float]);
-impl<'a> std::fmt::Display for DisplayArray<'a> {
+struct DisplayArray<'a, T>(&'a [T])
+where
+    T: std::fmt::Display;
+impl<'a, T> std::fmt::Display for DisplayArray<'a, T>
+where
+    T: std::fmt::Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "[")?;
         self.0[0].fmt(f)?;
@@ -89,10 +94,10 @@ where
         sequences_flat,
     ))
     .transpose();
-    Ok(sequences_2d.into())
+    Ok(sequences_2d)
 }
 
-fn forward_column<'a>(
+fn forward_column(
     column: impl Iterator<Item = Entry>,
     tree: &[TreeNode],
     //distances: &[Float],
@@ -185,10 +190,7 @@ pub fn main() {
         let left_half = residue_sequences_2d.column(left_id);
         let right_half = residue_sequences_2d.column(right_id);
         let column_iter = std::iter::zip(left_half.iter(), right_half.iter()).map(
-            |(left_residue, right_residue)| ResiduePair::<Residue> {
-                0: *left_residue,
-                1: *right_residue,
-            },
+            |(left_residue, right_residue)| ResiduePair::<Residue>(*left_residue, *right_residue),
         );
 
         /* Right now, this is the same for all columns, but as every column will have its own

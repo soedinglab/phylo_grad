@@ -171,12 +171,10 @@ pub fn d_child_input_vjp(
         None
     };
     /* TODO! check if this is correct (especially the use of x_column) */
-    let reverse_1_iterator = (0..DIM)
-        .map(|i| {
-            let x_column = forward_1.column(i);
-            (0..DIM).map(move |k| &cotangent_vector[i] * x_column[k])
-        })
-        .flatten();
+    let reverse_1_iterator = (0..DIM).flat_map(|i| {
+        let x_column = forward_1.column(i);
+        (0..DIM).map(move |k| cotangent_vector[i] * x_column[k])
+    });
     let d_log_transition_result = na::SMatrix::<Float, DIM, DIM>::from_iterator(reverse_1_iterator);
 
     let grad_rate = d_rate_log_transition_vjp(d_log_transition_result.as_view(), distance, forward);
