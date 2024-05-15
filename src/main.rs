@@ -3,6 +3,7 @@ extern crate nalgebra as na;
 /* TODO pyo3 */
 
 use itertools::{process_results, Itertools};
+use logsumexp::LogSumExp;
 use rayon::prelude::*;
 
 use std::fmt::Formatter;
@@ -123,8 +124,8 @@ pub fn main() {
     let log_p_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
-    let distance_threshold = 1e-9 as Float;
-    const COL_LIMIT: ColumnId = 1_000_000;
+    let distance_threshold = 1e-4 as Float;
+    const COL_LIMIT: ColumnId = 3;
 
     let data_path = if args.len() >= 2 {
         &args[1]
@@ -170,12 +171,16 @@ pub fn main() {
         .tuple_combinations::<(_, _)>()
         .take(COL_LIMIT)
         .collect();
-    let result: Vec<(
-        (usize, usize),
-        na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>,
-        [Float; Entry::DIM],
-    )> = index_pairs
-        .into_par_iter()
+
+    let log_likelihood_total: Vec<Float>;
+    let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
+    let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
+
+    (
+        log_likelihood_total,
+        (grad_rate_total, grad_log_prior_total),
+    ) = index_pairs
+        .par_iter()
         .map(|column_id| {
             /* State storage */
             let mut forward_data = ForwardData::<{ Entry::DIM }>::with_capacity(num_nodes);
@@ -188,7 +193,7 @@ pub fn main() {
 
             /* State storage end */
 
-            let (left_id, right_id) = column_id;
+            let (left_id, right_id) = *column_id;
             let left_half = residue_sequences_2d.column(left_id);
             let right_half = residue_sequences_2d.column(right_id);
             let column_iter = std::iter::zip(left_half.iter(), right_half.iter()).map(
@@ -209,7 +214,7 @@ pub fn main() {
             for i in 0..Entry::DIM {
                 forward_data_likelihood_lse_arg[i] = log_p_root[i] + log_p_prior[i];
             }
-            //let log_likelihood_column = forward_data_likelihood_lse_arg.iter().ln_sum_exp();
+            let log_likelihood_column = forward_data_likelihood_lse_arg.iter().ln_sum_exp();
 
             softmax_inplace(&mut forward_data_likelihood_lse_arg);
             let grad_log_prior_column = forward_data_likelihood_lse_arg;
@@ -264,21 +269,36 @@ pub fn main() {
             }
             backward_data.clear();
             /* For leaves, we do nothing. */
-            (column_id, grad_rate_column, grad_log_prior_column)
+            (
+                log_likelihood_column,
+                (grad_rate_column, grad_log_prior_column),
+            )
         })
-        .collect();
-    for (column_id, grad_rate_column, grad_log_prior_column) in result {
+        .unzip();
+    for (column_id, log_likelihood_column) in
+        std::iter::zip(index_pairs.iter(), log_likelihood_total.iter())
+    {
         println!(
-            "Gradient of log_prior #{:?} = {:.0}",
-            column_id,
-            DisplayArray(&grad_log_prior_column)
+            "Log likelihood #{:?} = {:.8}",
+            column_id, log_likelihood_column
         );
-
+    }
+    for (column_id, grad_log_prior_column) in
+        std::iter::zip(index_pairs.iter(), grad_log_prior_total.iter())
+    {
+        println!(
+            "Gradient of log_prior #{:?} = {:.8}",
+            column_id,
+            DisplayArray(grad_log_prior_column)
+        );
+    }
+    for (column_id, grad_rate_column) in std::iter::zip(index_pairs.iter(), grad_rate_total.iter())
+    {
         println!("Gradient of rate #{:?}:", column_id);
         let mut tmp_row: na::SVector<Float, { Entry::DIM }>;
         for row in grad_rate_column.row_iter() {
             tmp_row = row.transpose().to_owned();
-            println!("{:8.4}", DisplayArray(tmp_row.as_slice()));
+            println!("{:12.8}", DisplayArray(tmp_row.as_slice()));
         }
     }
 }
