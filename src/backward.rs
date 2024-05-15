@@ -1,7 +1,7 @@
 use crate::data_types::*;
 use crate::forward::*;
 
-const DIM: Id = Entry::DIM;
+use na::{Const, DefaultAllocator};
 
 pub struct BackwardData<const DIM: usize> {
     pub grad_log_p: [Float; DIM],
@@ -30,22 +30,17 @@ pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
 }
 
 fn softmax_na<const N: usize>(x: na::SVectorView<Float, N>) -> na::SVector<Float, N> {
-    let mut result: na::SVector<Float, N> = x.into();
+    let mut result: na::SVector<Float, N>;
     let x_max = *x
         .iter()
         .max_by(|a, b| a.total_cmp(b))
         .expect("Iterator cannot be empty");
 
-    for i in 0..N {
-        result[i] = x[i] - x_max;
-    }
-    for i in 0..N {
-        result[i] = result[i].exp();
-    }
-    let scale = result.iter().sum::<Float>().recip();
-    for i in 0..N {
-        result[i] *= scale;
-    }
+    result = x.add_scalar(-x_max);
+    result = result.map(Float::exp);
+
+    let scale = result.sum().recip();
+    result *= scale;
     result
 }
 
@@ -67,16 +62,17 @@ pub fn softmax_inplace(x: &mut [Float]) {
     }
 }
 
-pub fn d_exp_vjp(
-    cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
-    argument: na::SMatrixView<Float, DIM, DIM>,
-) -> na::SMatrix<Float, DIM, DIM> {
+pub fn d_exp_vjp<const N: usize>(
+    cotangent_vector: na::SMatrixView<Float, N, N>,
+    argument: na::SMatrixView<Float, N, N>,
+) -> na::SMatrix<Float, N, N>
+where
+    Const<N>: Doubleable,
+    TwoTimesConst<N>: Exponentiable,
+    DefaultAllocator: ViableAllocator<N>,
+{
     /* exp([[X^T, 0], [w, X^T]]) = [[exp(X^T), 0], [w (D_X exp), exp(X^T)]] */
-    const N: usize = DIM;
-    const TWICE_N: usize = 2 * DIM;
-
-    let mut block_triangular = na::SMatrix::<Float, TWICE_N, TWICE_N>::zeros();
-
+    let mut block_triangular = MatrixNNAllocated::<TwoTimesConst<N>>::zeros();
     let argument_transposed = argument.transpose();
     block_triangular
         .index_mut((..N, ..N))
@@ -87,10 +83,8 @@ pub fn d_exp_vjp(
     block_triangular
         .index_mut((N.., ..N))
         .copy_from(&cotangent_vector);
-
     let exp_combined = block_triangular.exp();
 
-    /* TODO accept &mut result and use copy_from? */
     let dexp: na::SMatrix<Float, N, N> = exp_combined.fixed_view::<N, N>(N, 0).clone_owned();
     dexp
 }
@@ -106,11 +100,16 @@ fn d_map_ln_vjp<const DIM: usize>(
     rec
 }
 
-fn d_rate_log_transition_vjp(
+fn d_rate_log_transition_vjp<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     distance: Float,
     forward: &LogTransitionForwardData<DIM>,
-) -> RateType {
+) -> na::SMatrix<Float, DIM, DIM>
+where
+    Const<DIM>: Doubleable,
+    TwoTimesConst<DIM>: Exponentiable,
+    DefaultAllocator: ViableAllocator<DIM>,
+{
     /* log_tr*|y (w) = mul*|rx @ exp*|exp(rx) @ map_ln*|y @ w
      */
     let forward_1 = forward.step_1;
@@ -156,13 +155,18 @@ fn d_broadcast_vjp<const DIM: usize>(
     result
 }
 
-pub fn d_child_input_vjp(
+pub fn d_child_input_vjp<const DIM: usize>(
     cotangent_vector: [Float; DIM],
     distance: Float,
     log_p: &[Float; DIM],
     forward: &LogTransitionForwardData<DIM>,
     compute_grad_log_p: bool,
-) -> (na::SMatrix<Float, DIM, DIM>, Option<[Float; DIM]>) {
+) -> (na::SMatrix<Float, DIM, DIM>, Option<[Float; DIM]>)
+where
+    Const<DIM>: Doubleable,
+    TwoTimesConst<DIM>: Exponentiable,
+    DefaultAllocator: ViableAllocator<DIM>,
+{
     let log_transition = forward.log_transition();
     let forward_1 = child_input_forward_data(log_p, log_transition.as_view());
     let grad_log_p = if compute_grad_log_p {

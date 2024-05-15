@@ -1,23 +1,71 @@
 use std::convert::TryFrom;
 
 use itertools::Itertools;
+use na::{
+    allocator::Allocator, Const, DefaultAllocator, DimAdd, DimMin, DimName, DimSub, ToTypenum,
+};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-pub trait Exponentiable: na::ToTypenum + na::DimMin<Self, Output = Self> {}
-impl<T: na::ToTypenum + na::DimMin<Self, Output = Self>> Exponentiable for T {}
+pub type TwoTimesConst<const N: usize> = TwoTimes<Const<N>>;
+pub type TwoTimes<N> = <N as DimAdd<N>>::Output;
+pub type MatrixNNAllocated<N> =
+    na::Matrix<Float, N, N, <DefaultAllocator as Allocator<Float, N, N>>::Buffer>;
+pub trait Exponentiable: ToTypenum + DimName + DimMin<Self, Output = Self> {}
+impl<T: ToTypenum + DimName + DimMin<Self, Output = Self>> Exponentiable for T {}
 
 /* This does not work (and shouldn't) */
 pub trait Decrementable
 where
-    Self: na::ToTypenum + na::DimSub<na::Const<1>>,
+    Self: ToTypenum + DimName + DimSub<Const<1>>,
 {
 }
 
 impl<T> Decrementable for T where
-    T: na::ToTypenum + na::DimSub<na::Const<1>> //    na::DefaultAllocator: na::allocator::Allocator<Float, <T as na::DimSub<na::Const<1>>>::Output>,
+    T: ToTypenum + DimName + DimSub<Const<1>> //    na::DefaultAllocator: na::allocator::Allocator<Float, <T as na::DimSub<na::Const<1>>>::Output>,
 {
 }
-//pub trait Doubleable
+
+/* Neither does this */
+pub trait Doubleable
+where
+    Self: ToTypenum + DimAdd<Self>,
+{
+}
+impl<T> Doubleable for T where
+    T: ToTypenum + DimAdd<T> //<T as na::DimAdd<T>>::Output: na::DimName,,,,,,,,,,,,,,
+{
+}
+
+pub trait ViableDim
+where
+    Self: ToTypenum + DimName + Doubleable,
+    TwoTimes<Self>: DimName + Exponentiable,
+{
+}
+impl<T> ViableDim for T
+where
+    T: ToTypenum + DimName + Doubleable,
+    TwoTimes<T>: DimName + Exponentiable,
+{
+}
+pub trait ViableAllocator<const N: usize>
+where
+    Self: Allocator<Float, TwoTimesConst<N>, TwoTimesConst<N>>
+        + Allocator<(usize, usize), TwoTimesConst<N>>
+        + Allocator<Float, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
+        + Allocator<Float, TwoTimesConst<N>>,
+    Const<N>: Doubleable,
+{
+}
+impl<T, const N: usize> ViableAllocator<N> for T
+where
+    T: Allocator<Float, TwoTimesConst<N>, TwoTimesConst<N>>
+        + Allocator<(usize, usize), TwoTimesConst<N>>
+        + Allocator<Float, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
+        + Allocator<Float, TwoTimesConst<N>>,
+    Const<N>: Doubleable,
+{
+}
 
 pub trait EntryTrait: Sized + Copy + na::Scalar {
     const TOTAL: usize;
