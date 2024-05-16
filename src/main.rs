@@ -125,7 +125,7 @@ pub fn main() {
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
     let distance_threshold = 1e-4 as Float;
-    const COL_LIMIT: ColumnId = 3;
+    const COL_LIMIT: ColumnId = 1_000_000;
 
     let data_path = if args.len() >= 2 {
         &args[1]
@@ -151,21 +151,6 @@ pub fn main() {
     let (num_leaves, residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
 
-    /* TODO!! there is an edge case: the height of the whole tree may be smaller than 2.
-    Make sure the loop works correctly in that case. */
-    let id_of_first_height_2_node = num_leaves
-        + tree[num_leaves..].partition_point(|node| {
-            (if let Some(left) = node.left {
-                left < num_leaves
-            } else {
-                true
-            }) && (if let Some(right) = node.right {
-                right < num_leaves
-            } else {
-                true
-            })
-        });
-
     //for (column_id, column) in Entry::columns_iter(&residue_sequences_2d).take(COL_LIMIT) {
     let index_pairs: Vec<(_, _)> = (0..residue_seq_length)
         .tuple_combinations::<(_, _)>()
@@ -187,9 +172,8 @@ pub fn main() {
             /* TODO get rid of Options */
             let mut log_p = Vec::<Option<[Float; Entry::DIM]>>::with_capacity(num_nodes);
 
-            let mut backward_data = Vec::<BackwardData<{ Entry::DIM }>>::with_capacity(
-                num_nodes - id_of_first_height_2_node,
-            );
+            let mut backward_data =
+                Vec::<BackwardData<{ Entry::DIM }>>::with_capacity(num_nodes - num_leaves);
 
             /* State storage end */
 
@@ -229,8 +213,8 @@ pub fn main() {
             backward_data.push(BackwardData {
                 grad_log_p: grad_log_p_root,
             });
-            /* node.backward for nodes of height >=2 */
-            for id in (id_of_first_height_2_node..num_nodes - 1).rev() {
+            /* node.backward for non-terminal nodes */
+            for id in (num_leaves..num_nodes - 1).rev() {
                 let parent_id = &tree[id].parent;
                 let parent_backward_id = num_nodes - parent_id - 1;
                 let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
@@ -250,8 +234,8 @@ pub fn main() {
                     grad_log_p: grad_log_p.unwrap(),
                 });
             }
-            /* For nodes of height 2, we only compute grad_rate */
-            for id in (num_leaves..id_of_first_height_2_node).rev() {
+            /* For leaves, we only compute grad_rate */
+            for id in (0..num_leaves).rev() {
                 let parent_id = &tree[id].parent;
                 let parent_backward_id = num_nodes - parent_id - 1;
                 let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
@@ -267,8 +251,11 @@ pub fn main() {
                 );
                 grad_rate_column += grad_rate;
             }
+
             backward_data.clear();
-            /* For leaves, we do nothing. */
+
+            grad_rate_column.transpose_mut();
+
             (
                 log_likelihood_column,
                 (grad_rate_column, grad_log_prior_column),
