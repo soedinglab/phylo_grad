@@ -9,7 +9,7 @@ pub struct BackwardData<const DIM: usize> {
     //pub grad_rate: na::SMatrix<Float, DIM, DIM>,
 }
 
-pub fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
+fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
     let mut result = [0 as Float; N];
     let x_max = *x
         .iter()
@@ -62,7 +62,7 @@ pub fn softmax_inplace(x: &mut [Float]) {
     }
 }
 
-pub fn d_exp_vjp<const N: usize>(
+fn d_exp_vjp<const N: usize>(
     cotangent_vector: na::SMatrixView<Float, N, N>,
     argument: na::SMatrixView<Float, N, N>,
 ) -> na::SMatrix<Float, N, N>
@@ -121,7 +121,7 @@ where
     result
 }
 
-/* TODO! rewrite */
+/* TODO! rewrite: broadcast (let broadcast, broadcast.column_iter.copy_from) and add */
 /* TODO extract iterator, use it to compute d_broadcast (d_lse) */
 fn child_input_forward_data<const DIM: usize>(
     log_p: &[Float; DIM],
@@ -168,20 +168,19 @@ where
     DefaultAllocator: ViableAllocator<DIM>,
 {
     let log_transition = forward.log_transition();
-    let forward_1 = child_input_forward_data(log_p, log_transition.as_view());
+    let mut forward_1 = child_input_forward_data(log_p, log_transition.as_view());
+
+    for (mut col, wt) in std::iter::zip(forward_1.column_iter_mut(), cotangent_vector.into_iter()) {
+        col *= wt;
+    }
+
     let grad_log_p = if compute_grad_log_p {
         Some(d_broadcast_vjp(forward_1.as_view()))
     } else {
         None
     };
-    /* TODO! check if this is correct (especially the use of x_column) */
-    let reverse_1_iterator = (0..DIM).flat_map(|i| {
-        let x_column = forward_1.column(i);
-        (0..DIM).map(move |k| cotangent_vector[i] * x_column[k])
-    });
-    let d_log_transition_result = na::SMatrix::<Float, DIM, DIM>::from_iterator(reverse_1_iterator);
 
-    let grad_rate = d_rate_log_transition_vjp(d_log_transition_result.as_view(), distance, forward);
+    let grad_rate = d_rate_log_transition_vjp(forward_1.as_view(), distance, forward);
 
     (grad_rate, grad_log_p)
 }
