@@ -8,12 +8,11 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub type TwoTimesConst<const N: usize> = TwoTimes<Const<N>>;
 pub type TwoTimes<N> = <N as DimAdd<N>>::Output;
-pub type MatrixNNAllocated<N> =
-    na::Matrix<Float, N, N, <DefaultAllocator as Allocator<Float, N, N>>::Buffer>;
+pub type MatrixNNAllocated<T, N> =
+    na::Matrix<T, N, N, <DefaultAllocator as Allocator<T, N, N>>::Buffer>;
 pub trait Exponentiable: ToTypenum + DimName + DimMin<Self, Output = Self> {}
 impl<T: ToTypenum + DimName + DimMin<Self, Output = Self>> Exponentiable for T {}
 
-/* This does not work (and shouldn't) */
 pub trait Decrementable
 where
     Self: ToTypenum + DimName + DimSub<Const<1>>,
@@ -25,16 +24,12 @@ impl<T> Decrementable for T where
 {
 }
 
-/* Neither does this */
 pub trait Doubleable
 where
     Self: ToTypenum + DimAdd<Self>,
 {
 }
-impl<T> Doubleable for T where
-    T: ToTypenum + DimAdd<T> //<T as na::DimAdd<T>>::Output: na::DimName,,,,,,,,,,,,,,
-{
-}
+impl<T> Doubleable for T where T: ToTypenum + DimAdd<T> {}
 
 pub trait ViableDim
 where
@@ -48,21 +43,36 @@ where
     TwoTimes<T>: DimName + Exponentiable,
 {
 }
-pub trait ViableAllocator<const N: usize>
+
+pub trait DecrementableAllocator<T, const N: usize>
 where
-    Self: Allocator<Float, TwoTimesConst<N>, TwoTimesConst<N>>
-        + Allocator<(usize, usize), TwoTimesConst<N>>
-        + Allocator<Float, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
-        + Allocator<Float, TwoTimesConst<N>>,
+    Self: Allocator<T, <Const<N> as DimSub<Const<1>>>::Output>,
+    Const<N>: Decrementable,
+{
+}
+
+impl<A, T, const N: usize> DecrementableAllocator<T, N> for A
+where
+    A: Allocator<T, <Const<N> as DimSub<Const<1>>>::Output>,
+    Const<N>: Decrementable,
+{
+}
+
+pub trait ViableAllocator<T, const N: usize>
+where
+    Self: Allocator<T, TwoTimesConst<N>, TwoTimesConst<N>>
+        + Allocator<T, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
+        + Allocator<T, TwoTimesConst<N>>
+        + Allocator<(usize, usize), TwoTimesConst<N>>,
     Const<N>: Doubleable,
 {
 }
-impl<T, const N: usize> ViableAllocator<N> for T
+impl<A, T, const N: usize> ViableAllocator<T, N> for A
 where
-    T: Allocator<Float, TwoTimesConst<N>, TwoTimesConst<N>>
+    A: Allocator<T, TwoTimesConst<N>, TwoTimesConst<N>>
         + Allocator<(usize, usize), TwoTimesConst<N>>
-        + Allocator<Float, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
-        + Allocator<Float, TwoTimesConst<N>>,
+        + Allocator<T, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
+        + Allocator<T, TwoTimesConst<N>>,
     Const<N>: Doubleable,
 {
 }

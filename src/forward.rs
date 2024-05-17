@@ -2,6 +2,8 @@ use crate::data_types::*;
 use crate::tree::*;
 use logsumexp::LogSumExp;
 
+use na::{Const, DefaultAllocator};
+
 impl FelsensteinError {
     pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
 }
@@ -65,9 +67,8 @@ pub fn forward_data_precompute<const DIM: usize>(
     distances: &[Float],
     //log_p: &[Option<[Float; DIM]>],
 ) where
-    na::Const<DIM>: Decrementable,
-    na::DefaultAllocator:
-        na::allocator::Allocator<Float, <na::Const<DIM> as na::DimSub<na::Const<1>>>::Output>,
+    Const<DIM>: Decrementable,
+    DefaultAllocator: DecrementableAllocator<Float, DIM>,
 {
     forward_data.log_transition.clear();
     /* What does try_symmetric_eigen() do? */

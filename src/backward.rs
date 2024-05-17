@@ -9,26 +9,6 @@ pub struct BackwardData<const DIM: usize> {
     //pub grad_rate: na::SMatrix<Float, DIM, DIM>,
 }
 
-fn softmax<const N: usize>(x: &[Float; N]) -> [Float; N] {
-    let mut result = [0 as Float; N];
-    let x_max = *x
-        .iter()
-        .max_by(|a, b| a.total_cmp(b))
-        .expect("Iterator cannot be empty");
-
-    for i in 0..N {
-        result[i] = x[i] - x_max;
-    }
-    for i in 0..N {
-        result[i] = result[i].exp();
-    }
-    let scale = result.iter().sum::<Float>().recip();
-    for i in 0..N {
-        result[i] *= scale;
-    }
-    result
-}
-
 fn softmax_na<const N: usize>(x: na::SVectorView<Float, N>) -> na::SVector<Float, N> {
     let mut result: na::SVector<Float, N>;
     let x_max = *x
@@ -69,10 +49,10 @@ fn d_exp_vjp<const N: usize>(
 where
     Const<N>: Doubleable,
     TwoTimesConst<N>: Exponentiable,
-    DefaultAllocator: ViableAllocator<N>,
+    DefaultAllocator: ViableAllocator<Float, N>,
 {
     /* exp([[X^T, 0], [w, X^T]]) = [[exp(X^T), 0], [w (D_X exp), exp(X^T)]] */
-    let mut block_triangular = MatrixNNAllocated::<TwoTimesConst<N>>::zeros();
+    let mut block_triangular = MatrixNNAllocated::<Float, TwoTimesConst<N>>::zeros();
     let argument_transposed = argument.transpose();
     block_triangular
         .index_mut((..N, ..N))
@@ -108,7 +88,7 @@ fn d_rate_log_transition_vjp<const DIM: usize>(
 where
     Const<DIM>: Doubleable,
     TwoTimesConst<DIM>: Exponentiable,
-    DefaultAllocator: ViableAllocator<DIM>,
+    DefaultAllocator: ViableAllocator<Float, DIM>,
 {
     /* log_tr*|y (w) = mul*|rx @ exp*|exp(rx) @ map_ln*|y @ w
      */
@@ -121,26 +101,20 @@ where
     result
 }
 
-/* TODO! rewrite: broadcast (let broadcast, broadcast.column_iter.copy_from) and add */
 /* TODO extract iterator, use it to compute d_broadcast (d_lse) */
 fn child_input_forward_data<const DIM: usize>(
     log_p: &[Float; DIM],
     /* TODO get by value */
     log_transition: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
-    /* This is softmax(log_p[:, -1] + log_transition, dim=0) */
-    let iter = (0..DIM).map(|a| {
-        let mut col_a: na::SVector<Float, DIM> = log_transition.column(a).into();
-        (0..DIM).for_each(|b| (col_a[b] += log_p[b]));
-        na::SVector::from(softmax_na(col_a.as_view()))
-    });
-
-    let mut result = na::SMatrix::<Float, DIM, DIM>::zeros();
-    for (a, column) in iter.enumerate() {
-        result.column_mut(a).copy_from(&column);
+    let mut res = na::SMatrix::<Float, DIM, DIM>::from_iterator(
+        (0..DIM).flat_map(|_| log_p.iter().map(|x| *x)),
+    );
+    res += log_transition;
+    for mut col in res.column_iter_mut() {
+        col.copy_from(&softmax_na(col.as_view()));
     }
-
-    result
+    res
 }
 
 fn d_broadcast_vjp<const DIM: usize>(
@@ -165,7 +139,7 @@ pub fn d_child_input_vjp<const DIM: usize>(
 where
     Const<DIM>: Doubleable,
     TwoTimesConst<DIM>: Exponentiable,
-    DefaultAllocator: ViableAllocator<DIM>,
+    DefaultAllocator: ViableAllocator<Float, DIM>,
 {
     let log_transition = forward.log_transition();
     let mut forward_1 = child_input_forward_data(log_p, log_transition.as_view());

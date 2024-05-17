@@ -92,14 +92,16 @@ where
     Ok(sequences_2d)
 }
 
-fn forward_column(
+fn forward_column<const DIM: usize, Entry>(
     column: impl Iterator<Item = Entry>,
     tree: &[TreeNode],
     //distances: &[Float],
-    log_p: &mut Vec<Option<[Float; Entry::DIM]>>,
-    forward_data: &ForwardData<{ Entry::DIM }>,
+    log_p: &mut Vec<Option<[Float; DIM]>>,
+    forward_data: &ForwardData<DIM>,
     //rate_matrix: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-) {
+) where
+    Entry: EntryTrait<LogPType = [Float; DIM]>,
+{
     /* Compared to collect(), this reduces the # of allocation calls
     but increases peak memory usage; investigate */
     let num_nodes = tree.len();
@@ -125,7 +127,7 @@ pub fn main() {
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
     let distance_threshold = 1e-4 as Float;
-    const COL_LIMIT: ColumnId = 1_000_000;
+    const COL_LIMIT: ColumnId = 3;
 
     let data_path = if args.len() >= 2 {
         &args[1]
