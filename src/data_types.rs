@@ -271,4 +271,3 @@ pub type Entry = ResiduePair<ResidueExtended>;
 pub type Float = f64;
 pub type ColumnId = usize;
 pub type Id = usize;
-pub type RateType = na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>;

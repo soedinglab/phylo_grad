@@ -10,14 +10,12 @@ impl FelsensteinError {
 
 pub struct ForwardData<const DIM: usize> {
     pub log_transition: Vec<LogTransitionForwardData<DIM>>,
-    //pub child_input: Vec<ChildInputForwardData<DIM>>,
 }
 
 impl<const DIM: usize> ForwardData<DIM> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             log_transition: Vec::with_capacity(capacity),
-            //child_input: Vec::with_capacity(capacity),
         }
     }
 }
@@ -47,25 +45,10 @@ fn log_transition_precompute_symmetric<const DIM: usize>(
     LogTransitionForwardData { step_1, step_2 }
 }
 
-/* fn log_transition_precompute<const DIM: usize>(
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    distance: Float,
-) -> LogTransitionForwardData<DIM>
-where
-    na::Const<DIM>: Exponentiable,
-{
-    let step_1 = rate_matrix * distance;
-    let step_2 = step_1.exp();
-    //let result = step_2.map(Float::ln);
-
-    LogTransitionForwardData { step_1, step_2 }
-} */
-
 pub fn forward_data_precompute<const DIM: usize>(
     forward_data: &mut ForwardData<DIM>,
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distances: &[Float],
-    //log_p: &[Option<[Float; DIM]>],
 ) where
     Const<DIM>: Decrementable,
     DefaultAllocator: DecrementableAllocator<Float, DIM>,
@@ -78,47 +61,7 @@ pub fn forward_data_precompute<const DIM: usize>(
             log_transition_precompute_symmetric(rate_matrix, rate_symmetric_eigen, *dist)
         }),
     );
-    /* forward_data.child_input.clear();
-    forward_data.child_input.extend(
-        std::iter::zip(log_p, forward_data.log_transition.iter())
-            .enumerate()
-            .map(|(id, (log_p, log_tr_data))| {
-                let log_tr = log_transition(log_tr_data.step_2.as_view());
-                ChildInputForwardData {
-                    lse_argument: child_input_precompute(log_p, log_tr),
-                }
-            }),
-    ); */
 }
-
-/* pub struct ChildInputForwardData<const DIM: usize> {
-    pub lse_argument: na::SMatrix<Float, DIM, DIM>,
-} */
-/* pub fn child_input_lse_argument<const DIM: usize>(
-    log_p: &[Float; DIM],
-    log_transition: na::SMatrixView<Float, DIM, DIM>,
-) -> na::SMatrix<Float, DIM, DIM> {
-    let iter = (0..DIM)
-        .map(|a| {
-            let col_a = log_transition.column(a);
-            (0..DIM).map(move |b| (log_p[b] + col_a[b]))
-        })
-        .flatten();
-    let result = na::SMatrix::<_, DIM, DIM>::from_iterator(iter);
-    result
-}
-
-pub fn child_input_from_precomputed<const DIM: usize>(
-    lse_argument: na::SMatrixView<Float, DIM, DIM>,
-) -> [Float; DIM] {
-    let mut col_a;
-    let mut result = [0.0 as Float; DIM];
-    for a in 0..DIM {
-        col_a = lse_argument.column(a);
-        result[a] = col_a.iter().ln_sum_exp();
-    }
-    result
-}*/
 
 fn child_input<const DIM: usize>(
     child_id: Id, //only used in forward_data
@@ -143,7 +86,6 @@ pub fn forward_node<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
-    //rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     forward_data: &ForwardData<DIM>,
 ) -> Result<[Float; DIM], FelsensteinError> {
     let node = &tree[id];
@@ -173,7 +115,6 @@ pub fn forward_root<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
     log_p: &[Option<[Float; DIM]>],
-    //rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     forward_data: &ForwardData<DIM>,
 ) -> [Float; DIM] {
     let root = &tree[id];

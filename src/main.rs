@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::needless_range_loop)]
+#![allow(clippy::needless_range_loop)]
 extern crate nalgebra as na;
 /* TODO pyo3 */
 
@@ -95,10 +95,8 @@ where
 fn forward_column<const DIM: usize, Entry>(
     column: impl Iterator<Item = Entry>,
     tree: &[TreeNode],
-    //distances: &[Float],
     log_p: &mut Vec<Option<[Float; DIM]>>,
     forward_data: &ForwardData<DIM>,
-    //rate_matrix: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
 ) where
     Entry: EntryTrait<LogPType = [Float; DIM]>,
 {
@@ -127,7 +125,7 @@ pub fn main() {
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
     let distance_threshold = 1e-4 as Float;
-    const COL_LIMIT: ColumnId = 3;
+    const COL_LIMIT: ColumnId = 1_000_000;
 
     let data_path = if args.len() >= 2 {
         &args[1]
@@ -153,7 +151,6 @@ pub fn main() {
     let (num_leaves, residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
 
-    //for (column_id, column) in Entry::columns_iter(&residue_sequences_2d).take(COL_LIMIT) {
     let index_pairs: Vec<(_, _)> = (0..residue_seq_length)
         .tuple_combinations::<(_, _)>()
         .take(COL_LIMIT)
@@ -232,7 +229,6 @@ pub fn main() {
                 );
                 grad_rate_column += grad_rate;
                 backward_data.push(BackwardData {
-                    //grad_rate: grad_rate,
                     grad_log_p: grad_log_p.unwrap(),
                 });
             }

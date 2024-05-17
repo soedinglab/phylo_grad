@@ -5,8 +5,6 @@ use na::{Const, DefaultAllocator};
 
 pub struct BackwardData<const DIM: usize> {
     pub grad_log_p: [Float; DIM],
-    /* TODO remove: we probably don't need to store grad_rates */
-    //pub grad_rate: na::SMatrix<Float, DIM, DIM>,
 }
 
 fn softmax_na<const N: usize>(x: na::SVectorView<Float, N>) -> na::SVector<Float, N> {
@@ -107,9 +105,8 @@ fn child_input_forward_data<const DIM: usize>(
     /* TODO get by value */
     log_transition: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
-    let mut res = na::SMatrix::<Float, DIM, DIM>::from_iterator(
-        (0..DIM).flat_map(|_| log_p.iter().map(|x| *x)),
-    );
+    let mut res =
+        na::SMatrix::<Float, DIM, DIM>::from_iterator((0..DIM).flat_map(|_| log_p.iter().copied()));
     res += log_transition;
     for mut col in res.column_iter_mut() {
         col.copy_from(&softmax_na(col.as_view()));
@@ -121,7 +118,6 @@ fn d_broadcast_vjp<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
 ) -> [Float; DIM] {
     let mut result_iter = cotangent_vector.row_iter().map(|row| row.iter().sum());
-    //na::SVector::<Float, DIM>::from_iterator(result_iter)
     let mut result = [0.0 as Float; DIM];
     for i in 0..DIM {
         result[i] = result_iter.next().unwrap();
