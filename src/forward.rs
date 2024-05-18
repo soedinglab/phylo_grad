@@ -32,7 +32,7 @@ impl<const DIM: usize> LogTransitionForwardData<DIM> {
 
 fn log_transition_precompute_symmetric<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    rate_symmetric_eigen: na::SymmetricEigen<Float, na::Const<DIM>>,
+    rate_symmetric_eigen: &na::SymmetricEigen<Float, Const<DIM>>,
     distance: Float,
 ) -> LogTransitionForwardData<DIM> {
     let step_1 = rate_matrix * distance;
@@ -56,11 +56,11 @@ pub fn forward_data_precompute<const DIM: usize>(
     forward_data.log_transition.clear();
     /* What does try_symmetric_eigen() do? */
     let rate_symmetric_eigen = rate_matrix.symmetric_eigen();
-    forward_data.log_transition.extend(
-        distances.iter().map(|dist| {
-            log_transition_precompute_symmetric(rate_matrix, rate_symmetric_eigen, *dist)
-        }),
-    );
+    forward_data
+        .log_transition
+        .extend(distances.iter().map(|dist| {
+            log_transition_precompute_symmetric(rate_matrix, &rate_symmetric_eigen, *dist)
+        }));
 }
 
 fn child_input<const DIM: usize>(
@@ -85,7 +85,7 @@ fn child_input<const DIM: usize>(
 pub fn forward_node<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
-    log_p: &[Option<[Float; DIM]>],
+    log_p: &[[Float; DIM]],
     forward_data: &ForwardData<DIM>,
 ) -> Result<[Float; DIM], FelsensteinError> {
     let node = &tree[id];
@@ -93,7 +93,7 @@ pub fn forward_node<const DIM: usize>(
     let mut opt_running_sum: Option<[Float; DIM]> = None;
     for opt_child in [node.left, node.right] {
         if let Some(child) = opt_child {
-            let child_input = child_input(child, &log_p[child].unwrap(), forward_data);
+            let child_input = child_input(child, &log_p[child], forward_data);
             match opt_running_sum {
                 Some(ref mut result) => {
                     for a in 0..DIM {
@@ -114,15 +114,15 @@ pub fn forward_node<const DIM: usize>(
 pub fn forward_root<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
-    log_p: &[Option<[Float; DIM]>],
+    log_p: &[[Float; DIM]],
     forward_data: &ForwardData<DIM>,
 ) -> [Float; DIM] {
     let root = &tree[id];
 
-    let mut result = child_input(root.parent, &log_p[root.parent].unwrap(), forward_data);
+    let mut result = child_input(root.parent, &log_p[root.parent], forward_data);
     for opt_child in [root.left, root.right] {
         if let Some(child) = opt_child {
-            let child_input = child_input(child, &log_p[child].unwrap(), forward_data);
+            let child_input = child_input(child, &log_p[child], forward_data);
             for i in 0..DIM {
                 result[i] += child_input[i];
             }

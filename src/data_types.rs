@@ -1,6 +1,5 @@
 use std::convert::TryFrom;
 
-use itertools::Itertools;
 use na::{
     allocator::Allocator, Const, DefaultAllocator, DimAdd, DimMin, DimName, DimSub, ToTypenum,
 };
@@ -83,7 +82,8 @@ pub trait EntryTrait: Sized + Copy + na::Scalar {
     const CHARS: usize;
     type LogPType;
     fn to_log_p(&self) -> Self::LogPType;
-    //fn try_deserialize_string(input: &str) -> Result<Vec<Self>, FelsensteinError>;
+}
+pub trait ResidueTrait: EntryTrait {
     fn try_deserialize_string_iter(
         input: &str,
     ) -> impl Iterator<Item = Result<Self, FelsensteinError>>;
@@ -189,6 +189,8 @@ impl EntryTrait for ResidueExtended {
         };
         prob.map(Float::ln)
     }
+}
+impl ResidueTrait for ResidueExtended {
     fn try_deserialize_string_iter(
         input: &str,
     ) -> impl Iterator<Item = Result<Self, FelsensteinError>> {
@@ -219,22 +221,6 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
             }
         }
         result
-    }
-
-    /* TODO remove (replaced by pair_columns_iter) */
-    /* TODO! will the external function be able to check the buffer? */
-    fn try_deserialize_string_iter(
-        input: &str,
-    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> {
-        let tuple_iter = input.chars().tuples::<(_, _)>();
-        tuple_iter.map(
-            |(first, second)| -> Result<ResiduePair<ResidueExtended>, FelsensteinError> {
-                Ok(ResiduePair(
-                    ResidueExtended::try_from(first)?,
-                    ResidueExtended::try_from(second)?,
-                ))
-            },
-        )
     }
 }
 

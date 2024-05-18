@@ -54,7 +54,7 @@ fn try_residue_sequences_from_strings<Residue>(
     sequences_raw: &[Option<String>],
 ) -> Result<na::DMatrix<Residue>, FelsensteinError>
 where
-    Residue: EntryTrait,
+    Residue: ResidueTrait,
 {
     let num_leaves = sequences_raw.partition_point(|x| !x.is_none());
 
@@ -95,7 +95,7 @@ where
 fn forward_column<const DIM: usize, Entry>(
     column: impl Iterator<Item = Entry>,
     tree: &[TreeNode],
-    log_p: &mut Vec<Option<[Float; DIM]>>,
+    log_p: &mut Vec<[Float; DIM]>,
     forward_data: &ForwardData<DIM>,
 ) where
     Entry: EntryTrait<LogPType = [Float; DIM]>,
@@ -104,17 +104,16 @@ fn forward_column<const DIM: usize, Entry>(
     but increases peak memory usage; investigate */
     let num_nodes = tree.len();
     log_p.clear();
-    log_p.extend(column.map(|x| Some(Entry::to_log_p(&x))));
+    log_p.extend(column.map(|x| Entry::to_log_p(&x)));
     let num_leaves = log_p.len();
-    log_p.resize(num_nodes, None);
 
     /* TODO remove copy */
     for i in num_leaves..(num_nodes - 1) {
         let log_p_new = forward_node(i, tree, log_p, forward_data).unwrap();
-        log_p[i] = Some(log_p_new);
+        log_p.push(log_p_new);
     }
     let log_p_root = forward_root(num_nodes - 1, tree, log_p, forward_data);
-    log_p[num_leaves - 1] = Some(log_p_root);
+    log_p.push(log_p_root);
 }
 
 pub fn main() {
@@ -168,12 +167,9 @@ pub fn main() {
         .map(|column_id| {
             /* State storage */
             let mut forward_data = ForwardData::<{ Entry::DIM }>::with_capacity(num_nodes);
-            /* TODO get rid of Options */
-            let mut log_p = Vec::<Option<[Float; Entry::DIM]>>::with_capacity(num_nodes);
-
+            let mut log_p = Vec::<[Float; Entry::DIM]>::with_capacity(num_nodes);
             let mut backward_data =
                 Vec::<BackwardData<{ Entry::DIM }>>::with_capacity(num_nodes - num_leaves);
-
             /* State storage end */
 
             let (left_id, right_id) = *column_id;
@@ -191,7 +187,7 @@ pub fn main() {
 
             forward_column(column_iter, &tree, &mut log_p, &forward_data);
 
-            let log_p_root = &log_p[num_leaves - 1].unwrap();
+            let log_p_root: [f64; Entry::DIM] = log_p[num_nodes - 1];
 
             let mut forward_data_likelihood_lse_arg = [0.0 as Float; Entry::DIM];
             for i in 0..Entry::DIM {
@@ -217,7 +213,7 @@ pub fn main() {
                 let parent_id = &tree[id].parent;
                 let parent_backward_id = num_nodes - parent_id - 1;
                 let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
-                let log_p_input = &log_p[id].unwrap();
+                let log_p_input = &log_p[id];
                 let distance_current = distances[id];
                 let fwd_data_current = &forward_data.log_transition[id];
                 let (grad_rate, grad_log_p) = d_child_input_vjp(
@@ -237,7 +233,7 @@ pub fn main() {
                 let parent_id = &tree[id].parent;
                 let parent_backward_id = num_nodes - parent_id - 1;
                 let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
-                let log_p_input = &log_p[id].unwrap();
+                let log_p_input = &log_p[id];
                 let distance_current = distances[id];
                 let fwd_data_current = &forward_data.log_transition[id];
                 let (grad_rate, _) = d_child_input_vjp(
