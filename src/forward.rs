@@ -46,21 +46,24 @@ fn log_transition_precompute_symmetric<const DIM: usize>(
 }
 
 pub fn forward_data_precompute<const DIM: usize>(
-    forward_data: &mut ForwardData<DIM>,
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distances: &[Float],
-) where
+) -> ForwardData<DIM>
+where
     Const<DIM>: Decrementable,
     DefaultAllocator: DecrementableAllocator<Float, DIM>,
 {
-    forward_data.log_transition.clear();
+    let num_nodes = distances.len();
+    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
     /* What does try_symmetric_eigen() do? */
     let rate_symmetric_eigen = rate_matrix.symmetric_eigen();
+
     forward_data
         .log_transition
         .extend(distances.iter().map(|dist| {
             log_transition_precompute_symmetric(rate_matrix, &rate_symmetric_eigen, *dist)
         }));
+    forward_data
 }
 
 fn child_input<const DIM: usize>(

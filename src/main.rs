@@ -94,27 +94,28 @@ where
 }
 
 fn forward_column<const DIM: usize, Entry>(
-    column: impl Iterator<Item = Entry>,
+    column_iter: impl Iterator<Item = Entry>,
     tree: &[TreeNode],
-    log_p: &mut Vec<[Float; DIM]>,
     forward_data: &ForwardData<DIM>,
-) where
+) -> Vec<[Float; DIM]>
+where
     Entry: EntryTrait<LogPType = [Float; DIM]>,
 {
     /* Compared to collect(), this reduces the # of allocation calls
     but increases peak memory usage; investigate */
     let num_nodes = tree.len();
-    log_p.clear();
-    log_p.extend(column.map(|x| Entry::to_log_p(&x)));
+    let mut log_p = Vec::<[Float; DIM]>::with_capacity(num_nodes);
+    log_p.extend(column_iter.map(|x| Entry::to_log_p(&x)));
     let num_leaves = log_p.len();
 
     /* TODO remove copy */
     for i in num_leaves..(num_nodes - 1) {
-        let log_p_new = forward_node(i, tree, log_p, forward_data).unwrap();
+        let log_p_new = forward_node(i, tree, &log_p, forward_data).unwrap();
         log_p.push(log_p_new);
     }
-    let log_p_root = forward_root(num_nodes - 1, tree, log_p, forward_data);
+    let log_p_root = forward_root(num_nodes - 1, tree, &log_p, forward_data);
     log_p.push(log_p_root);
+    log_p
 }
 
 fn process_likelihood<const DIM: usize>(
@@ -203,7 +204,7 @@ pub fn main() {
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
     let distance_threshold = 1e-4 as Float;
-    const COL_LIMIT: ColumnId = 1_000_000;
+    const COL_LIMIT: ColumnId = 3;
 
     let data_path = if args.len() >= 2 {
         &args[1]
@@ -244,11 +245,6 @@ pub fn main() {
     ) = index_pairs
         .par_iter()
         .map(|column_id| {
-            /* State storage */
-            let mut log_p = Vec::<[Float; Entry::DIM]>::with_capacity(num_nodes);
-            let mut forward_data = ForwardData::<{ Entry::DIM }>::with_capacity(num_nodes);
-            /* State storage end */
-
             let (left_id, right_id) = *column_id;
             let left_half = residue_sequences_2d.column(left_id);
             let right_half = residue_sequences_2d.column(right_id);
@@ -260,10 +256,9 @@ pub fn main() {
 
             /* Right now, this is the same for all columns, but as every column will have its own
             rate matrix, in general we'll have to precompute log_transition for each column */
-            forward_data_precompute(&mut forward_data, rate_matrix.as_view(), &distances);
+            let forward_data = forward_data_precompute(rate_matrix.as_view(), &distances);
 
-            forward_column(column_iter, &tree, &mut log_p, &forward_data);
-
+            let log_p = forward_column(column_iter, &tree, &forward_data);
             let log_p_root = log_p[num_nodes - 1];
 
             let (log_likelihood_column, grad_log_p_likelihood): (Float, [Float; Entry::DIM]) =
