@@ -5,7 +5,7 @@ use na::{
 };
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-pub type Residue = ResidueExtended;
+//pub type Residue = ResidueExtended;
 pub type Entry = ResiduePair<ResidueExtended>;
 pub type Float = f64;
 pub type ColumnId = usize;

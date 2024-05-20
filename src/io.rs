@@ -2,68 +2,54 @@
 /* https://docs.rs/csv/latest/csv/cookbook/index.html */
 use std::error::Error;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use crate::data_types::*;
-use crate::tree::TreeNode;
-use ::itertools::{multiunzip, process_results};
 use serde::Deserialize;
 
-/* TODO:
-1. Collect residues into (Vec<Residue>, row_length) instead of Vec<Vec<Residue>>.
-2. Collect residues into ndarray::Array2 or similar.
-3. Collect into Vec<Residue>, consume it via na::SMatrix::from_vector */
-
-/* TODO #[serde(flatten)] */
+/* TODO f64 or Float? */
 #[derive(Debug, Deserialize)]
-struct InputRecord {
-    parent: usize,
-    left: Option<usize>,
-    right: Option<usize>,
-    distance: Option<Float>,
-    sequence: Option<String>,
-}
-/* TODO check is_ascii() */
-type InputTuple = (TreeNode, Float, Option<String>);
-
-impl From<InputRecord> for InputTuple {
-    fn from(input: InputRecord) -> Self {
-        let distance: Float = match input.distance {
-            Some(d) => d,
-            None => Float::NEG_INFINITY,
-        };
-
-        (
-            TreeNode {
-                parent: input.parent,
-                left: input.left,
-                right: input.right,
-            },
-            distance,
-            input.sequence,
-        )
-    }
+pub struct RawInputRecord {
+    #[serde(rename = "0")]
+    pub parent: i64,
+    #[serde(rename = "1")]
+    pub distance: Option<Float>,
+    #[serde(rename = "2")]
+    pub sequence: Option<String>,
 }
 
-pub fn read_preprocessed_csv<P>(filename: P) -> Result<csv::Reader<BufReader<File>>, Box<dyn Error>>
+pub fn read_raw_csv<P>(
+    filename: P,
+    skip_lines: usize,
+) -> Result<csv::Reader<BufReader<File>>, Box<dyn Error>>
 where
     P: AsRef<Path>,
 {
     let file = File::open(filename)?;
-    let bufreader = BufReader::new(file);
+    let mut bufreader = BufReader::new(file);
+
+    /* TODO how to avoid saving useless lines?
+    1. bufreader.lines().nth() */
+    for _ in 0..skip_lines {
+        let mut _line = String::new();
+        bufreader.read_line(&mut _line)?;
+    }
+
     let rdr = csv::ReaderBuilder::new()
-        .has_headers(true)
+        .has_headers(false)
         .from_reader(bufreader);
     Ok(rdr)
 }
 
-pub fn deserialize_tree(
-    reader: &mut csv::Reader<BufReader<File>>,
-) -> Result<(Vec<TreeNode>, Vec<Float>, Vec<Option<String>>), Box<dyn Error>> {
-    let (tree, distances, sequences) =
-        process_results(reader.deserialize::<InputRecord>(), |record| {
-            multiunzip(record.map(InputTuple::from))
-        })?;
-    Ok((tree, distances, sequences))
+/* TODO multiunzip */
+pub fn deserialize_raw_tree<R>(
+    reader: &mut csv::Reader<R>,
+) -> Result<Vec<RawInputRecord>, csv::Error>
+where
+    R: std::io::Read,
+{
+    reader
+        .deserialize::<RawInputRecord>()
+        .collect::<Result<Vec<RawInputRecord>, csv::Error>>()
 }
