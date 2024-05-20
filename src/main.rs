@@ -4,6 +4,7 @@ extern crate nalgebra as na;
 
 use itertools::{process_results, Itertools};
 use logsumexp::LogSumExp;
+use na::{Const, DefaultAllocator};
 use rayon::prelude::*;
 
 use std::fmt::Formatter;
@@ -116,6 +117,84 @@ fn forward_column<const DIM: usize, Entry>(
     log_p.push(log_p_root);
 }
 
+fn process_likelihood<const DIM: usize>(
+    log_p_root: &[Float; DIM],
+    log_p_prior: &[Float; DIM],
+) -> (Float, [Float; DIM]) {
+    let mut forward_data_likelihood_lse_arg = [0.0 as Float; DIM];
+    for i in 0..DIM {
+        forward_data_likelihood_lse_arg[i] = log_p_root[i] + log_p_prior[i];
+    }
+    let log_likelihood_column = forward_data_likelihood_lse_arg.iter().ln_sum_exp();
+
+    softmax_inplace(&mut forward_data_likelihood_lse_arg);
+    let grad_log_p_outgoing = forward_data_likelihood_lse_arg;
+    (log_likelihood_column, grad_log_p_outgoing)
+}
+
+/// Notice that child_input values are always added, so the log_p input for children is always the same.
+/// We will therefore store their common grad_log_p in the parent node's BackwardData.
+fn d_rate_column<const DIM: usize>(
+    grad_log_p_root: &[Float; DIM],
+    tree: &[TreeNode],
+    log_p: &[[Float; DIM]],
+    distances: &[Float],
+    forward_data: &ForwardData<DIM>,
+    num_leaves: usize,
+) -> na::SMatrix<Float, DIM, DIM>
+where
+    Const<DIM>: Doubleable,
+    TwoTimesConst<DIM>: Exponentiable,
+    DefaultAllocator: ViableAllocator<Float, DIM>,
+{
+    /* TODO: it is possible to free grad_log_p's for the previous tree level. */
+    let num_nodes = tree.len();
+    let mut backward_data = Vec::<BackwardData<DIM>>::with_capacity(num_nodes - num_leaves);
+    let mut grad_rate_column = na::SMatrix::<Float, DIM, DIM>::from_element(0.0 as Float);
+    /* root.backward */
+    backward_data.push(BackwardData {
+        grad_log_p: *grad_log_p_root,
+    });
+    /* node.backward for non-terminal nodes */
+    for id in (num_leaves..num_nodes - 1).rev() {
+        let parent_id = &tree[id].parent;
+        let parent_backward_id = num_nodes - parent_id - 1;
+        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
+        let log_p_input = &log_p[id];
+        let distance_current = distances[id];
+        let fwd_data_current = &forward_data.log_transition[id];
+        let (grad_rate, grad_log_p) = d_child_input_vjp(
+            grad_log_p_input,
+            distance_current,
+            log_p_input,
+            fwd_data_current,
+            true,
+        );
+        grad_rate_column += grad_rate;
+        backward_data.push(BackwardData {
+            grad_log_p: grad_log_p.unwrap(),
+        });
+    }
+    /* For leaves, we only compute grad_rate */
+    for id in (0..num_leaves).rev() {
+        let parent_id = &tree[id].parent;
+        let parent_backward_id = num_nodes - parent_id - 1;
+        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
+        let log_p_input = &log_p[id];
+        let distance_current = distances[id];
+        let fwd_data_current = &forward_data.log_transition[id];
+        let (grad_rate, _) = d_child_input_vjp(
+            grad_log_p_input,
+            distance_current,
+            log_p_input,
+            fwd_data_current,
+            false,
+        );
+        grad_rate_column += grad_rate;
+    }
+    grad_rate_column
+}
+
 pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -166,10 +245,8 @@ pub fn main() {
         .par_iter()
         .map(|column_id| {
             /* State storage */
-            let mut forward_data = ForwardData::<{ Entry::DIM }>::with_capacity(num_nodes);
             let mut log_p = Vec::<[Float; Entry::DIM]>::with_capacity(num_nodes);
-            let mut backward_data =
-                Vec::<BackwardData<{ Entry::DIM }>>::with_capacity(num_nodes - num_leaves);
+            let mut forward_data = ForwardData::<{ Entry::DIM }>::with_capacity(num_nodes);
             /* State storage end */
 
             let (left_id, right_id) = *column_id;
@@ -187,67 +264,23 @@ pub fn main() {
 
             forward_column(column_iter, &tree, &mut log_p, &forward_data);
 
-            let log_p_root: [f64; Entry::DIM] = log_p[num_nodes - 1];
+            let log_p_root = log_p[num_nodes - 1];
 
-            let mut forward_data_likelihood_lse_arg = [0.0 as Float; Entry::DIM];
-            for i in 0..Entry::DIM {
-                forward_data_likelihood_lse_arg[i] = log_p_root[i] + log_p_prior[i];
-            }
-            let log_likelihood_column = forward_data_likelihood_lse_arg.iter().ln_sum_exp();
+            let (log_likelihood_column, grad_log_p_likelihood): (Float, [Float; Entry::DIM]) =
+                process_likelihood(&log_p_root, &log_p_prior);
+            let grad_log_prior_column = grad_log_p_likelihood;
+            let grad_log_p_root = grad_log_p_likelihood;
 
-            softmax_inplace(&mut forward_data_likelihood_lse_arg);
-            let grad_log_prior_column = forward_data_likelihood_lse_arg;
-            let grad_log_p_root = forward_data_likelihood_lse_arg;
+            let mut grad_rate_column = d_rate_column(
+                &grad_log_p_root,
+                &tree,
+                &log_p,
+                &distances,
+                &forward_data,
+                num_leaves,
+            );
 
-            /* Notice that child_input values are always added, so the log_p input for children is always the same.
-            We will therefore store their common grad_log_p in the parent node's BackwardData. */
-            /* TODO: it is possible to free grad_log_p's for the previous tree level. */
-            let mut grad_rate_column =
-                na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_element(0.0 as Float);
-            /* root.backward */
-            backward_data.push(BackwardData {
-                grad_log_p: grad_log_p_root,
-            });
-            /* node.backward for non-terminal nodes */
-            for id in (num_leaves..num_nodes - 1).rev() {
-                let parent_id = &tree[id].parent;
-                let parent_backward_id = num_nodes - parent_id - 1;
-                let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
-                let log_p_input = &log_p[id];
-                let distance_current = distances[id];
-                let fwd_data_current = &forward_data.log_transition[id];
-                let (grad_rate, grad_log_p) = d_child_input_vjp(
-                    grad_log_p_input,
-                    distance_current,
-                    log_p_input,
-                    fwd_data_current,
-                    true,
-                );
-                grad_rate_column += grad_rate;
-                backward_data.push(BackwardData {
-                    grad_log_p: grad_log_p.unwrap(),
-                });
-            }
-            /* For leaves, we only compute grad_rate */
-            for id in (0..num_leaves).rev() {
-                let parent_id = &tree[id].parent;
-                let parent_backward_id = num_nodes - parent_id - 1;
-                let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
-                let log_p_input = &log_p[id];
-                let distance_current = distances[id];
-                let fwd_data_current = &forward_data.log_transition[id];
-                let (grad_rate, _) = d_child_input_vjp(
-                    grad_log_p_input,
-                    distance_current,
-                    log_p_input,
-                    fwd_data_current,
-                    false,
-                );
-                grad_rate_column += grad_rate;
-            }
-
-            backward_data.clear();
-
+            /* Gradient is differential transposed */
             grad_rate_column.transpose_mut();
 
             (
