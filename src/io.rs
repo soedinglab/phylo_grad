@@ -11,8 +11,9 @@ use ::itertools::{multiunzip, process_results};
 use serde::Deserialize;
 
 /* TODO:
-1. Collect residues into (Vec<Entry>, row_length) instead of Vec<Vec<Entry>>.
-2. Collect residues into ndarray::Array2 or similar. */
+1. Collect residues into (Vec<Residue>, row_length) instead of Vec<Vec<Residue>>.
+2. Collect residues into ndarray::Array2 or similar.
+3. Collect into Vec<Residue>, consume it via na::SMatrix::from_vector */
 
 /* TODO #[serde(flatten)] */
 #[derive(Debug, Deserialize)]
@@ -30,7 +31,7 @@ impl From<InputRecord> for InputTuple {
     fn from(input: InputRecord) -> Self {
         let distance: Float = match input.distance {
             Some(d) => d,
-            None => -1.0,
+            None => Float::NEG_INFINITY,
         };
 
         (
