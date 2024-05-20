@@ -18,7 +18,7 @@ pub trait EntryTrait: Sized + Copy + na::Scalar {
     type LogPType;
     fn to_log_p(&self) -> Self::LogPType;
 }
-pub trait ResidueTrait: EntryTrait {
+pub trait ResidueTrait: EntryTrait + std::marker::Sync {
     fn try_deserialize_string_iter(
         input: &str,
     ) -> impl Iterator<Item = Result<Self, FelsensteinError>>;

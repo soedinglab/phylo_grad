@@ -133,8 +133,6 @@ fn process_likelihood<const DIM: usize>(
     (log_likelihood_column, grad_log_p_outgoing)
 }
 
-/// Notice that child_input values are always added, so the log_p input for children is always the same.
-/// We will therefore store their common grad_log_p in the parent node's BackwardData.
 fn d_rate_column<const DIM: usize>(
     grad_log_p_root: &[Float; DIM],
     tree: &[TreeNode],
@@ -148,6 +146,8 @@ where
     TwoTimesConst<DIM>: Exponentiable,
     DefaultAllocator: ViableAllocator<Float, DIM>,
 {
+    /* Notice that child_input values are always added, so the log_p input for children is always the same.
+    We will therefore store their common grad_log_p in the parent node's BackwardData. */
     /* TODO: it is possible to free grad_log_p's for the previous tree level. */
     let num_nodes = tree.len();
     let mut backward_data = Vec::<BackwardData<DIM>>::with_capacity(num_nodes - num_leaves);
@@ -196,49 +196,33 @@ where
     grad_rate_column
 }
 
-pub fn main() {
-    let args: Vec<String> = std::env::args().collect();
-
-    /* Placeholder values */
-    let log_p_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
-    /* TODO! Use a non-time-symmetric rate matrix for debugging */
-    let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
-    let distance_threshold = 1e-4 as Float;
-    const COL_LIMIT: ColumnId = 3;
-
-    let data_path = if args.len() >= 2 {
-        &args[1]
-    } else {
-        "data/tree_topological.csv"
-    };
-    let (tree, distances, residue_sequences_2d) = {
-        let mut record_reader = read_preprocessed_csv(data_path).unwrap();
-
-        let tree;
-        let mut distances;
-        let sequences_raw;
-        (tree, distances, sequences_raw) = deserialize_tree(&mut record_reader).unwrap();
-
-        distances
-            .iter_mut()
-            .for_each(|d| *d = distance_threshold.max(*d));
-
-        let residue_sequences_2d = try_residue_sequences_from_strings(&sequences_raw).unwrap();
-        (tree, distances, residue_sequences_2d)
-    };
-
-    let (num_leaves, residue_seq_length) = residue_sequences_2d.shape();
+/* TODO should we let rayon know that index_paris is a vector and not just any slice? */
+/* TODO Id<DIM> */
+fn train_parallel<const DIM: usize, Residue>(
+    index_pairs: &Vec<(usize, usize)>,
+    residue_sequences_2d: na::DMatrixView<Residue>,
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    log_p_prior: &[Float; DIM],
+    tree: &[TreeNode],
+    distances: &[Float],
+) -> (
+    Vec<Float>,
+    Vec<na::SMatrix<Float, DIM, DIM>>,
+    Vec<[Float; DIM]>,
+)
+where
+    Residue: ResidueTrait,
+    ResiduePair<Residue>: EntryTrait<LogPType = [Float; DIM]>,
+    Const<DIM>: Decrementable + Doubleable,
+    TwoTimesConst<DIM>: Exponentiable,
+    DefaultAllocator: ViableAllocator<Float, DIM> + DecrementableAllocator<Float, DIM>,
+{
+    let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
 
-    let index_pairs: Vec<(_, _)> = (0..residue_seq_length)
-        .tuple_combinations::<(_, _)>()
-        .take(COL_LIMIT)
-        .collect();
-
     let log_likelihood_total: Vec<Float>;
-    let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
-    let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
-
+    let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
+    let grad_log_prior_total: Vec<[Float; DIM]>;
     (
         log_likelihood_total,
         (grad_rate_total, grad_log_prior_total),
@@ -261,8 +245,8 @@ pub fn main() {
             let log_p = forward_column(column_iter, &tree, &forward_data);
             let log_p_root = log_p[num_nodes - 1];
 
-            let (log_likelihood_column, grad_log_p_likelihood): (Float, [Float; Entry::DIM]) =
-                process_likelihood(&log_p_root, &log_p_prior);
+            let (log_likelihood_column, grad_log_p_likelihood): (Float, [Float; DIM]) =
+                process_likelihood(&log_p_root, log_p_prior);
             let grad_log_prior_column = grad_log_p_likelihood;
             let grad_log_p_root = grad_log_p_likelihood;
 
@@ -284,6 +268,60 @@ pub fn main() {
             )
         })
         .unzip();
+    (log_likelihood_total, grad_rate_total, grad_log_prior_total)
+}
+
+pub fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    /* Placeholder values */
+    let log_p_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
+    /* TODO! Use a non-time-symmetric rate matrix for debugging */
+    let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
+    let distance_threshold = 1e-4 as Float;
+    const COL_LIMIT: ColumnId = 1_000_000;
+
+    let data_path = if args.len() >= 2 {
+        &args[1]
+    } else {
+        "data/tree_topological.csv"
+    };
+    let (tree, distances, residue_sequences_2d) = {
+        let mut record_reader = read_preprocessed_csv(data_path).unwrap();
+
+        let tree;
+        let mut distances;
+        let sequences_raw;
+        (tree, distances, sequences_raw) = deserialize_tree(&mut record_reader).unwrap();
+
+        distances
+            .iter_mut()
+            .for_each(|d| *d = distance_threshold.max(*d));
+
+        let residue_sequences_2d = try_residue_sequences_from_strings(&sequences_raw).unwrap();
+        (tree, distances, residue_sequences_2d)
+    };
+
+    let (_num_leaves, residue_seq_length) = residue_sequences_2d.shape();
+
+    let index_pairs: Vec<(_, _)> = (0..residue_seq_length)
+        .tuple_combinations::<(_, _)>()
+        .take(COL_LIMIT)
+        .collect();
+
+    let log_likelihood_total: Vec<Float>;
+    let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
+    let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
+
+    (log_likelihood_total, grad_rate_total, grad_log_prior_total) = train_parallel(
+        &index_pairs,
+        residue_sequences_2d.as_view(),
+        rate_matrix.as_view(),
+        &log_p_prior,
+        &tree,
+        &distances,
+    );
+
     for (column_id, log_likelihood_column) in
         std::iter::zip(index_pairs.iter(), log_likelihood_total.iter())
     {
