@@ -100,7 +100,9 @@ pub fn forward_node<const DIM: usize>(
                         result[a] += child_input[a];
                     }
                 }
-                None => opt_running_sum = Some(child_input),
+                None => {
+                    opt_running_sum = Some(child_input);
+                }
             }
         }
     }
