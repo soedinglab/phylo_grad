@@ -177,8 +177,6 @@ impl std::fmt::Display for FelsensteinError {
 impl std::error::Error for FelsensteinError {}
 
 impl FelsensteinError {
-    pub const SEQ_LENGTH: Self =
-        Self::DeserializationError("Sequence length not divisible by entry length");
     pub const INVALID_CHAR: Self =
         Self::DeserializationError("Invalid character in residue sequence");
     /*

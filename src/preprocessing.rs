@@ -1,8 +1,17 @@
+use itertools::process_results;
+
 use std::error::Error;
 
 use crate::data_types::*;
 use crate::io::*;
 use crate::tree::*;
+
+impl FelsensteinError {
+    const SEQ_LENGTH: Self =
+        Self::DeserializationError("Tree leaves contain sequences of different lengths");
+    const TOO_MANY_CHILDREN: Self =
+        Self::LogicError("Incorrect format: a non-root node has more than two children");
+}
 
 pub fn try_residue_sequences_from_strings<Residue>(
     sequences_raw: &[String],
@@ -12,14 +21,23 @@ where
 {
     let num_leaves = sequences_raw.len();
 
-    let sequences_flat: Vec<Residue> = sequences_raw
-        .iter()
-        .map(|s| Residue::try_deserialize_string_iter(s))
-        .flatten()
-        .collect::<Result<Vec<Residue>, FelsensteinError>>()?;
+    let seq_length = sequences_raw[0].len();
 
-    /* TODO get actual length from iterator, check all lengths are the same */
-    let seq_length = sequences_flat.len() / num_leaves;
+    let sequences_flat = process_results(
+        sequences_raw.iter().map(|s| {
+            if s.len() == seq_length {
+                Ok(s)
+            } else {
+                return Err(FelsensteinError::SEQ_LENGTH);
+            }
+        }),
+        |iter| {
+            iter.map(|s| Residue::try_deserialize_string_iter(s))
+                .flatten()
+                .collect::<Result<Vec<Residue>, FelsensteinError>>()
+        },
+    )??;
+
     let sequences_2d = na::DMatrix::from_vec_storage(na::VecStorage::new(
         na::Dyn(seq_length),
         na::Dyn(num_leaves),
@@ -54,7 +72,7 @@ pub fn preprocess_weak(
         Find all nodes with counter = 0
         Decrement the counters of their parents
         Pop the chosen nodes from the tree and add them to the resulting sequence. (*)
-    For now, popping the children in the (*) step is replaced by setting children counter for the chosen nodes to -1.
+    For now, popping the children in the (*) step is replaced by setting children counter for the chosen nodes to -100.
     */
 
     /* Initialization */
@@ -115,9 +133,7 @@ pub fn preprocess_weak(
         } else {
             dbg!(parent_old_id);
             dbg!(parent_new_id);
-            return Err(Box::new(FelsensteinError::LogicError(
-                "Incorrect format: a non-root node has more than two children",
-            )));
+            return Err(Box::new(FelsensteinError::TOO_MANY_CHILDREN));
         }
     }
 
