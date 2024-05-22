@@ -19,10 +19,6 @@ use crate::io::*;
 use crate::preprocessing::*;
 use crate::train::*;
 
-impl FelsensteinError {
-    pub const ORDER: Self = Self::DeserializationError("The tree is not ordered properly");
-}
-
 struct DisplayArray<'a, T>(&'a [T])
 where
     T: std::fmt::Display;

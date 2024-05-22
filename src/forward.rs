@@ -45,7 +45,7 @@ fn log_transition_precompute_symmetric<const DIM: usize>(
     LogTransitionForwardData { step_1, step_2 }
 }
 
-pub fn forward_data_precompute<const DIM: usize>(
+pub fn forward_data_precompute_symmetric<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distances: &[Float],
 ) -> ForwardData<DIM>
@@ -63,6 +63,37 @@ where
         .extend(distances.iter().map(|dist| {
             log_transition_precompute_symmetric(rate_matrix, &rate_symmetric_eigen, *dist)
         }));
+    forward_data
+}
+
+fn log_transition_precompute<const DIM: usize>(
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    distance: Float,
+) -> LogTransitionForwardData<DIM>
+where
+    na::Const<DIM>: Exponentiable,
+{
+    let step_1 = rate_matrix * distance;
+    let step_2 = step_1.exp();
+
+    LogTransitionForwardData { step_1, step_2 }
+}
+
+pub fn forward_data_precompute<const DIM: usize>(
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    distances: &[Float],
+) -> ForwardData<DIM>
+where
+    Const<DIM>: Exponentiable,
+{
+    let num_nodes = distances.len();
+    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
+
+    forward_data.log_transition.extend(
+        distances
+            .iter()
+            .map(|dist| log_transition_precompute(rate_matrix, *dist)),
+    );
     forward_data
 }
 

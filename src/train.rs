@@ -127,9 +127,9 @@ pub fn train_parallel<const DIM: usize, Residue>(
 where
     Residue: ResidueTrait,
     ResiduePair<Residue>: EntryTrait<LogPType = [Float; DIM]>,
-    Const<DIM>: Decrementable + Doubleable,
+    Const<DIM>: Doubleable + Exponentiable, //+ Decrementable,
     TwoTimesConst<DIM>: Exponentiable,
-    DefaultAllocator: ViableAllocator<Float, DIM> + DecrementableAllocator<Float, DIM>,
+    DefaultAllocator: ViableAllocator<Float, DIM>, //+ DecrementableAllocator<Float, DIM>,
 {
     let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();

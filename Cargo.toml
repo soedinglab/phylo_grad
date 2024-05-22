@@ -1,16 +1,14 @@
 [package]
-name = "rna_pred_rust"
-version = "0.0.1"
+name = "felsenstein-rs"
+version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "rna_pred_rust"
-path = "src/main.rs"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "felsenstein_rs"
+crate-type = ["cdylib"]
 
 [dependencies]
-#arrayvec = {version = "0.7.4", features = ["serde"]}
-#blas-src = { version = "0.9", features = ["openblas"]}
-#blas-sys = { version = "*",  default-features=false, features=["openblas"] }
 csv = "1.3.0"
 itertools = "0.12.1"
 logsumexp = "0.1.0" #Compare with the logaddexp crate
@@ -20,6 +18,10 @@ nalgebra = "0.32.5"
 num_enum = "0.7.2"
 rayon = "1.10.0"
 serde = { version = "1.0.199", features = ["derive"] }
+numpy = { version = "0.21.0", features = ["nalgebra"] }
+pyo3 = { version = "0.21.2", features = ["extension-module"] }
 
 [profile.release]
 lto = true
+
+
