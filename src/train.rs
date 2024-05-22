@@ -1,6 +1,7 @@
 use logsumexp::LogSumExp;
 use na::{Const, DefaultAllocator};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
+//use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::backward::*;
 use crate::data_types::*;
@@ -113,10 +114,10 @@ where
 /* TODO should we let rayon know that index_paris is a vector and not just any slice? */
 /* TODO Id<DIM> */
 pub fn train_parallel<const DIM: usize, Residue>(
-    index_pairs: &Vec<(usize, usize)>,
+    index_pairs: &[(usize, usize)],
     residue_sequences_2d: na::DMatrixView<Residue>,
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    log_p_prior: &[Float; DIM],
+    rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
+    log_p_priors: &[[Float; DIM]],
     tree: &[TreeNode],
     distances: &[Float],
 ) -> (
@@ -140,9 +141,9 @@ where
     (
         log_likelihood_total,
         (grad_rate_total, grad_log_prior_total),
-    ) = index_pairs
-        .par_iter()
-        .map(|column_id| {
+    ) = (index_pairs, rate_matrices, log_p_priors)
+        .into_par_iter()
+        .map(|(column_id, rate_matrix, log_p_prior)| {
             let (left_id, right_id) = *column_id;
             let left_half = residue_sequences_2d.column(left_id);
             let right_half = residue_sequences_2d.column(right_id);

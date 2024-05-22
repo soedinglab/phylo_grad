@@ -3,7 +3,7 @@ extern crate nalgebra as na;
 
 use na::Const;
 use numpy::ndarray::{Array, Axis};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
 use pyo3::{
     exceptions::PyValueError,
     pyclass, pymethods, pymodule,
@@ -65,8 +65,9 @@ impl FTreeBackend {
     fn infer(
         &self,
         index_pairs: &Vec<(usize, usize)>,
-        rate_matrix: na::SMatrixView<Float, { Entry::DIM }, { Entry::DIM }>,
-        log_p_prior: &[Float; Entry::DIM],
+        /* TODO as_deref() */
+        rate_matrices: &[na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>],
+        log_p_priors: &[[Float; Entry::DIM]],
     ) -> (
         Vec<Float>,
         Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>,
@@ -75,8 +76,8 @@ impl FTreeBackend {
         train_parallel(
             index_pairs,
             self.residue_sequences_2d.as_view(),
-            rate_matrix,
-            log_p_prior,
+            rate_matrices,
+            log_p_priors,
             &(self.tree),
             &(self.distances),
         )
@@ -129,8 +130,8 @@ impl FTree {
     fn infer<'py>(
         self_: PyRef<'py, Self>,
         index_pairs: PyReadonlyArray2<'py, usize>,
-        rate_matrix: PyReadonlyArray2<'py, Float>,
-        log_p_prior: PyReadonlyArray1<'py, Float>,
+        rate_matrices: PyReadonlyArray3<'py, Float>,
+        log_p_priors: PyReadonlyArray2<'py, Float>,
     ) -> (
         Bound<'py, PyArray1<Float>>,
         Bound<'py, PyArray3<Float>>,
@@ -146,20 +147,28 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let rate_matrix_na =
-            rate_matrix
-            .try_as_matrix::<Const<{ Entry::DIM }>, Const<{ Entry::DIM }>, Const<{Entry::DIM}>, Const<1>>().unwrap();
-        let log_p_prior_slice: &[Float; Entry::DIM] =
-            log_p_prior.as_slice().unwrap().try_into().unwrap();
+        let rate_matrices_ndarray = rate_matrices.as_array();
+        let rate_matrices_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
+            rate_matrices_ndarray
+                .axis_iter(Axis(0))
+                .map(|slice_2d| {
+                    na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_iterator(
+                        slice_2d.t().iter().copied(),
+                    )
+                })
+                .collect();
+
+        let log_p_priors_ndarray = log_p_priors.as_array();
+        let log_p_priors_vec: Vec<[Float; Entry::DIM]> = log_p_priors_ndarray
+            .axis_iter(Axis(0))
+            .map(|slice| slice.as_slice().unwrap().try_into().unwrap())
+            .collect();
 
         let log_likelihood_total: Vec<Float>;
         let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
         let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
-        (log_likelihood_total, grad_rate_total, grad_log_prior_total) = super_.infer(
-            &index_pairs_vec,
-            rate_matrix_na.transpose().as_view(),
-            log_p_prior_slice,
-        );
+        (log_likelihood_total, grad_rate_total, grad_log_prior_total) =
+            super_.infer(&index_pairs_vec, &rate_matrices_vec, &log_p_priors_vec);
 
         let log_likelihood_total_py =
             Array::<Float, _>::from_shape_vec((log_likelihood_total.len(),), log_likelihood_total)

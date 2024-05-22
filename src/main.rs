@@ -53,7 +53,7 @@ pub fn main() {
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
     let distance_threshold = 1e-4 as Float;
-    const COL_LIMIT: usize = 1_000_000;
+    const COL_LIMIT: usize = 3;
 
     let raw_data_path = if args.len() >= 2 {
         &args[1]
@@ -86,6 +86,13 @@ pub fn main() {
         .take(COL_LIMIT)
         .collect();
 
+    let n_columns = index_pairs.len();
+
+    let rate_matrices: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
+        std::iter::repeat(rate_matrix).take(n_columns).collect();
+    let log_p_priors: Vec<[Float; Entry::DIM]> =
+        std::iter::repeat(log_p_prior).take(n_columns).collect();
+
     let log_likelihood_total: Vec<Float>;
     let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
     let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
@@ -93,8 +100,9 @@ pub fn main() {
     (log_likelihood_total, grad_rate_total, grad_log_prior_total) = train_parallel(
         &index_pairs,
         residue_sequences_2d.as_view(),
-        rate_matrix.as_view(),
-        &log_p_prior,
+        /* TODO as_deref() */
+        &rate_matrices,
+        &log_p_priors,
         &tree,
         &distances,
     );
