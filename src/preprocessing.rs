@@ -10,7 +10,8 @@ impl FelsensteinError {
     const SEQ_LENGTH: Self =
         Self::DeserializationError("Tree leaves contain sequences of different lengths");
     const TOO_MANY_CHILDREN: Self =
-        Self::LogicError("Incorrect format: a non-root node has more than two children");
+        Self::DeserializationError("Incorrect format: a non-root node has more than two children");
+    const CYCLES: Self = Self::DeserializationError("There are cycles in the input data");
 }
 
 pub fn try_residue_sequences_from_strings<Residue>(
@@ -60,9 +61,14 @@ pub fn preprocess_weak(
     let num_nodes = raw_tree.len();
 
     let root_id = {
+        let mut depth: usize = 0;
         let mut id: usize = 0;
         while raw_tree[id].parent >= 0 {
             id = raw_tree[id].parent as usize;
+            depth += 1;
+            if depth > num_nodes {
+                return Err(Box::new(FelsensteinError::CYCLES));
+            }
         }
         id
     };

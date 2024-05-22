@@ -53,7 +53,7 @@ pub fn main() {
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
     let distance_threshold = 1e-4 as Float;
-    const COL_LIMIT: ColumnId = 1_000_000;
+    const COL_LIMIT: usize = 1_000_000;
 
     let raw_data_path = if args.len() >= 2 {
         &args[1]
