@@ -102,13 +102,13 @@ fn child_input<const DIM: usize>(
     log_p: &[Float; DIM],
     forward_data: &ForwardData<DIM>,
 ) -> [Float; DIM] {
-    /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(b, a) ) */
+    /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(a, b) ) */
     let log_transition = &forward_data.log_transition[child_id].log_transition();
-    /* TODO! Make sure indices are not flipped */
+
     let mut col_a;
     let mut result = [0.0 as Float; DIM];
     for a in 0..DIM {
-        col_a = log_transition.column(a);
+        col_a = log_transition.row(a);
         result[a] = (0..DIM).map(|b| (log_p[b] + col_a[b])).ln_sum_exp()
     }
     result
