@@ -153,8 +153,6 @@ where
                 },
             );
 
-            /* Right now, this is the same for all columns, but as every column will have its own
-            rate matrix, in general we'll have to precompute log_transition for each column */
             let forward_data = forward_data_precompute(rate_matrix.as_view(), &distances);
 
             let log_p = forward_column(column_iter, &tree, &forward_data);

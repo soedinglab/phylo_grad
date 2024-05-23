@@ -1,7 +1,6 @@
 #![allow(clippy::needless_range_loop)]
 extern crate nalgebra as na;
 
-use na::Const;
 use numpy::ndarray::{Array, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
 use pyo3::{
@@ -100,8 +99,6 @@ impl FTreeBackend {
     }
 }
 
-/* TODO check error handling (e.g. does format! work with Box<dyn Error>, etc) */
-
 /* struct InferenceResult {
     log_likelihood_total:
     grad_rate_total:
@@ -141,7 +138,6 @@ impl FTree {
         let py = self_.py();
 
         let index_pairs_ndarray = index_pairs.as_array();
-        //let index_pairs_ndarray = array![[0, 0], [0, 1], [0, 2]];
         let index_pairs_vec: Vec<(_, _)> = index_pairs_ndarray
             .axis_iter(Axis(0))
             .map(|col| (col[0], col[1]))
