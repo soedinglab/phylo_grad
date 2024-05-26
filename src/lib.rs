@@ -81,14 +81,6 @@ impl FTreeBackend {
             &(self.distances),
         )
     }
-
-    /* fn infer(
-        index_pairs: Vec<(usize, usize)>,
-        rates: Vec<na::SMatrix<Float, { ResidueExtended::DIM }, { ResidueExtended::DIM }>>,
-        log_p_priors: Vec<na::SVector<Float, { ResidueExtended::DIM }>>,
-    ) {
-
-    } */
 }
 
 /* TODO remove: exists for debugging purposes */

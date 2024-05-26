@@ -111,7 +111,7 @@ where
     grad_rate_column
 }
 
-/* TODO should we let rayon know that index_paris is a vector and not just any slice? */
+/* TODO should we let rayon know that index_pairs is a vector and not just any slice? */
 /* TODO Id<DIM> */
 pub fn train_parallel<const DIM: usize, Residue>(
     index_pairs: &[(usize, usize)],
