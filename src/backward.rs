@@ -190,6 +190,8 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
     result
 }
 
+/* TODO! avoid using diagonal entries of S. */
+/* TODO! use an index iterator to only compute the entries above the diagonal */
 fn d_param<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     symmetric: na::SMatrixView<Float, DIM, DIM>,
@@ -217,6 +219,7 @@ fn d_param<const DIM: usize>(
         let pi_i_recip = sqrt_pi_recip[i] * sqrt_pi_recip[i];
         let mut summands =
             w_ki.component_mul(&sqrt_pi_recip) - w_ik.component_mul(&sqrt_pi) * pi_i_recip;
+        summands[i] = 0.0 as Float;
         summands.component_mul_assign(&s_ki);
         grad_pi[i] *= summands.sum();
     }
