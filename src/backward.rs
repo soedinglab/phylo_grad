@@ -99,6 +99,96 @@ where
     result
 }
 
+fn exprel(x: f64) -> f64 {
+    const THRESHOLD: f64 = 2e-3;
+    /* LOG_F64_MAX = f64::MAX.log() */
+    const LOG_F64_MAX: f64 = 7.0978271289338397e+02;
+    /* LOG_F64_MIN = ? */
+    const LOG_F64_MIN: f64 = -7.0839641853226408e+02;
+    if x < LOG_F64_MIN as f64 {
+        -1.0 / x
+    } else if x < -THRESHOLD {
+        (x.exp() - 1.0) / x
+    } else if x < THRESHOLD {
+        1.0 + 0.5 * x * (1.0 + x / 3.0 * (1.0 + 0.25 * x * (1.0 + 0.2 * x)))
+    } else if x < LOG_F64_MAX as f64 {
+        (x.exp() - 1.0) / x
+    } else {
+        f64::MAX
+    }
+}
+
+/* TODO simplify */
+fn X_transposed<const DIM: usize>(
+    eigenvalues: na::SVectorView<Float, DIM>,
+    distance: Float,
+) -> na::SMatrix<Float, DIM, DIM> {
+    /* X = coeff[:, None] * y,
+    y = { exprel( d * (lambda[:, None] - lambda[None, :]) ) if i!=j,
+        { 1 if i==j
+    coeff = exp(d * lambda) * d */
+
+    /* X_T = coeff[None, :] * y_T
+       y_T = { 1 if i == j,
+             { exprel(d * lambda[None, :] - lambda[:, None] if i!=j)
+    */
+    /* Assuming exprel(0) is Nan and not a runtime error. */
+    let coeff = (distance * eigenvalues).map(f64::exp) * distance;
+    let id_iter = std::iter::zip(
+        (0..DIM).flat_map(|n| std::iter::repeat(n).take(DIM)),
+        std::iter::repeat(0..DIM).flatten(),
+    );
+    let arg_1 = na::SMatrix::<Float, DIM, DIM>::from_iterator(
+        id_iter.map(|(i, j)| (eigenvalues[j] - eigenvalues[i]) * distance),
+    );
+    let mut result = arg_1.map(exprel);
+    result.fill_diagonal(1 as Float);
+    for (c, mut col) in std::iter::zip(coeff.into_iter(), result.column_iter_mut()) {
+        col *= *c;
+    }
+    result
+}
+
+fn d_transition_mcgibbon_pande<const DIM: usize>(
+    cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
+    distance: Float,
+    eigenvectors: na::SMatrixView<Float, DIM, DIM>,
+    eigenvalues: na::SVectorView<Float, DIM>,
+    pi: na::SVectorView<Float, DIM>,
+    //forward: &LogTransitionForwardData<DIM>,
+) -> na::SMatrix<Float, DIM, DIM> {
+    /*
+    B = V_pi_invT = jnp.diag(pi) @ V
+    B_inv = V_pi_T =  V.transpose() @ jnp.diag(1/pi)
+
+    result =
+      B @ ((B_inv @ cotangent @ B) \odot X_T(lam, dist)) @ B_inv
+    */
+
+    //let na::SymmetricEigen {eigenvectors, eigenvalues,} = symmetric_decomp;
+
+    /* B */
+    let mut B = eigenvectors.clone_owned();
+    for (mut row, scale) in std::iter::zip(B.row_iter_mut(), pi.iter()) {
+        row *= *scale;
+    }
+
+    /* B_inv */
+    let mut B_inv = eigenvectors.transpose();
+    for (mut col, scale) in std::iter::zip(B_inv.column_iter_mut(), pi.iter()) {
+        col *= scale.recip();
+    }
+    let X_T = X_transposed(eigenvalues, distance);
+
+    /* TODO optimize */
+    //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X_T)) * B_inv;
+    let mut result = B_inv * cotangent_vector * B;
+    result.component_mul_assign(&X_T);
+    result = B * cotangent_vector * B_inv;
+
+    result
+}
+
 /* TODO extract iterator, use it to compute d_broadcast (d_lse) */
 fn child_input_forward_data<const DIM: usize>(
     log_p: &[Float; DIM],
@@ -151,6 +241,48 @@ where
     };
 
     let grad_rate = d_rate_log_transition_vjp(forward_1.as_view(), distance, forward);
+
+    (grad_rate, grad_log_p)
+}
+
+pub fn d_child_input_mcgibbon_pande<const DIM: usize>(
+    cotangent_vector: [Float; DIM],
+    distance: Float,
+    eigenvectors: na::SMatrixView<Float, DIM, DIM>,
+    eigenvalues: na::SVectorView<Float, DIM>,
+    pi: na::SVectorView<Float, DIM>,
+    log_p: &[Float; DIM],
+    forward: &LogTransitionForwardData<DIM>,
+    compute_grad_log_p: bool,
+) -> (na::SMatrix<Float, DIM, DIM>, Option<[Float; DIM]>) {
+    let log_transition = forward.log_transition();
+    let reverse_1 = {
+        let mut forward_3 = child_input_forward_data(log_p, log_transition.as_view());
+        for (mut col, wt) in
+            std::iter::zip(forward_3.column_iter_mut(), cotangent_vector.into_iter())
+        {
+            col *= wt;
+        }
+        forward_3
+    };
+
+    let grad_log_p = if compute_grad_log_p {
+        Some(d_broadcast_vjp(reverse_1.as_view()))
+    } else {
+        None
+    };
+
+    let forward_2 = forward.step_2;
+    let reverse_2 = d_map_ln_vjp(reverse_1.as_view(), forward_2.as_view());
+
+    let grad_rate = d_transition_mcgibbon_pande(
+        reverse_2.as_view(),
+        distance,
+        eigenvectors,
+        eigenvalues,
+        pi,
+        //forward,
+    );
 
     (grad_rate, grad_log_p)
 }
