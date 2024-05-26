@@ -1,4 +1,4 @@
-#![allow(clippy::needless_range_loop)]
+#![allow(non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
 
 use numpy::ndarray::{Array, Axis};
@@ -81,6 +81,30 @@ impl FTreeBackend {
             &(self.distances),
         )
     }
+
+    fn infer_param(
+        &self,
+        index_pairs: &Vec<(usize, usize)>,
+        /* TODO as_deref() */
+        symmetric_matrices: &[na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>],
+        sqrt_pi: &[na::SVector<Float, { Entry::DIM }>],
+        log_p_priors: &[[Float; Entry::DIM]],
+    ) -> (
+        Vec<Float>,
+        Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>,
+        Vec<na::SVector<Float, { Entry::DIM }>>,
+        Vec<[Float; Entry::DIM]>,
+    ) {
+        train_parallel_param(
+            index_pairs,
+            self.residue_sequences_2d.as_view(),
+            symmetric_matrices,
+            sqrt_pi,
+            log_p_priors,
+            &(self.tree),
+            &(self.distances),
+        )
+    }
 }
 
 /* TODO remove: exists for debugging purposes */
@@ -113,6 +137,8 @@ impl FTree {
             ))),
         }
     }
+
+    /* TODO fn _from_numpy, fn _to_numpy */
 
     /* TODO terrible, copies everywhere */
     //#[pyo3(signature = (index_pairs, rate_matrix, log_p_prior))]
@@ -190,6 +216,106 @@ impl FTree {
         (
             log_likelihood_total_py,
             grad_rate_total_py,
+            grad_log_prior_total_py,
+        )
+    }
+
+    fn infer_param<'py>(
+        self_: PyRef<'py, Self>,
+        index_pairs: PyReadonlyArray2<'py, usize>,
+        symmetric_matrices: PyReadonlyArray3<'py, Float>,
+        sqrt_pi: PyReadonlyArray2<'py, Float>,
+        log_p_priors: PyReadonlyArray2<'py, Float>,
+    ) -> (
+        Bound<'py, PyArray1<Float>>,
+        Bound<'py, PyArray3<Float>>,
+        Bound<'py, PyArray2<Float>>,
+        Bound<'py, PyArray2<Float>>,
+    ) {
+        let super_ = self_.as_ref();
+        let py = self_.py();
+
+        let index_pairs_ndarray = index_pairs.as_array();
+        let index_pairs_vec: Vec<(_, _)> = index_pairs_ndarray
+            .axis_iter(Axis(0))
+            .map(|col| (col[0], col[1]))
+            .collect();
+
+        let symmetric_matrices_ndarray = symmetric_matrices.as_array();
+        let symmetric_matrices_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
+            symmetric_matrices_ndarray
+                .axis_iter(Axis(0))
+                .map(|slice_2d| {
+                    na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_iterator(
+                        slice_2d.t().iter().copied(),
+                    )
+                })
+                .collect();
+
+        let sqrt_pi_ndarray = sqrt_pi.as_array();
+        let sqrt_pi_vec: Vec<na::SVector<Float, { Entry::DIM }>> = sqrt_pi_ndarray
+            .axis_iter(Axis(0))
+            .map(|slice| na::SVector::<Float, { Entry::DIM }>::from_iterator(slice.iter().copied()))
+            .collect();
+
+        let log_p_priors_ndarray = log_p_priors.as_array();
+        let log_p_priors_vec: Vec<[Float; Entry::DIM]> = log_p_priors_ndarray
+            .axis_iter(Axis(0))
+            .map(|slice| slice.as_slice().unwrap().try_into().unwrap())
+            .collect();
+
+        let log_likelihood_total: Vec<Float>;
+        let grad_symmetric_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
+        let grad_pi_total: Vec<na::SVector<Float, { Entry::DIM }>>;
+        let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
+        (
+            log_likelihood_total,
+            grad_symmetric_total,
+            grad_pi_total,
+            grad_log_prior_total,
+        ) = super_.infer_param(
+            &index_pairs_vec,
+            &symmetric_matrices_vec,
+            &sqrt_pi_vec,
+            &log_p_priors_vec,
+        );
+
+        let log_likelihood_total_py =
+            Array::<Float, _>::from_shape_vec((log_likelihood_total.len(),), log_likelihood_total)
+                .unwrap()
+                .into_pyarray_bound(py);
+        let grad_symmetric_total_py = Array::<Float, _>::from_shape_vec(
+            (grad_symmetric_total.len(), Entry::DIM, Entry::DIM),
+            grad_symmetric_total
+                .into_iter()
+                .flat_map(|matrix| matrix.transpose().iter().copied().collect::<Vec<Float>>())
+                .collect::<Vec<Float>>(),
+        )
+        .unwrap()
+        .into_pyarray_bound(py);
+        let grad_pi_total_py = Array::<Float, _>::from_shape_vec(
+            (grad_pi_total.len(), Entry::DIM),
+            grad_pi_total
+                .into_iter()
+                .flat_map(|vector| vector.iter().copied().collect::<Vec<Float>>())
+                .collect::<Vec<Float>>(),
+        )
+        .unwrap()
+        .into_pyarray_bound(py);
+        let grad_log_prior_total_py = Array::<Float, _>::from_shape_vec(
+            (grad_log_prior_total.len(), Entry::DIM),
+            grad_log_prior_total
+                .into_iter()
+                .flat_map(|array| IntoIterator::into_iter(array))
+                .collect::<Vec<Float>>(),
+        )
+        .unwrap()
+        .into_pyarray_bound(py);
+
+        (
+            log_likelihood_total_py,
+            grad_symmetric_total_py,
+            grad_pi_total_py,
             grad_log_prior_total_py,
         )
     }

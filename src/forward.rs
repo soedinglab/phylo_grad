@@ -8,6 +8,8 @@ impl FelsensteinError {
     pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
 }
 
+/* TODO ForwardDataParam */
+
 pub struct ForwardData<const DIM: usize> {
     pub log_transition: Vec<LogTransitionForwardData<DIM>>,
 }
@@ -29,8 +31,117 @@ impl<const DIM: usize> LogTransitionForwardData<DIM> {
         self.step_2.map(Float::ln)
     }
 }
+pub struct ParamData<const DIM: usize> {
+    pub symmetric_matrix: na::SMatrix<Float, DIM, DIM>,
+    pub sqrt_pi: na::SVector<Float, DIM>,
+    pub sqrt_pi_recip: na::SVector<Float, DIM>,
+    pub eigenvectors: na::SMatrix<Float, DIM, DIM>,
+    pub eigenvalues: na::SVector<Float, DIM>,
+    pub V_pi: na::SMatrix<Float, DIM, DIM>,
+    pub V_pi_inv: na::SMatrix<Float, DIM, DIM>,
+    pub rate_matrix: na::SMatrix<Float, DIM, DIM>,
+}
 
-fn log_transition_precompute_symmetric<const DIM: usize>(
+/// In-place multiplication by a diagonal matrix on the left
+pub fn diag_times_assign<I, const N: usize>(
+    mut matrix: na::SMatrixViewMut<Float, N, N>,
+    diagonal_entries: I,
+) where
+    I: Iterator<Item = Float>,
+{
+    for (mut row, scale) in std::iter::zip(matrix.row_iter_mut(), diagonal_entries) {
+        row *= scale;
+    }
+}
+
+/// In-place multiplication by a diagonal matrix on the right
+pub fn times_diag_assign<I, const N: usize>(
+    mut matrix: na::SMatrixViewMut<Float, N, N>,
+    diagonal_entries: I,
+) where
+    I: Iterator<Item = Float>,
+{
+    for (mut col, scale) in std::iter::zip(matrix.column_iter_mut(), diagonal_entries) {
+        col *= scale;
+    }
+}
+
+pub fn compute_param_data<const DIM: usize>(
+    symmetric_matrix: na::SMatrixView<Float, DIM, DIM>,
+    sqrt_pi: na::SVectorView<Float, DIM>,
+) -> ParamData<DIM>
+where
+    Const<DIM>: Decrementable,
+    DefaultAllocator: DecrementableAllocator<Float, DIM>,
+{
+    let sqrt_pi_recip = sqrt_pi.map(Float::recip);
+
+    let na::SymmetricEigen {
+        eigenvalues,
+        eigenvectors,
+    } = symmetric_matrix.symmetric_eigen();
+
+    let mut V_pi = eigenvectors.clone_owned();
+    diag_times_assign(V_pi.as_view_mut(), sqrt_pi_recip.iter().copied());
+
+    let mut V_pi_inv = eigenvectors.transpose();
+    times_diag_assign(V_pi_inv.as_view_mut(), sqrt_pi.iter().copied());
+
+    /* TODO remove */
+    /* rate_matrix = diag(sqrt_pi_recip) * S * diag(sqrt_pi) */
+    let mut rate_matrix = symmetric_matrix.clone_owned();
+    diag_times_assign(rate_matrix.as_view_mut(), sqrt_pi_recip.iter().copied());
+    times_diag_assign(rate_matrix.as_view_mut(), sqrt_pi.iter().copied());
+
+    ParamData {
+        symmetric_matrix: symmetric_matrix.clone_owned(),
+        sqrt_pi: sqrt_pi.clone_owned(),
+        sqrt_pi_recip,
+        eigenvectors,
+        eigenvalues,
+        V_pi,
+        V_pi_inv,
+        rate_matrix,
+    }
+}
+
+fn log_transition_precompute_param<const DIM: usize>(
+    param: &ParamData<DIM>,
+    distance: Float,
+) -> LogTransitionForwardData<DIM> {
+    /* TODO remove step_1 */
+    let step_1 = param.rate_matrix * distance;
+
+    let mut step_2 = param.V_pi.clone_owned();
+    times_diag_assign(
+        step_2.as_view_mut(),
+        param.eigenvalues.iter().map(|lam| (lam * distance).exp()),
+    );
+    step_2 *= param.V_pi_inv;
+
+    LogTransitionForwardData { step_1, step_2 }
+}
+
+pub fn forward_data_precompute_param<const DIM: usize>(
+    param: &ParamData<DIM>,
+    distances: &[Float],
+) -> ForwardData<DIM>
+where
+    Const<DIM>: Decrementable,
+    DefaultAllocator: DecrementableAllocator<Float, DIM>,
+{
+    let num_nodes = distances.len();
+    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
+
+    forward_data.log_transition.extend(
+        distances
+            .iter()
+            .map(|dist| log_transition_precompute_param(&param, *dist)),
+    );
+    forward_data
+}
+
+/* fn log_transition_precompute_symmetric<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     rate_symmetric_eigen: &na::SymmetricEigen<Float, Const<DIM>>,
     distance: Float,
@@ -64,7 +175,7 @@ where
             log_transition_precompute_symmetric(rate_matrix, &rate_symmetric_eigen, *dist)
         }));
     forward_data
-}
+} */
 
 fn log_transition_precompute<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,

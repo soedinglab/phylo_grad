@@ -143,43 +143,28 @@ fn X_transposed<const DIM: usize>(
     );
     let mut result = arg_1.map(exprel);
     result.fill_diagonal(1 as Float);
-    for (c, mut col) in std::iter::zip(coeff.into_iter(), result.column_iter_mut()) {
-        col *= *c;
-    }
+    times_diag_assign(result.as_view_mut(), coeff.iter().copied());
+
     result
 }
 
 fn d_transition_mcgibbon_pande<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     distance: Float,
-    eigenvectors: na::SMatrixView<Float, DIM, DIM>,
-    eigenvalues: na::SVectorView<Float, DIM>,
-    sqrt_pi: na::SVectorView<Float, DIM>,
-    //forward: &LogTransitionForwardData<DIM>,
+    param: &ParamData<DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
     /*
-    B = V_pi_invT = jnp.diag(pi) @ V
-    B_inv = V_pi_T =  V.transpose() @ jnp.diag(1/pi)
+    B = V_pi_invT
+    B_inv = V_pi_T
 
     result =
       B @ ((B_inv @ cotangent @ B) \odot X_T(lam, dist)) @ B_inv
     */
 
-    //let na::SymmetricEigen {eigenvectors, eigenvalues,} = symmetric_decomp;
+    let B = param.V_pi_inv.transpose();
+    let B_inv = param.V_pi.transpose();
 
-    /* B */
-    let mut B = eigenvectors.clone_owned();
-    for (mut row, scale) in std::iter::zip(B.row_iter_mut(), sqrt_pi.iter()) {
-        row *= *scale;
-    }
-
-    /* B_inv */
-    let mut B_inv = eigenvectors.transpose();
-    for (mut col, scale) in std::iter::zip(B_inv.column_iter_mut(), sqrt_pi.iter()) {
-        col *= scale.recip();
-    }
-
-    let X_T = X_transposed(eigenvalues, distance);
+    let X_T = X_transposed(param.eigenvalues.as_view(), distance);
 
     /* TODO optimize */
     //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X_T)) * B_inv;
@@ -192,7 +177,7 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
 
 /* TODO! avoid using diagonal entries of S. */
 /* TODO! use an index iterator to only compute the entries above the diagonal */
-fn d_param<const DIM: usize>(
+pub fn d_param<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     symmetric: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
@@ -201,16 +186,10 @@ fn d_param<const DIM: usize>(
 
     /* d_S rho(W) = diag(sqrt_pi)^-1 * W * diag(sqrt_pi) */
     let mut grad_symmetric = cotangent_vector.clone_owned();
-    for (mut row, scale_recip) in
-        std::iter::zip(grad_symmetric.row_iter_mut(), sqrt_pi_recip.iter())
-    {
-        row *= *scale_recip;
-    }
-    for (mut col, scale) in std::iter::zip(grad_symmetric.column_iter_mut(), sqrt_pi.iter()) {
-        col *= *scale;
-    }
+    diag_times_assign(grad_symmetric.as_view_mut(), sqrt_pi_recip.iter().copied());
+    times_diag_assign(grad_symmetric.as_view_mut(), sqrt_pi.iter().copied());
 
-    /* d_pi[i] = 0.5 / sqrt_pi * (s_ki * (w_ki * sqrt_pi_recip - w_ik * sqrt_pi * pi_i_recip)).sum() */
+    /* d_pi rho(W) [i] = 0.5 / sqrt_pi * (s_ki * (w_ki * sqrt_pi_recip - w_ik * sqrt_pi * pi_i_recip)).sum() */
     let mut grad_pi = 0.5 * sqrt_pi_recip;
     for i in 0..DIM {
         let s_ki = symmetric.column(i);
@@ -283,12 +262,10 @@ where
     (grad_rate, grad_log_p)
 }
 
-pub fn d_child_input_mcgibbon_pande<const DIM: usize>(
+pub fn d_child_input_param<const DIM: usize>(
     cotangent_vector: [Float; DIM],
     distance: Float,
-    eigenvectors: na::SMatrixView<Float, DIM, DIM>,
-    eigenvalues: na::SVectorView<Float, DIM>,
-    sqrt_pi: na::SVectorView<Float, DIM>,
+    param: &ParamData<DIM>,
     log_p: &[Float; DIM],
     forward: &LogTransitionForwardData<DIM>,
     compute_grad_log_p: bool,
@@ -313,14 +290,7 @@ pub fn d_child_input_mcgibbon_pande<const DIM: usize>(
     let forward_2 = forward.step_2;
     let reverse_2 = d_map_ln_vjp(reverse_1.as_view(), forward_2.as_view());
 
-    let grad_rate = d_transition_mcgibbon_pande(
-        reverse_2.as_view(),
-        distance,
-        eigenvectors,
-        eigenvalues,
-        sqrt_pi,
-        //forward,
-    );
+    let grad_rate = d_transition_mcgibbon_pande(reverse_2.as_view(), distance, param);
 
     (grad_rate, grad_log_p)
 }
