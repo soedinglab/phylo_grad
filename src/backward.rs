@@ -129,9 +129,9 @@ fn X_transposed<const DIM: usize>(
     coeff = exp(d * lambda) * d */
 
     /* X_T = coeff[None, :] * y_T
-       y_T = { 1 if i == j,
-             { exprel(d * lambda[None, :] - lambda[:, None] if i!=j)
-    */
+    y_T = { 1 if i == j,
+          { exprel(d * lambda[None, :] - lambda[:, None] if i!=j) */
+
     /* Assuming exprel(0) is Nan and not a runtime error. */
     let coeff = (distance * eigenvalues).map(f64::exp) * distance;
     let id_iter = std::iter::zip(
@@ -154,7 +154,7 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
     distance: Float,
     eigenvectors: na::SMatrixView<Float, DIM, DIM>,
     eigenvalues: na::SVectorView<Float, DIM>,
-    pi: na::SVectorView<Float, DIM>,
+    sqrt_pi: na::SVectorView<Float, DIM>,
     //forward: &LogTransitionForwardData<DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
     /*
@@ -169,15 +169,16 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
 
     /* B */
     let mut B = eigenvectors.clone_owned();
-    for (mut row, scale) in std::iter::zip(B.row_iter_mut(), pi.iter()) {
+    for (mut row, scale) in std::iter::zip(B.row_iter_mut(), sqrt_pi.iter()) {
         row *= *scale;
     }
 
     /* B_inv */
     let mut B_inv = eigenvectors.transpose();
-    for (mut col, scale) in std::iter::zip(B_inv.column_iter_mut(), pi.iter()) {
+    for (mut col, scale) in std::iter::zip(B_inv.column_iter_mut(), sqrt_pi.iter()) {
         col *= scale.recip();
     }
+
     let X_T = X_transposed(eigenvalues, distance);
 
     /* TODO optimize */
@@ -187,6 +188,40 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
     result = B * cotangent_vector * B_inv;
 
     result
+}
+
+fn d_param<const DIM: usize>(
+    cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
+    symmetric: na::SMatrixView<Float, DIM, DIM>,
+    sqrt_pi: na::SVectorView<Float, DIM>,
+) -> (na::SMatrix<Float, DIM, DIM>, na::SVector<Float, DIM>) {
+    let sqrt_pi_recip = sqrt_pi.map(Float::recip);
+
+    /* d_S rho(W) = diag(sqrt_pi)^-1 * W * diag(sqrt_pi) */
+    let mut grad_symmetric = cotangent_vector.clone_owned();
+    for (mut row, scale_recip) in
+        std::iter::zip(grad_symmetric.row_iter_mut(), sqrt_pi_recip.iter())
+    {
+        row *= *scale_recip;
+    }
+    for (mut col, scale) in std::iter::zip(grad_symmetric.column_iter_mut(), sqrt_pi.iter()) {
+        col *= *scale;
+    }
+
+    /* d_pi[i] = 0.5 / sqrt_pi * (s_ki * (w_ki * sqrt_pi_recip - w_ik * sqrt_pi * pi_i_recip)).sum() */
+    let mut grad_pi = 0.5 * sqrt_pi_recip;
+    for i in 0..DIM {
+        let s_ki = symmetric.column(i);
+        let w_ki = cotangent_vector.column(i);
+        let w_ik = cotangent_vector.row(i).transpose();
+        let pi_i_recip = sqrt_pi_recip[i] * sqrt_pi_recip[i];
+        let mut summands =
+            w_ki.component_mul(&sqrt_pi_recip) - w_ik.component_mul(&sqrt_pi) * pi_i_recip;
+        summands.component_mul_assign(&s_ki);
+        grad_pi[i] *= summands.sum();
+    }
+
+    (grad_symmetric, grad_pi)
 }
 
 /* TODO extract iterator, use it to compute d_broadcast (d_lse) */
@@ -250,7 +285,7 @@ pub fn d_child_input_mcgibbon_pande<const DIM: usize>(
     distance: Float,
     eigenvectors: na::SMatrixView<Float, DIM, DIM>,
     eigenvalues: na::SVectorView<Float, DIM>,
-    pi: na::SVectorView<Float, DIM>,
+    sqrt_pi: na::SVectorView<Float, DIM>,
     log_p: &[Float; DIM],
     forward: &LogTransitionForwardData<DIM>,
     compute_grad_log_p: bool,
@@ -280,7 +315,7 @@ pub fn d_child_input_mcgibbon_pande<const DIM: usize>(
         distance,
         eigenvectors,
         eigenvalues,
-        pi,
+        sqrt_pi,
         //forward,
     );
 
