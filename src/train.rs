@@ -260,14 +260,12 @@ pub fn train_parallel_param<const DIM: usize, Residue>(
     residue_sequences_2d: na::DMatrixView<Residue>,
     symmetric_matrices: &[na::SMatrix<Float, DIM, DIM>],
     sqrt_pi: &[na::SVector<Float, DIM>],
-    log_p_priors: &[[Float; DIM]],
     tree: &[TreeNode],
     distances: &[Float],
 ) -> (
     Vec<Float>,
     Vec<na::SMatrix<Float, DIM, DIM>>,
     Vec<na::SVector<Float, DIM>>,
-    Vec<[Float; DIM]>,
     Vec<na::SMatrix<Float, DIM, DIM>>,
 )
 where
@@ -282,17 +280,17 @@ where
     let log_likelihood_total: Vec<Float>;
     let grad_symmetric_total: Vec<na::SMatrix<Float, DIM, DIM>>;
     let grad_pi_total: Vec<na::SVector<Float, DIM>>;
-    let grad_log_prior_total: Vec<[Float; DIM]>;
     let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
     (
         log_likelihood_total,
-        (
-            grad_symmetric_total,
-            (grad_pi_total, (grad_log_prior_total, grad_rate_total)),
-        ),
-    ) = (index_pairs, symmetric_matrices, sqrt_pi, log_p_priors)
+        (grad_symmetric_total, (grad_pi_total, grad_rate_total)),
+    ) = (index_pairs, symmetric_matrices, sqrt_pi)
         .into_par_iter()
-        .map(|(column_id, symmetric_matrix, sqrt_pi, log_p_prior)| {
+        .map(|(column_id, symmetric_matrix, sqrt_pi)| {
+            /* TODO remove */
+            let log_p_prior: [Float; DIM] =
+                <[Float; DIM]>::from(sqrt_pi.map(Float::ln) * (2.0 as Float));
+
             let (left_id, right_id) = *column_id;
             let left_half = residue_sequences_2d.column(left_id);
             let right_half = residue_sequences_2d.column(right_id);
@@ -310,7 +308,7 @@ where
             let log_p_root = log_p[num_nodes - 1];
 
             let (log_likelihood_column, grad_log_p_likelihood): (Float, [Float; DIM]) =
-                process_likelihood(&log_p_root, log_p_prior);
+                process_likelihood(&log_p_root, &log_p_prior);
             let grad_log_prior_column = grad_log_p_likelihood;
             let grad_log_p_root = grad_log_p_likelihood;
 
@@ -324,8 +322,14 @@ where
                 num_leaves,
             );
 
-            let (mut grad_symmetric_column, grad_pi_column) =
+            let (mut grad_symmetric_column, mut grad_pi_column) =
                 d_param(grad_rate_column.as_view(), &param);
+
+            let mut grad_pi_likelihood = param.sqrt_pi_recip;
+            grad_pi_likelihood.component_mul_assign(&param.sqrt_pi_recip);
+            grad_pi_likelihood
+                .component_mul_assign(&na::SVector::<Float, DIM>::from(grad_log_prior_column));
+            grad_pi_column += grad_pi_likelihood;
 
             /* Gradient is differential transposed */
             grad_symmetric_column.transpose_mut();
@@ -334,10 +338,7 @@ where
                 log_likelihood_column,
                 (
                     grad_symmetric_column,
-                    (
-                        grad_pi_column,
-                        (grad_log_prior_column, grad_rate_column.transpose()),
-                    ),
+                    (grad_pi_column, grad_rate_column.transpose()),
                 ),
             )
         })
@@ -346,7 +347,6 @@ where
         log_likelihood_total,
         grad_symmetric_total,
         grad_pi_total,
-        grad_log_prior_total,
         grad_rate_total,
     )
 }
