@@ -257,13 +257,12 @@ impl FTree {
 
         let log_likelihood_total: Vec<Float>;
         let grad_symmetric_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
-        let grad_pi_total: Vec<na::SVector<Float, { Entry::DIM }>>;
-        let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
+        let grad_sqrt_pi_total: Vec<na::SVector<Float, { Entry::DIM }>>;
         let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
         (
             log_likelihood_total,
             grad_symmetric_total,
-            grad_pi_total,
+            grad_sqrt_pi_total,
             grad_rate_total,
         ) = super_.infer_param(&index_pairs_vec, &symmetric_matrices_vec, &sqrt_pi_vec);
 
@@ -280,9 +279,9 @@ impl FTree {
         )
         .unwrap()
         .into_pyarray_bound(py);
-        let grad_pi_total_py = Array::<Float, _>::from_shape_vec(
-            (grad_pi_total.len(), Entry::DIM),
-            grad_pi_total
+        let grad_sqrt_pi_total_py = Array::<Float, _>::from_shape_vec(
+            (grad_sqrt_pi_total.len(), Entry::DIM),
+            grad_sqrt_pi_total
                 .into_iter()
                 .flat_map(|vector| vector.iter().copied().collect::<Vec<Float>>())
                 .collect::<Vec<Float>>(),
@@ -303,7 +302,7 @@ impl FTree {
         (
             log_likelihood_total_py,
             grad_symmetric_total_py,
-            grad_pi_total_py,
+            grad_sqrt_pi_total_py,
             grad_rate_total_py,
         )
     }

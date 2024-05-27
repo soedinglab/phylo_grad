@@ -182,6 +182,7 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
 
 /* TODO! avoid using diagonal entries of S. */
 /* TODO! use an index iterator to only compute the entries above the diagonal */
+/* verified */
 pub fn d_param<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     param: &ParamData<DIM>,
@@ -196,8 +197,8 @@ pub fn d_param<const DIM: usize>(
     times_diag_assign(grad_symmetric.as_view_mut(), sqrt_pi.iter().copied());
 
     /* d_pi rho(W) [i] = 0.5 / sqrt_pi * (s_ki * (w_ki * sqrt_pi_recip - w_ik * sqrt_pi * pi_i_recip)).sum() */
-    let mut grad_pi = 0.5 * sqrt_pi_recip;
-    for i in 0..DIM {
+    //let mut grad_pi = 0.5 * sqrt_pi_recip;
+    let grad_sqrt_pi = na::SVector::<Float, DIM>::from_iterator((0..DIM).map(|i| {
         let s_ki = symmetric.column(i);
         let w_ki = cotangent_vector.column(i);
         let w_ik = cotangent_vector.row(i).transpose();
@@ -206,10 +207,10 @@ pub fn d_param<const DIM: usize>(
             w_ki.component_mul(&sqrt_pi_recip) - w_ik.component_mul(&sqrt_pi) * pi_i_recip;
         summands[i] = 0.0 as Float;
         summands.component_mul_assign(&s_ki);
-        grad_pi[i] *= summands.sum();
-    }
+        summands.sum()
+    }));
 
-    (grad_symmetric, grad_pi)
+    (grad_symmetric, grad_sqrt_pi)
 }
 
 /* TODO extract iterator, use it to compute d_broadcast (d_lse) */
