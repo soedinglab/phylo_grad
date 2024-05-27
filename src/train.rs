@@ -258,7 +258,7 @@ where
 pub fn train_parallel_param<const DIM: usize, Residue>(
     index_pairs: &[(usize, usize)],
     residue_sequences_2d: na::DMatrixView<Residue>,
-    symmetric_matrices: &[na::SMatrix<Float, DIM, DIM>],
+    deltas: &[na::SMatrix<Float, DIM, DIM>],
     sqrt_pi: &[na::SVector<Float, DIM>],
     tree: &[TreeNode],
     distances: &[Float],
@@ -278,15 +278,15 @@ where
     let num_nodes = tree.len();
 
     let log_likelihood_total: Vec<Float>;
-    let grad_symmetric_total: Vec<na::SMatrix<Float, DIM, DIM>>;
+    let grad_delta_total: Vec<na::SMatrix<Float, DIM, DIM>>;
     let grad_sqrt_pi_total: Vec<na::SVector<Float, DIM>>;
     let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
     (
         log_likelihood_total,
-        (grad_symmetric_total, (grad_sqrt_pi_total, grad_rate_total)),
-    ) = (index_pairs, symmetric_matrices, sqrt_pi)
+        (grad_delta_total, (grad_sqrt_pi_total, grad_rate_total)),
+    ) = (index_pairs, deltas, sqrt_pi)
         .into_par_iter()
-        .map(|(column_id, symmetric_matrix, sqrt_pi)| {
+        .map(|(column_id, delta, sqrt_pi)| {
             /* TODO remove */
             let log_p_prior: [Float; DIM] =
                 <[Float; DIM]>::from(sqrt_pi.map(Float::ln) * (2.0 as Float));
@@ -300,7 +300,7 @@ where
                 },
             );
 
-            let param = compute_param_data(symmetric_matrix.as_view(), sqrt_pi.as_view());
+            let param = compute_param_data(delta.as_view(), sqrt_pi.as_view());
 
             let forward_data = forward_data_precompute_param(&param, &distances);
 
@@ -322,7 +322,7 @@ where
                 num_leaves,
             );
 
-            let (mut grad_symmetric_column, mut grad_sqrt_pi_column) =
+            let (grad_delta_column, mut grad_sqrt_pi_column) =
                 d_param(grad_rate_column.as_view(), &param);
 
             let mut grad_sqrt_pi_likelihood = param.sqrt_pi_recip * (2.0 as Float);
@@ -331,12 +331,12 @@ where
             grad_sqrt_pi_column += grad_sqrt_pi_likelihood;
 
             /* Gradient is differential transposed */
-            grad_symmetric_column.transpose_mut();
+            // grad_symmetric_column.transpose_mut();
 
             (
                 log_likelihood_column,
                 (
-                    grad_symmetric_column,
+                    grad_delta_column,
                     (grad_sqrt_pi_column, grad_rate_column.transpose()),
                 ),
             )
@@ -344,7 +344,7 @@ where
         .unzip();
     (
         log_likelihood_total,
-        grad_symmetric_total,
+        grad_delta_total,
         grad_sqrt_pi_total,
         grad_rate_total,
     )

@@ -67,7 +67,7 @@ pub fn times_diag_assign<I, const N: usize>(
 }
 
 pub fn compute_param_data<const DIM: usize>(
-    symmetric_matrix: na::SMatrixView<Float, DIM, DIM>,
+    delta: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
 ) -> ParamData<DIM>
 where
@@ -76,14 +76,9 @@ where
 {
     let sqrt_pi_recip = sqrt_pi.map(Float::recip);
 
-    /* TODO remove */
-    let mut symmetric_output = symmetric_matrix.clone_owned();
-    let id_iter = std::iter::zip(
-        (0..DIM).flat_map(|n| std::iter::repeat(n).take(DIM)),
-        std::iter::repeat(0..DIM).flatten(),
-    );
-    for (i, j) in id_iter {
-        if j < i {
+    let mut symmetric_output = delta.clone_owned();
+    for i in 0..DIM {
+        for j in 0..i {
             symmetric_output[(i, j)] = symmetric_output[(j, i)];
         }
     }

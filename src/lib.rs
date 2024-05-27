@@ -86,7 +86,7 @@ impl FTreeBackend {
         &self,
         index_pairs: &Vec<(usize, usize)>,
         /* TODO as_deref() */
-        symmetric_matrices: &[na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>],
+        deltas: &[na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>],
         sqrt_pi: &[na::SVector<Float, { Entry::DIM }>],
     ) -> (
         Vec<Float>,
@@ -97,7 +97,7 @@ impl FTreeBackend {
         train_parallel_param(
             index_pairs,
             self.residue_sequences_2d.as_view(),
-            symmetric_matrices,
+            deltas,
             sqrt_pi,
             &(self.tree),
             &(self.distances),
@@ -221,7 +221,7 @@ impl FTree {
     fn infer_param<'py>(
         self_: PyRef<'py, Self>,
         index_pairs: PyReadonlyArray2<'py, usize>,
-        symmetric_matrices: PyReadonlyArray3<'py, Float>,
+        deltas: PyReadonlyArray3<'py, Float>,
         sqrt_pi: PyReadonlyArray2<'py, Float>,
     ) -> (
         Bound<'py, PyArray1<Float>>,
@@ -238,16 +238,15 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let symmetric_matrices_ndarray = symmetric_matrices.as_array();
-        let symmetric_matrices_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
-            symmetric_matrices_ndarray
-                .axis_iter(Axis(0))
-                .map(|slice_2d| {
-                    na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_iterator(
-                        slice_2d.t().iter().copied(),
-                    )
-                })
-                .collect();
+        let deltas_ndarray = deltas.as_array();
+        let deltas_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> = deltas_ndarray
+            .axis_iter(Axis(0))
+            .map(|slice_2d| {
+                na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_iterator(
+                    slice_2d.t().iter().copied(),
+                )
+            })
+            .collect();
 
         let sqrt_pi_ndarray = sqrt_pi.as_array();
         let sqrt_pi_vec: Vec<na::SVector<Float, { Entry::DIM }>> = sqrt_pi_ndarray
@@ -256,23 +255,23 @@ impl FTree {
             .collect();
 
         let log_likelihood_total: Vec<Float>;
-        let grad_symmetric_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
+        let grad_delta_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
         let grad_sqrt_pi_total: Vec<na::SVector<Float, { Entry::DIM }>>;
         let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
         (
             log_likelihood_total,
-            grad_symmetric_total,
+            grad_delta_total,
             grad_sqrt_pi_total,
             grad_rate_total,
-        ) = super_.infer_param(&index_pairs_vec, &symmetric_matrices_vec, &sqrt_pi_vec);
+        ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec);
 
         let log_likelihood_total_py =
             Array::<Float, _>::from_shape_vec((log_likelihood_total.len(),), log_likelihood_total)
                 .unwrap()
                 .into_pyarray_bound(py);
-        let grad_symmetric_total_py = Array::<Float, _>::from_shape_vec(
-            (grad_symmetric_total.len(), Entry::DIM, Entry::DIM),
-            grad_symmetric_total
+        let grad_delta_total_py = Array::<Float, _>::from_shape_vec(
+            (grad_delta_total.len(), Entry::DIM, Entry::DIM),
+            grad_delta_total
                 .into_iter()
                 .flat_map(|matrix| matrix.transpose().iter().copied().collect::<Vec<Float>>())
                 .collect::<Vec<Float>>(),
@@ -301,7 +300,7 @@ impl FTree {
 
         (
             log_likelihood_total_py,
-            grad_symmetric_total_py,
+            grad_delta_total_py,
             grad_sqrt_pi_total_py,
             grad_rate_total_py,
         )

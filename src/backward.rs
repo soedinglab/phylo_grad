@@ -192,11 +192,31 @@ pub fn d_param<const DIM: usize>(
     let symmetric = param.symmetric_matrix.clone_owned();
 
     /* d_S rho(W) = diag(sqrt_pi)^-1 * W * diag(sqrt_pi) */
-    let mut grad_symmetric = cotangent_vector.clone_owned();
-    diag_times_assign(grad_symmetric.as_view_mut(), sqrt_pi_recip.iter().copied());
-    times_diag_assign(grad_symmetric.as_view_mut(), sqrt_pi.iter().copied());
+    let grad_symmetric = {
+        let mut grad_symmetric_pre = cotangent_vector.clone_owned();
+        diag_times_assign(
+            grad_symmetric_pre.as_view_mut(),
+            sqrt_pi_recip.iter().copied(),
+        );
+        times_diag_assign(grad_symmetric_pre.as_view_mut(), sqrt_pi.iter().copied());
+        grad_symmetric_pre
+    };
 
-    /* d_pi rho(W) [i] = 0.5 / sqrt_pi * (s_ki * (w_ki * sqrt_pi_recip - w_ik * sqrt_pi * pi_i_recip)).sum() */
+    /* d_delta rho(W) [i, j]:
+            0 if i >= j
+            grad_S[i, j] + grad_S[j, i] - grad_S[i, i] * pi_j / pi_i - grad_S[j, j] * pi_i / pi_j if i < j
+    */
+
+    let mut grad_delta = na::SMatrix::<Float, DIM, DIM>::zeros();
+    for j in 0..DIM {
+        for i in 0..j {
+            grad_delta[(i, j)] = grad_symmetric[(i, j)] + grad_symmetric[(j, i)]
+                - grad_symmetric[(i, i)] * sqrt_pi_recip[i] * sqrt_pi[j]
+                - grad_symmetric[(j, j)] * sqrt_pi_recip[j] * sqrt_pi[i]
+        }
+    }
+
+    /* d_sqrt_pi rho(W) [i] = (s_ki * (w_ki * sqrt_pi_recip - w_ik * sqrt_pi * pi_i_recip)).sum() */
     //let mut grad_pi = 0.5 * sqrt_pi_recip;
     let grad_sqrt_pi = na::SVector::<Float, DIM>::from_iterator((0..DIM).map(|i| {
         let s_ki = symmetric.column(i);
@@ -210,7 +230,7 @@ pub fn d_param<const DIM: usize>(
         summands.sum()
     }));
 
-    (grad_symmetric, grad_sqrt_pi)
+    (grad_delta, grad_sqrt_pi)
 }
 
 /* TODO extract iterator, use it to compute d_broadcast (d_lse) */
