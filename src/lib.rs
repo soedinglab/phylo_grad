@@ -94,6 +94,7 @@ impl FTreeBackend {
         Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>,
         Vec<na::SVector<Float, { Entry::DIM }>>,
         Vec<[Float; Entry::DIM]>,
+        Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>,
     ) {
         train_parallel_param(
             index_pairs,
@@ -231,6 +232,7 @@ impl FTree {
         Bound<'py, PyArray3<Float>>,
         Bound<'py, PyArray2<Float>>,
         Bound<'py, PyArray2<Float>>,
+        Bound<'py, PyArray3<Float>>,
     ) {
         let super_ = self_.as_ref();
         let py = self_.py();
@@ -268,11 +270,13 @@ impl FTree {
         let grad_symmetric_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
         let grad_pi_total: Vec<na::SVector<Float, { Entry::DIM }>>;
         let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
+        let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
         (
             log_likelihood_total,
             grad_symmetric_total,
             grad_pi_total,
             grad_log_prior_total,
+            grad_rate_total,
         ) = super_.infer_param(
             &index_pairs_vec,
             &symmetric_matrices_vec,
@@ -312,11 +316,22 @@ impl FTree {
         .unwrap()
         .into_pyarray_bound(py);
 
+        let grad_rate_total_py = Array::<Float, _>::from_shape_vec(
+            (grad_rate_total.len(), Entry::DIM, Entry::DIM),
+            grad_rate_total
+                .into_iter()
+                .flat_map(|matrix| matrix.transpose().iter().copied().collect::<Vec<Float>>())
+                .collect::<Vec<Float>>(),
+        )
+        .unwrap()
+        .into_pyarray_bound(py);
+
         (
             log_likelihood_total_py,
             grad_symmetric_total_py,
             grad_pi_total_py,
             grad_log_prior_total_py,
+            grad_rate_total_py,
         )
     }
 }

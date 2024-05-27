@@ -268,6 +268,7 @@ pub fn train_parallel_param<const DIM: usize, Residue>(
     Vec<na::SMatrix<Float, DIM, DIM>>,
     Vec<na::SVector<Float, DIM>>,
     Vec<[Float; DIM]>,
+    Vec<na::SMatrix<Float, DIM, DIM>>,
 )
 where
     Residue: ResidueTrait,
@@ -282,9 +283,13 @@ where
     let grad_symmetric_total: Vec<na::SMatrix<Float, DIM, DIM>>;
     let grad_pi_total: Vec<na::SVector<Float, DIM>>;
     let grad_log_prior_total: Vec<[Float; DIM]>;
+    let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
     (
         log_likelihood_total,
-        (grad_symmetric_total, (grad_pi_total, grad_log_prior_total)),
+        (
+            grad_symmetric_total,
+            (grad_pi_total, (grad_log_prior_total, grad_rate_total)),
+        ),
     ) = (index_pairs, symmetric_matrices, sqrt_pi, log_p_priors)
         .into_par_iter()
         .map(|(column_id, symmetric_matrix, sqrt_pi, log_p_prior)| {
@@ -319,11 +324,8 @@ where
                 num_leaves,
             );
 
-            let (mut grad_symmetric_column, grad_pi_column) = d_param(
-                grad_rate_column.as_view(),
-                param.symmetric_matrix.as_view(),
-                param.sqrt_pi.as_view(),
-            );
+            let (mut grad_symmetric_column, grad_pi_column) =
+                d_param(grad_rate_column.as_view(), &param);
 
             /* Gradient is differential transposed */
             grad_symmetric_column.transpose_mut();
@@ -332,7 +334,10 @@ where
                 log_likelihood_column,
                 (
                     grad_symmetric_column,
-                    (grad_pi_column, grad_log_prior_column),
+                    (
+                        grad_pi_column,
+                        (grad_log_prior_column, grad_rate_column.transpose()),
+                    ),
                 ),
             )
         })
@@ -342,5 +347,6 @@ where
         grad_symmetric_total,
         grad_pi_total,
         grad_log_prior_total,
+        grad_rate_total,
     )
 }

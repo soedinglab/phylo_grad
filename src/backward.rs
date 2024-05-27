@@ -99,6 +99,7 @@ where
     result
 }
 
+/* verified */
 fn exprel(x: f64) -> f64 {
     const THRESHOLD: f64 = 2e-3;
     /* LOG_F64_MAX = f64::MAX.log() */
@@ -118,6 +119,7 @@ fn exprel(x: f64) -> f64 {
     }
 }
 
+/* verified */
 /* TODO simplify */
 fn X_transposed<const DIM: usize>(
     eigenvalues: na::SVectorView<Float, DIM>,
@@ -148,6 +150,7 @@ fn X_transposed<const DIM: usize>(
     result
 }
 
+/* verified */
 fn d_transition_mcgibbon_pande<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     distance: Float,
@@ -168,9 +171,11 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
 
     /* TODO optimize */
     //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X_T)) * B_inv;
-    let mut result = B_inv * cotangent_vector * B;
+    let mut result = B_inv * cotangent_vector;
+    result = result * B;
     result.component_mul_assign(&X_T);
-    result = B * cotangent_vector * B_inv;
+    result = B * result;
+    result = result * B_inv;
 
     result
 }
@@ -179,10 +184,11 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
 /* TODO! use an index iterator to only compute the entries above the diagonal */
 pub fn d_param<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
-    symmetric: na::SMatrixView<Float, DIM, DIM>,
-    sqrt_pi: na::SVectorView<Float, DIM>,
+    param: &ParamData<DIM>,
 ) -> (na::SMatrix<Float, DIM, DIM>, na::SVector<Float, DIM>) {
-    let sqrt_pi_recip = sqrt_pi.map(Float::recip);
+    let sqrt_pi = param.sqrt_pi.clone_owned();
+    let sqrt_pi_recip = param.sqrt_pi_recip.clone_owned();
+    let symmetric = param.symmetric_matrix.clone_owned();
 
     /* d_S rho(W) = diag(sqrt_pi)^-1 * W * diag(sqrt_pi) */
     let mut grad_symmetric = cotangent_vector.clone_owned();

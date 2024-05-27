@@ -1,4 +1,4 @@
-#![allow(clippy::needless_range_loop)]
+#![allow(non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
 /* TODO pyo3 */
 
@@ -19,7 +19,7 @@ use crate::io::*;
 use crate::preprocessing::*;
 use crate::train::*;
 
-struct DisplayArray<'a, T>(&'a [T])
+pub struct DisplayArray<'a, T>(pub &'a [T])
 where
     T: std::fmt::Display;
 impl<'a, T> std::fmt::Display for DisplayArray<'a, T>
