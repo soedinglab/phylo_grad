@@ -76,10 +76,35 @@ where
 {
     let sqrt_pi_recip = sqrt_pi.map(Float::recip);
 
+    /* TODO remove */
+    let mut symmetric_output = symmetric_matrix.clone_owned();
+    let id_iter = std::iter::zip(
+        (0..DIM).flat_map(|n| std::iter::repeat(n).take(DIM)),
+        std::iter::repeat(0..DIM).flatten(),
+    );
+    for (i, j) in id_iter {
+        if j < i {
+            symmetric_output[(i, j)] = symmetric_output[(j, i)];
+        }
+    }
+
+    /* TODO remove */
+    /* rate_matrix = diag(sqrt_pi_recip) * S_output * diag(sqrt_pi) */
+    let mut rate_matrix = symmetric_output.clone_owned();
+    diag_times_assign(rate_matrix.as_view_mut(), sqrt_pi_recip.iter().copied());
+    times_diag_assign(rate_matrix.as_view_mut(), sqrt_pi.iter().copied());
+
+    for i in 0..DIM {
+        let row = rate_matrix.row(i).clone_owned();
+        symmetric_output[(i, i)] = -(row.as_slice()[..i].iter().sum::<Float>()
+            + row.as_slice()[i + 1..].iter().sum::<Float>());
+        rate_matrix[(i, i)] = symmetric_output[(i, i)];
+    }
+
     let na::SymmetricEigen {
         eigenvalues,
         eigenvectors,
-    } = symmetric_matrix.symmetric_eigen();
+    } = symmetric_output.symmetric_eigen();
 
     let mut V_pi = eigenvectors.clone_owned();
     diag_times_assign(V_pi.as_view_mut(), sqrt_pi_recip.iter().copied());
@@ -87,14 +112,8 @@ where
     let mut V_pi_inv = eigenvectors.transpose();
     times_diag_assign(V_pi_inv.as_view_mut(), sqrt_pi.iter().copied());
 
-    /* TODO remove */
-    /* rate_matrix = diag(sqrt_pi_recip) * S * diag(sqrt_pi) */
-    let mut rate_matrix = symmetric_matrix.clone_owned();
-    diag_times_assign(rate_matrix.as_view_mut(), sqrt_pi_recip.iter().copied());
-    times_diag_assign(rate_matrix.as_view_mut(), sqrt_pi.iter().copied());
-
     ParamData {
-        symmetric_matrix: symmetric_matrix.clone_owned(),
+        symmetric_matrix: symmetric_output,
         sqrt_pi: sqrt_pi.clone_owned(),
         sqrt_pi_recip,
         eigenvectors,
