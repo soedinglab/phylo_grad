@@ -2,7 +2,9 @@
 extern crate nalgebra as na;
 
 use numpy::ndarray::{Array, Axis};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
+use numpy::{
+    IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
+};
 use pyo3::{
     exceptions::PyValueError,
     pyclass, pymethods, pymodule,
@@ -119,6 +121,87 @@ impl FTreeBackend {
     grad_log_prior_total:
 } */
 
+fn vec_0d_from_python<'py, T>(py_array1: PyReadonlyArray1<'py, T>) -> Vec<T>
+where
+    T: numpy::Element,
+{
+    let ndarray = py_array1.as_array();
+    ndarray.to_vec()
+}
+
+fn vec_0d_into_python<'py, T>(vec: Vec<T>, py: Python<'py>) -> Bound<PyArray1<T>>
+where
+    T: numpy::Element,
+{
+    Array::<T, _>::from_shape_vec((vec.len(),), vec)
+        .unwrap()
+        .into_pyarray_bound(py)
+}
+
+fn vec_1d_from_python<'py, T, const N: usize>(
+    py_array2: PyReadonlyArray2<'py, T>,
+) -> Vec<na::SVector<T, N>>
+where
+    T: numpy::Element + na::Scalar + Copy,
+{
+    let ndarray = py_array2.as_array();
+    let vec: Vec<na::SVector<T, N>> = ndarray
+        .axis_iter(Axis(0))
+        .map(|slice| na::SVector::<T, N>::from_iterator(slice.iter().copied()))
+        .collect();
+    vec
+}
+
+fn vec_1d_into_python<'py, T, const N: usize>(
+    vec: Vec<na::SVector<T, N>>,
+    py: Python<'py>,
+) -> Bound<'py, PyArray2<T>>
+where
+    T: numpy::Element + na::Scalar + Copy,
+{
+    Array::<T, _>::from_shape_vec(
+        (vec.len(), N),
+        vec.into_iter()
+            .flat_map(|vector| vector.iter().copied().collect::<Vec<T>>())
+            .collect::<Vec<T>>(),
+    )
+    .unwrap()
+    .into_pyarray_bound(py)
+}
+
+/* TODO debug */
+fn vec_2d_from_python<'py, T, const R: usize, const C: usize>(
+    py_array3: PyReadonlyArray3<'py, T>,
+) -> Vec<na::SMatrix<T, R, C>>
+where
+    T: numpy::Element + na::Scalar + Copy,
+{
+    let ndarray = py_array3.as_array();
+    let vec: Vec<na::SMatrix<T, R, C>> = ndarray
+        .axis_iter(Axis(0))
+        .map(|slice_2d| na::SMatrix::<T, R, C>::from_iterator(slice_2d.t().iter().copied()))
+        .collect();
+    vec
+}
+
+/* TODO debug */
+fn vec_2d_into_python<'py, T, const R: usize, const C: usize>(
+    vec: Vec<na::SMatrix<T, R, C>>,
+    py: Python<'py>,
+) -> Bound<'py, PyArray3<T>>
+where
+    T: numpy::Element + na::Scalar + Copy,
+{
+    Array::<T, _>::from_shape_vec(
+        (vec.len(), R, C),
+        vec.into_iter()
+            .flat_map(|matrix| matrix.transpose().into_iter().copied().collect::<Vec<T>>())
+            .collect::<Vec<T>>(),
+    )
+    .unwrap()
+    .into_pyarray_bound(py)
+}
+
 #[pyclass(extends=FTreeBackend, subclass)]
 struct FTree {}
 
@@ -159,16 +242,8 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let rate_matrices_ndarray = rate_matrices.as_array();
         let rate_matrices_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
-            rate_matrices_ndarray
-                .axis_iter(Axis(0))
-                .map(|slice_2d| {
-                    na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_iterator(
-                        slice_2d.t().iter().copied(),
-                    )
-                })
-                .collect();
+            vec_2d_from_python(rate_matrices);
 
         let log_p_priors_ndarray = log_p_priors.as_array();
         let log_p_priors_vec: Vec<[Float; Entry::DIM]> = log_p_priors_ndarray
@@ -182,25 +257,8 @@ impl FTree {
         (log_likelihood_total, grad_rate_total, grad_log_prior_total) =
             super_.infer(&index_pairs_vec, &rate_matrices_vec, &log_p_priors_vec);
 
-        let log_likelihood_total_py =
-            Array::<Float, _>::from_shape_vec((log_likelihood_total.len(),), log_likelihood_total)
-                .unwrap()
-                .into_pyarray_bound(py);
-        let grad_rate_total_py = Array::<Float, _>::from_shape_vec(
-            (grad_rate_total.len(), Entry::DIM, Entry::DIM),
-            grad_rate_total
-                .into_iter()
-                .flat_map(|matrix| {
-                    matrix
-                        .transpose()
-                        .into_iter()
-                        .copied()
-                        .collect::<Vec<Float>>()
-                })
-                .collect::<Vec<Float>>(),
-        )
-        .unwrap()
-        .into_pyarray_bound(py);
+        let log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
+        let grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
         let grad_log_prior_total_py = Array::<Float, _>::from_shape_vec(
             (grad_log_prior_total.len(), Entry::DIM),
             grad_log_prior_total
@@ -238,21 +296,9 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let deltas_ndarray = deltas.as_array();
-        let deltas_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> = deltas_ndarray
-            .axis_iter(Axis(0))
-            .map(|slice_2d| {
-                na::SMatrix::<Float, { Entry::DIM }, { Entry::DIM }>::from_iterator(
-                    slice_2d.t().iter().copied(),
-                )
-            })
-            .collect();
-
-        let sqrt_pi_ndarray = sqrt_pi.as_array();
-        let sqrt_pi_vec: Vec<na::SVector<Float, { Entry::DIM }>> = sqrt_pi_ndarray
-            .axis_iter(Axis(0))
-            .map(|slice| na::SVector::<Float, { Entry::DIM }>::from_iterator(slice.iter().copied()))
-            .collect();
+        let deltas_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
+            vec_2d_from_python(deltas);
+        let sqrt_pi_vec: Vec<na::SVector<Float, { Entry::DIM }>> = vec_1d_from_python(sqrt_pi);
 
         let log_likelihood_total: Vec<Float>;
         let grad_delta_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
@@ -265,38 +311,10 @@ impl FTree {
             grad_rate_total,
         ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec);
 
-        let log_likelihood_total_py =
-            Array::<Float, _>::from_shape_vec((log_likelihood_total.len(),), log_likelihood_total)
-                .unwrap()
-                .into_pyarray_bound(py);
-        let grad_delta_total_py = Array::<Float, _>::from_shape_vec(
-            (grad_delta_total.len(), Entry::DIM, Entry::DIM),
-            grad_delta_total
-                .into_iter()
-                .flat_map(|matrix| matrix.transpose().iter().copied().collect::<Vec<Float>>())
-                .collect::<Vec<Float>>(),
-        )
-        .unwrap()
-        .into_pyarray_bound(py);
-        let grad_sqrt_pi_total_py = Array::<Float, _>::from_shape_vec(
-            (grad_sqrt_pi_total.len(), Entry::DIM),
-            grad_sqrt_pi_total
-                .into_iter()
-                .flat_map(|vector| vector.iter().copied().collect::<Vec<Float>>())
-                .collect::<Vec<Float>>(),
-        )
-        .unwrap()
-        .into_pyarray_bound(py);
-
-        let grad_rate_total_py = Array::<Float, _>::from_shape_vec(
-            (grad_rate_total.len(), Entry::DIM, Entry::DIM),
-            grad_rate_total
-                .into_iter()
-                .flat_map(|matrix| matrix.transpose().iter().copied().collect::<Vec<Float>>())
-                .collect::<Vec<Float>>(),
-        )
-        .unwrap()
-        .into_pyarray_bound(py);
+        let log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
+        let grad_delta_total_py = vec_2d_into_python(grad_delta_total, py);
+        let grad_sqrt_pi_total_py = vec_1d_into_python(grad_sqrt_pi_total, py);
+        let grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
 
         (
             log_likelihood_total_py,
