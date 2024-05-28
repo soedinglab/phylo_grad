@@ -4,10 +4,10 @@ use crate::forward::*;
 use na::{Const, DefaultAllocator};
 
 pub struct BackwardData<const DIM: usize> {
-    pub grad_log_p: [Float; DIM],
+    pub grad_log_p: na::SVector<Float, DIM>,
 }
 
-fn softmax_na<const N: usize>(x: na::SVectorView<Float, N>) -> na::SVector<Float, N> {
+pub fn softmax_na<const N: usize>(x: na::SVectorView<Float, N>) -> na::SVector<Float, N> {
     let mut result: na::SVector<Float, N>;
     let x_max = *x
         .iter()
@@ -20,24 +20,6 @@ fn softmax_na<const N: usize>(x: na::SVectorView<Float, N>) -> na::SVector<Float
     let scale = result.sum().recip();
     result *= scale;
     result
-}
-
-pub fn softmax_inplace(x: &mut [Float]) {
-    let x_max = *x
-        .iter()
-        .max_by(|a, b| a.total_cmp(b))
-        .expect("Iterator cannot be empty");
-
-    for item in x.iter_mut() {
-        *item -= x_max;
-    }
-    for item in x.iter_mut() {
-        *item = item.exp();
-    }
-    let scale = x.iter().sum::<Float>().recip();
-    for item in x.iter_mut() {
-        *item *= scale;
-    }
 }
 
 fn d_exp_vjp<const N: usize>(
@@ -180,9 +162,6 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
     result
 }
 
-/* TODO! avoid using diagonal entries of S. */
-/* TODO! use an index iterator to only compute the entries above the diagonal */
-/* verified */
 pub fn d_param<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     param: &ParamData<DIM>,
@@ -216,67 +195,70 @@ pub fn d_param<const DIM: usize>(
         }
     }
 
-    /* d_sqrt_pi rho(W) [i] = (s_ki * (w_ki * sqrt_pi_recip - w_ik * sqrt_pi * pi_i_recip)).sum() */
-    //let mut grad_pi = 0.5 * sqrt_pi_recip;
-    let grad_sqrt_pi = na::SVector::<Float, DIM>::from_iterator((0..DIM).map(|i| {
-        let s_ki = symmetric.column(i);
-        let w_ki = cotangent_vector.column(i);
-        let w_ik = cotangent_vector.row(i).transpose();
-        let pi_i_recip = sqrt_pi_recip[i] * sqrt_pi_recip[i];
-        let mut summands =
-            w_ki.component_mul(&sqrt_pi_recip) - w_ik.component_mul(&sqrt_pi) * pi_i_recip;
-        summands[i] = 0.0 as Float;
-        summands.component_mul_assign(&s_ki);
-        summands.sum()
-    }));
+    /* grad_sqrt_pi [j] =
+        Sum_{i, i!=j} (
+            sqrt_pi_recip[j]
+            * S[i, j]
+            * (sqrt_pi[j]*sqrt_pi_recip[i] * (w_ij - w_ii)
+               -sqrt_pi[i]*sqrt_pi_recip[j] * (w_ji - w_jj))
+        )
+    */
+    let mut grad_sqrt_pi = na::SVector::<Float, DIM>::zeros();
+    for j in 0..DIM {
+        for i in 0..DIM {
+            if i != j {
+                grad_sqrt_pi[j] += sqrt_pi_recip[j]
+                    * symmetric[(i, j)]
+                    * (sqrt_pi[j]
+                        * sqrt_pi_recip[i]
+                        * (cotangent_vector[(i, j)] - cotangent_vector[(i, i)])
+                        - sqrt_pi[i]
+                            * sqrt_pi_recip[j]
+                            * (cotangent_vector[(j, i)] - cotangent_vector[(j, j)]))
+            }
+        }
+    }
 
     (grad_delta, grad_sqrt_pi)
 }
 
-/* TODO extract iterator, use it to compute d_broadcast (d_lse) */
 fn child_input_forward_data<const DIM: usize>(
-    log_p: &[Float; DIM],
+    log_p: na::SVectorView<Float, DIM>,
     /* TODO get by value */
     log_transition: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
-    let mut res =
-        na::SMatrix::<Float, DIM, DIM>::from_iterator((0..DIM).flat_map(|_| log_p.iter().copied()));
-    res += log_transition;
-    for mut col in res.column_iter_mut() {
-        col.copy_from(&softmax_na(col.as_view()));
-    }
-    res
+    /* result = log_p[:, None] + log_transition */
+    let mut result = na::SMatrix::<Float, DIM, DIM>::from_iterator(
+        log_p.iter().flat_map(|&x| std::iter::repeat(x).take(DIM)),
+    );
+    result += log_transition;
+    result
 }
 
 fn d_broadcast_vjp<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
-) -> [Float; DIM] {
-    let mut result_iter = cotangent_vector.row_iter().map(|row| row.iter().sum());
-    let mut result = [0.0 as Float; DIM];
-    for i in 0..DIM {
-        result[i] = result_iter.next().unwrap();
-    }
-    result
+) -> na::SVector<Float, DIM> {
+    /* sum(cotangent_vector, dim=1) */
+    na::SVector::<Float, DIM>::from_iterator(cotangent_vector.column_iter().map(|col| col.sum()))
 }
 
-pub fn d_child_input_vjp<const DIM: usize>(
-    cotangent_vector: [Float; DIM],
-    distance: Float,
-    log_p: &[Float; DIM],
+fn d_log_transition_child_input_vjp<const DIM: usize>(
+    cotangent_vector: na::SVectorView<Float, DIM>,
+    log_p: na::SVectorView<Float, DIM>,
     forward: &LogTransitionForwardData<DIM>,
     compute_grad_log_p: bool,
-) -> (na::SMatrix<Float, DIM, DIM>, Option<[Float; DIM]>)
-where
-    Const<DIM>: Doubleable,
-    TwoTimesConst<DIM>: Exponentiable,
-    DefaultAllocator: ViableAllocator<Float, DIM>,
-{
+) -> (
+    na::SMatrix<Float, DIM, DIM>,
+    Option<na::SVector<Float, DIM>>,
+) {
     let log_transition = forward.log_transition();
     let mut forward_1 = child_input_forward_data(log_p, log_transition.as_view());
 
-    for (mut col, wt) in std::iter::zip(forward_1.column_iter_mut(), cotangent_vector.into_iter()) {
-        col *= wt;
+    /* d_lse */
+    for mut row in forward_1.row_iter_mut() {
+        row.copy_from(&softmax_na(row.transpose().as_view()).transpose());
     }
+    diag_times_assign(forward_1.as_view_mut(), cotangent_vector.iter().copied());
 
     let grad_log_p = if compute_grad_log_p {
         Some(d_broadcast_vjp(forward_1.as_view()))
@@ -284,40 +266,52 @@ where
         None
     };
 
-    let grad_rate = d_rate_log_transition_vjp(forward_1.as_view(), distance, forward);
+    let grad_log_transition = forward_1;
+
+    (grad_log_transition, grad_log_p)
+}
+
+pub fn d_child_input_vjp<const DIM: usize>(
+    cotangent_vector: na::SVectorView<Float, DIM>,
+    distance: Float,
+    log_p: na::SVectorView<Float, DIM>,
+    forward: &LogTransitionForwardData<DIM>,
+    compute_grad_log_p: bool,
+) -> (
+    na::SMatrix<Float, DIM, DIM>,
+    Option<na::SVector<Float, DIM>>,
+)
+where
+    Const<DIM>: Doubleable,
+    TwoTimesConst<DIM>: Exponentiable,
+    DefaultAllocator: ViableAllocator<Float, DIM>,
+{
+    let (grad_log_transition, grad_log_p) =
+        d_log_transition_child_input_vjp(cotangent_vector, log_p, forward, compute_grad_log_p);
+
+    let grad_rate = d_rate_log_transition_vjp(grad_log_transition.as_view(), distance, forward);
 
     (grad_rate, grad_log_p)
 }
 
 pub fn d_child_input_param<const DIM: usize>(
-    cotangent_vector: [Float; DIM],
+    cotangent_vector: na::SVectorView<Float, DIM>,
     distance: Float,
     param: &ParamData<DIM>,
-    log_p: &[Float; DIM],
+    log_p: na::SVectorView<Float, DIM>,
     forward: &LogTransitionForwardData<DIM>,
     compute_grad_log_p: bool,
-) -> (na::SMatrix<Float, DIM, DIM>, Option<[Float; DIM]>) {
-    let log_transition = forward.log_transition();
-    let reverse_1 = {
-        let mut forward_3 = child_input_forward_data(log_p, log_transition.as_view());
-        for (mut col, wt) in
-            std::iter::zip(forward_3.column_iter_mut(), cotangent_vector.into_iter())
-        {
-            col *= wt;
-        }
-        forward_3
-    };
+) -> (
+    na::SMatrix<Float, DIM, DIM>,
+    Option<na::SVector<Float, DIM>>,
+) {
+    let (grad_log_transition, grad_log_p) =
+        d_log_transition_child_input_vjp(cotangent_vector, log_p, forward, compute_grad_log_p);
 
-    let grad_log_p = if compute_grad_log_p {
-        Some(d_broadcast_vjp(reverse_1.as_view()))
-    } else {
-        None
-    };
+    let transition = forward.step_2;
+    let grad_transition = d_map_ln_vjp(grad_log_transition.as_view(), transition.as_view());
 
-    let forward_2 = forward.step_2;
-    let reverse_2 = d_map_ln_vjp(reverse_1.as_view(), forward_2.as_view());
-
-    let grad_rate = d_transition_mcgibbon_pande(reverse_2.as_view(), distance, param);
+    let grad_rate = d_transition_mcgibbon_pande(grad_transition.as_view(), distance, param);
 
     (grad_rate, grad_log_p)
 }

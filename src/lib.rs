@@ -1,4 +1,4 @@
-#![allow(non_snake_case, clippy::needless_range_loop)]
+#![allow(dead_code, non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
 
 use numpy::ndarray::{Array, Axis};
@@ -6,10 +6,8 @@ use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
 };
 use pyo3::{
-    exceptions::PyValueError,
-    pyclass, pymethods, pymodule,
-    types::{PyModule, PyString},
-    Bound, PyRef, PyResult, Python,
+    exceptions::PyValueError, pyclass, pymethods, pymodule, types::PyModule, Bound, PyRef,
+    PyResult, Python,
 };
 
 use std::error::Error;
@@ -68,11 +66,11 @@ impl FTreeBackend {
         index_pairs: &Vec<(usize, usize)>,
         /* TODO as_deref() */
         rate_matrices: &[na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>],
-        log_p_priors: &[[Float; Entry::DIM]],
+        log_p_priors: &[na::SVector<Float, { Entry::DIM }>],
     ) -> (
         Vec<Float>,
         Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>,
-        Vec<[Float; Entry::DIM]>,
+        Vec<na::SVector<Float, { Entry::DIM }>>,
     ) {
         train_parallel(
             index_pairs,
@@ -104,14 +102,6 @@ impl FTreeBackend {
             &(self.tree),
             &(self.distances),
         )
-    }
-}
-
-/* TODO remove: exists for debugging purposes */
-#[pymethods]
-impl FTreeBackend {
-    fn debug<'py>(&self, py: Python<'py>) -> Bound<'py, PyString> {
-        PyString::new_bound(py, &format!("{:?}", self.tree))
     }
 }
 
@@ -169,7 +159,6 @@ where
     .into_pyarray_bound(py)
 }
 
-/* TODO debug */
 fn vec_2d_from_python<'py, T, const R: usize, const C: usize>(
     py_array3: PyReadonlyArray3<'py, T>,
 ) -> Vec<na::SMatrix<T, R, C>>
@@ -184,7 +173,6 @@ where
     vec
 }
 
-/* TODO debug */
 fn vec_2d_into_python<'py, T, const R: usize, const C: usize>(
     vec: Vec<na::SMatrix<T, R, C>>,
     py: Python<'py>,
@@ -219,10 +207,6 @@ impl FTree {
         }
     }
 
-    /* TODO fn _from_numpy, fn _to_numpy */
-
-    /* TODO terrible, copies everywhere */
-    //#[pyo3(signature = (index_pairs, rate_matrix, log_p_prior))]
     fn infer<'py>(
         self_: PyRef<'py, Self>,
         index_pairs: PyReadonlyArray2<'py, usize>,
@@ -245,29 +229,18 @@ impl FTree {
         let rate_matrices_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
             vec_2d_from_python(rate_matrices);
 
-        let log_p_priors_ndarray = log_p_priors.as_array();
-        let log_p_priors_vec: Vec<[Float; Entry::DIM]> = log_p_priors_ndarray
-            .axis_iter(Axis(0))
-            .map(|slice| slice.as_slice().unwrap().try_into().unwrap())
-            .collect();
+        let log_p_priors_vec: Vec<na::SVector<Float, { Entry::DIM }>> =
+            vec_1d_from_python(log_p_priors);
 
         let log_likelihood_total: Vec<Float>;
         let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
-        let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
+        let grad_log_prior_total: Vec<na::SVector<Float, { Entry::DIM }>>;
         (log_likelihood_total, grad_rate_total, grad_log_prior_total) =
             super_.infer(&index_pairs_vec, &rate_matrices_vec, &log_p_priors_vec);
 
         let log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
         let grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
-        let grad_log_prior_total_py = Array::<Float, _>::from_shape_vec(
-            (grad_log_prior_total.len(), Entry::DIM),
-            grad_log_prior_total
-                .into_iter()
-                .flat_map(|array| IntoIterator::into_iter(array))
-                .collect::<Vec<Float>>(),
-        )
-        .unwrap()
-        .into_pyarray_bound(py);
+        let grad_log_prior_total_py = vec_1d_into_python(grad_log_prior_total, py);
 
         (
             log_likelihood_total_py,

@@ -1,4 +1,4 @@
-#![allow(non_snake_case, clippy::needless_range_loop)]
+#![allow(dead_code, non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
 /* TODO pyo3 */
 
@@ -45,11 +45,26 @@ fn rate_matrix_example<const DIM: usize>() -> na::SMatrix<Float, DIM, DIM> {
     rate_matrix_example
 }
 
+pub fn print_matrix<T, const R: usize, const S: usize>(matrix: na::SMatrixView<T, R, S>)
+where
+    T: na::Scalar + std::fmt::Display,
+{
+    println!("jnp.array([");
+    for row in matrix.row_iter() {
+        let tmp_row = row.transpose().to_owned();
+        println!("{:12.8}, ", DisplayArray(tmp_row.as_slice()));
+    }
+
+    println!("])");
+}
+
 pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     /* Placeholder values */
-    let log_p_prior = [(Entry::DIM as Float).recip(); Entry::DIM].map(Float::ln);
+    let log_p_prior =
+        na::SVector::<Float, { Entry::DIM }>::from_element((Entry::DIM as Float).recip())
+            .map(Float::ln);
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
     let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
     let distance_threshold = 1e-4 as Float;
@@ -90,12 +105,12 @@ pub fn main() {
 
     let rate_matrices: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
         std::iter::repeat(rate_matrix).take(n_columns).collect();
-    let log_p_priors: Vec<[Float; Entry::DIM]> =
+    let log_p_priors: Vec<na::SVector<Float, { Entry::DIM }>> =
         std::iter::repeat(log_p_prior).take(n_columns).collect();
 
     let log_likelihood_total: Vec<Float>;
     let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
-    let grad_log_prior_total: Vec<[Float; Entry::DIM]>;
+    let grad_log_prior_total: Vec<na::SVector<Float, { Entry::DIM }>>;
 
     (log_likelihood_total, grad_rate_total, grad_log_prior_total) = train_parallel(
         &index_pairs,
@@ -121,7 +136,7 @@ pub fn main() {
         println!(
             "Gradient of log_prior #{:?} = {:.10}",
             column_id,
-            DisplayArray(grad_log_prior_column)
+            DisplayArray(grad_log_prior_column.as_slice())
         );
     }
     for (column_id, grad_rate_column) in std::iter::zip(index_pairs.iter(), grad_rate_total.iter())

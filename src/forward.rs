@@ -224,17 +224,16 @@ where
 
 fn child_input<const DIM: usize>(
     child_id: Id, //only used in forward_data
-    log_p: &[Float; DIM],
+    log_p: na::SVectorView<Float, DIM>,
     forward_data: &ForwardData<DIM>,
-) -> [Float; DIM] {
+) -> na::SVector<Float, DIM> {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(a, b) ) */
     let log_transition = &forward_data.log_transition[child_id].log_transition();
 
-    let mut row_a;
-    let mut result = [0.0 as Float; DIM];
+    let mut result = na::SVector::<Float, DIM>::zeros();
     for a in 0..DIM {
-        row_a = log_transition.row(a);
-        result[a] = (0..DIM).map(|b| (log_p[b] + row_a[b])).ln_sum_exp()
+        let row_a = log_transition.row(a).transpose();
+        result[a] = (log_p + row_a).iter().ln_sum_exp();
     }
     result
 }
@@ -244,20 +243,18 @@ fn child_input<const DIM: usize>(
 pub fn forward_node<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
-    log_p: &[[Float; DIM]],
+    log_p: &[na::SVector<Float, DIM>],
     forward_data: &ForwardData<DIM>,
-) -> Result<[Float; DIM], FelsensteinError> {
+) -> Result<na::SVector<Float, DIM>, FelsensteinError> {
     let node = &tree[id];
 
-    let mut opt_running_sum: Option<[Float; DIM]> = None;
+    let mut opt_running_sum: Option<na::SVector<Float, DIM>> = None;
     for opt_child in [node.left, node.right] {
         if let Some(child) = opt_child {
-            let child_input = child_input(child, &log_p[child], forward_data);
+            let child_input = child_input(child, log_p[child].as_view(), forward_data);
             match opt_running_sum {
                 Some(ref mut result) => {
-                    for a in 0..DIM {
-                        result[a] += child_input[a];
-                    }
+                    *result += child_input;
                 }
                 None => {
                     opt_running_sum = Some(child_input);
@@ -275,18 +272,16 @@ pub fn forward_node<const DIM: usize>(
 pub fn forward_root<const DIM: usize>(
     id: Id,
     tree: &[TreeNode],
-    log_p: &[[Float; DIM]],
+    log_p: &[na::SVector<Float, DIM>],
     forward_data: &ForwardData<DIM>,
-) -> [Float; DIM] {
+) -> na::SVector<Float, DIM> {
     let root = &tree[id];
 
-    let mut result = child_input(root.parent, &log_p[root.parent], forward_data);
+    let mut result = child_input(root.parent, log_p[root.parent].as_view(), forward_data);
     for opt_child in [root.left, root.right] {
         if let Some(child) = opt_child {
-            let child_input = child_input(child, &log_p[child], forward_data);
-            for i in 0..DIM {
-                result[i] += child_input[i];
-            }
+            let child_input = child_input(child, log_p[child].as_view(), forward_data);
+            result += child_input;
         }
     }
 

@@ -101,26 +101,26 @@ impl EntryTrait for ResidueExtended {
     const TOTAL: usize = 15;
     const DIM: usize = 4;
     const CHARS: usize = 1;
-    type LogPType = [Float; Self::DIM];
+    type LogPType = na::SVector<Float, { Self::DIM }>;
 
-    fn to_log_p(&self) -> [Float; Self::DIM] {
+    fn to_log_p(&self) -> Self::LogPType {
         use ResidueExtended::*;
-        let prob: [Float; 4] = match &self {
-            A => [1.0, 0.0, 0.0, 0.0],
-            C => [0.0, 1.0, 0.0, 0.0],
-            G => [0.0, 0.0, 1.0, 0.0],
-            T => [0.0, 0.0, 0.0, 1.0],
-            ResidueExtended::None => [0.25, 0.25, 0.25, 0.25],
-            R => [0.5, 0.0, 0.5, 0.0],
-            Y => [0.0, 0.5, 0.0, 0.5],
-            S => [0.0, 0.5, 0.5, 0.0],
-            W => [0.5, 0.0, 0.0, 0.5],
-            K => [0.0, 0.0, 0.5, 0.5],
-            M => [0.5, 0.5, 0.0, 0.0],
-            B => [0.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0],
-            D => [1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0 / 3.0],
-            H => [1.0 / 3.0, 1.0 / 3.0, 0.0, 1.0 / 3.0],
-            V => [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0],
+        let prob: na::SVector<Float, 4> = match &self {
+            A => na::SVector::<Float, 4>::new(1.0, 0.0, 0.0, 0.0),
+            C => na::SVector::<Float, 4>::new(0.0, 1.0, 0.0, 0.0),
+            G => na::SVector::<Float, 4>::new(0.0, 0.0, 1.0, 0.0),
+            T => na::SVector::<Float, 4>::new(0.0, 0.0, 0.0, 1.0),
+            ResidueExtended::None => na::SVector::<Float, 4>::new(0.25, 0.25, 0.25, 0.25),
+            R => na::SVector::<Float, 4>::new(0.5, 0.0, 0.5, 0.0),
+            Y => na::SVector::<Float, 4>::new(0.0, 0.5, 0.0, 0.5),
+            S => na::SVector::<Float, 4>::new(0.0, 0.5, 0.5, 0.0),
+            W => na::SVector::<Float, 4>::new(0.5, 0.0, 0.0, 0.5),
+            K => na::SVector::<Float, 4>::new(0.0, 0.0, 0.5, 0.5),
+            M => na::SVector::<Float, 4>::new(0.5, 0.5, 0.0, 0.0),
+            B => na::SVector::<Float, 4>::new(0.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+            D => na::SVector::<Float, 4>::new(1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0 / 3.0),
+            H => na::SVector::<Float, 4>::new(1.0 / 3.0, 1.0 / 3.0, 0.0, 1.0 / 3.0),
+            V => na::SVector::<Float, 4>::new(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
         };
         prob.map(Float::ln)
     }
@@ -142,11 +142,11 @@ impl EntryTrait for ResiduePair<ResidueExtended> {
     const DIM: usize = ResidueExtended::DIM * ResidueExtended::DIM;
     const TOTAL: usize = ResidueExtended::TOTAL * ResidueExtended::TOTAL;
     const CHARS: usize = ResidueExtended::CHARS * 2;
-    type LogPType = [Float; Self::DIM];
+    type LogPType = na::SVector<Float, { Self::DIM }>;
 
     /* TODO! this should be static */
     fn to_log_p(&self) -> Self::LogPType {
-        let mut result = [0.0 as Float; Self::DIM];
+        let mut result = na::SVector::<Float, { Self::DIM }>::zeros();
         let (first, second) = (self.0, self.1);
         let log_p_first = first.to_log_p();
         let log_p_second = second.to_log_p();
