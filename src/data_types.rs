@@ -11,6 +11,9 @@ pub type Float = f64;
 //pub type ColumnId = usize;
 pub type Id = usize;
 
+pub const EPS_DIV: f64 = 1e-10;
+pub const EPS_LOG: f64 = 1e-20;
+
 pub trait EntryTrait: Sized + Copy + na::Scalar {
     const TOTAL: usize;
     const DIM: usize;

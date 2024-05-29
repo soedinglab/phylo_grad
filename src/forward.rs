@@ -28,7 +28,7 @@ pub struct LogTransitionForwardData<const DIM: usize> {
 }
 impl<const DIM: usize> LogTransitionForwardData<DIM> {
     pub fn log_transition(&self) -> na::SMatrix<Float, DIM, DIM> {
-        self.step_2.map(Float::ln)
+        self.step_2.map(|x| Float::ln(x.max(EPS_LOG)))
     }
 }
 pub struct ParamData<const DIM: usize> {
@@ -74,7 +74,7 @@ where
     Const<DIM>: Decrementable,
     DefaultAllocator: DecrementableAllocator<Float, DIM>,
 {
-    let sqrt_pi_recip = sqrt_pi.map(Float::recip);
+    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV)));
 
     let mut symmetric_output = delta.clone_owned();
     for i in 0..DIM {
@@ -154,42 +154,6 @@ where
     );
     forward_data
 }
-
-/* fn log_transition_precompute_symmetric<const DIM: usize>(
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    rate_symmetric_eigen: &na::SymmetricEigen<Float, Const<DIM>>,
-    distance: Float,
-) -> LogTransitionForwardData<DIM> {
-    let step_1 = rate_matrix * distance;
-    let new_eigenvalues = (rate_symmetric_eigen.eigenvalues * distance).map(Float::exp);
-    let step_2 = na::SymmetricEigen {
-        eigenvectors: rate_symmetric_eigen.eigenvectors,
-        eigenvalues: new_eigenvalues,
-    }
-    .recompose();
-    LogTransitionForwardData { step_1, step_2 }
-}
-
-pub fn forward_data_precompute_symmetric<const DIM: usize>(
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    distances: &[Float],
-) -> ForwardData<DIM>
-where
-    Const<DIM>: Decrementable,
-    DefaultAllocator: DecrementableAllocator<Float, DIM>,
-{
-    let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
-    /* What does try_symmetric_eigen() do? */
-    let rate_symmetric_eigen = rate_matrix.symmetric_eigen();
-
-    forward_data
-        .log_transition
-        .extend(distances.iter().map(|dist| {
-            log_transition_precompute_symmetric(rate_matrix, &rate_symmetric_eigen, *dist)
-        }));
-    forward_data
-} */
 
 fn log_transition_precompute<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
