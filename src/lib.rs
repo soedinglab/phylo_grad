@@ -26,10 +26,9 @@ use crate::preprocessing::*;
 use crate::train::*;
 use crate::tree::*;
 
-/* TODO rename ResidueExtended to Residue4 */
 /* TODO handle generics (can we still have a generic FTreeBackend?) */
-//type Residue = ResidueExtended;
-//type Entry = ResiduePair<ResidueExtended>;
+type Residue = Residue4;
+type Entry = ResiduePair<Residue>;
 
 #[pyclass(subclass)]
 struct FTreeBackend {

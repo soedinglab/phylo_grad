@@ -62,6 +62,8 @@ pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     /* Placeholder values */
+    type Residue = Residue5;
+    type Entry = ResiduePair<Residue>;
     let log_p_prior =
         na::SVector::<Float, { Entry::DIM }>::from_element((Entry::DIM as Float).recip())
             .map(Float::ln);
@@ -89,7 +91,8 @@ pub fn main() {
             .iter_mut()
             .for_each(|d| *d = distance_threshold.max(*d));
 
-        let residue_sequences_2d = try_residue_sequences_from_strings(&sequences_raw).unwrap();
+        let residue_sequences_2d =
+            try_residue_sequences_from_strings::<Residue>(&sequences_raw).unwrap();
 
         (tree, distances, residue_sequences_2d)
     };
