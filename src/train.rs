@@ -309,10 +309,7 @@ where
 
             (
                 log_likelihood_column,
-                (
-                    grad_delta_column,
-                    (grad_sqrt_pi_column, grad_rate_column.transpose()),
-                ),
+                (grad_delta_column, (grad_sqrt_pi_column, grad_rate_column)),
             )
         })
         .unzip();

@@ -25,12 +25,9 @@ impl<const DIM: usize> ForwardData<DIM> {
 pub struct LogTransitionForwardData<const DIM: usize> {
     pub step_1: na::SMatrix<Float, DIM, DIM>,
     pub step_2: na::SMatrix<Float, DIM, DIM>,
+    pub log_transition: na::SMatrix<Float, DIM, DIM>,
 }
-impl<const DIM: usize> LogTransitionForwardData<DIM> {
-    pub fn log_transition(&self) -> na::SMatrix<Float, DIM, DIM> {
-        self.step_2.map(|x| Float::ln(x.max(EPS_LOG)))
-    }
-}
+
 pub struct ParamData<const DIM: usize> {
     pub symmetric_matrix: na::SMatrix<Float, DIM, DIM>,
     pub sqrt_pi: na::SVector<Float, DIM>,
@@ -128,7 +125,13 @@ fn log_transition_precompute_param<const DIM: usize>(
     );
     step_2 *= param.V_pi_inv;
 
-    LogTransitionForwardData { step_1, step_2 }
+    let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG)));
+
+    LogTransitionForwardData {
+        step_1,
+        step_2,
+        log_transition,
+    }
 }
 
 pub fn forward_data_precompute_param<const DIM: usize>(
@@ -155,8 +158,13 @@ where
 {
     let step_1 = rate_matrix * distance;
     let step_2 = step_1.exp();
+    let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG)));
 
-    LogTransitionForwardData { step_1, step_2 }
+    LogTransitionForwardData {
+        step_1,
+        step_2,
+        log_transition,
+    }
 }
 
 pub fn forward_data_precompute<const DIM: usize>(
@@ -183,7 +191,7 @@ fn child_input<const DIM: usize>(
     forward_data: &ForwardData<DIM>,
 ) -> na::SVector<Float, DIM> {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(a, b) ) */
-    let log_transition = &forward_data.log_transition[child_id].log_transition();
+    let log_transition = forward_data.log_transition[child_id].log_transition;
 
     let mut result = na::SVector::<Float, DIM>::zeros();
     for a in 0..DIM {

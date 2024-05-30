@@ -251,7 +251,7 @@ fn d_log_transition_child_input_vjp<const DIM: usize>(
     na::SMatrix<Float, DIM, DIM>,
     Option<na::SVector<Float, DIM>>,
 ) {
-    let log_transition = forward.log_transition();
+    let log_transition = forward.log_transition;
     let mut forward_1 = child_input_forward_data(log_p, log_transition.as_view());
 
     /* d_lse */
