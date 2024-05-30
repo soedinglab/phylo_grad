@@ -1,8 +1,6 @@
 use std::convert::TryFrom;
 
-use na::{
-    allocator::Allocator, Const, DefaultAllocator, DimAdd, DimMin, DimName, DimSub, ToTypenum,
-};
+use na::{allocator::Allocator, Const, DefaultAllocator, DimAdd, DimMin, DimName, ToTypenum};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub type Residue = ResidueExtended;
@@ -12,7 +10,7 @@ pub type Float = f64;
 pub type Id = usize;
 
 pub const EPS_DIV: f64 = 1e-10;
-pub const EPS_LOG: f64 = 1e-20;
+pub const EPS_LOG: f64 = 1e-100;
 
 pub trait EntryTrait: Sized + Copy + na::Scalar {
     const TOTAL: usize;
@@ -195,17 +193,6 @@ pub type MatrixNNAllocated<T, N> =
 pub trait Exponentiable: ToTypenum + DimName + DimMin<Self, Output = Self> {}
 impl<T: ToTypenum + DimName + DimMin<Self, Output = Self>> Exponentiable for T {}
 
-pub trait Decrementable
-where
-    Self: ToTypenum + DimName + DimSub<Const<1>>,
-{
-}
-
-impl<T> Decrementable for T where
-    T: ToTypenum + DimName + DimSub<Const<1>> //    na::DefaultAllocator: na::allocator::Allocator<Float, <T as na::DimSub<na::Const<1>>>::Output>,
-{
-}
-
 pub trait Doubleable
 where
     Self: ToTypenum + DimAdd<Self>,
@@ -225,20 +212,6 @@ where
     TwoTimes<T>: DimName + Exponentiable,
 {
 } */
-
-pub trait DecrementableAllocator<T, const N: usize>
-where
-    Self: Allocator<T, <Const<N> as DimSub<Const<1>>>::Output>,
-    Const<N>: Decrementable,
-{
-}
-
-impl<A, T, const N: usize> DecrementableAllocator<T, N> for A
-where
-    A: Allocator<T, <Const<N> as DimSub<Const<1>>>::Output>,
-    Const<N>: Decrementable,
-{
-}
 
 pub trait ViableAllocator<T, const N: usize>
 where

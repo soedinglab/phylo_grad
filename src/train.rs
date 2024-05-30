@@ -123,9 +123,9 @@ pub fn train_parallel<const DIM: usize, Residue>(
 where
     Residue: ResidueTrait,
     ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Float, DIM>>,
-    Const<DIM>: Doubleable + Exponentiable, //+ Decrementable,
+    Const<DIM>: Doubleable + Exponentiable,
     TwoTimesConst<DIM>: Exponentiable,
-    DefaultAllocator: ViableAllocator<Float, DIM>, //+ DecrementableAllocator<Float, DIM>,
+    DefaultAllocator: ViableAllocator<Float, DIM>,
 {
     let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
@@ -184,17 +184,7 @@ fn d_rate_column_param<const DIM: usize>(
     forward_data: &ForwardData<DIM>,
     param: &ParamData<DIM>,
     num_leaves: usize,
-) -> na::SMatrix<Float, DIM, DIM>
-where
-    Const<DIM>: Decrementable,
-    DefaultAllocator: DecrementableAllocator<Float, DIM>
-        + na::allocator::Allocator<
-            Float,
-            Const<DIM>,
-            Const<DIM>,
-            Buffer = na::ArrayStorage<Float, DIM, DIM>,
-        >,
-{
+) -> na::SMatrix<Float, DIM, DIM> {
     /* Notice that child_input values are always added, so the log_p input for children is always the same.
     We will therefore store their common grad_log_p in the parent node's BackwardData. */
     /* TODO: it is possible to free grad_log_p's for the previous tree level. */
@@ -263,8 +253,6 @@ pub fn train_parallel_param<const DIM: usize, Residue>(
 where
     Residue: ResidueTrait,
     ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Float, DIM>>,
-    Const<DIM>: Decrementable,
-    DefaultAllocator: DecrementableAllocator<Float, DIM>,
 {
     let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();

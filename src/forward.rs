@@ -2,7 +2,7 @@ use crate::data_types::*;
 use crate::tree::*;
 use logsumexp::LogSumExp;
 
-use na::{Const, DefaultAllocator};
+use na::Const;
 
 impl FelsensteinError {
     pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
@@ -69,11 +69,7 @@ pub fn times_diag_assign<I, const N: usize>(
 pub fn compute_param_data<const DIM: usize>(
     delta: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
-) -> ParamData<DIM>
-where
-    Const<DIM>: Decrementable,
-    DefaultAllocator: DecrementableAllocator<Float, DIM>,
-{
+) -> ParamData<DIM> {
     let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV)));
 
     let mut symmetric_output = delta.clone_owned();
@@ -96,10 +92,9 @@ where
         rate_matrix[(i, i)] = symmetric_output[(i, i)];
     }
 
-    let na::SymmetricEigen {
-        eigenvalues,
-        eigenvectors,
-    } = symmetric_output.symmetric_eigen();
+    //let eigendecomp = symmetric_output.symmetric_eigen();
+    let eigendecomp = nalgebra_lapack::SymmetricEigen::new(symmetric_output);
+    let (eigenvalues, eigenvectors) = (eigendecomp.eigenvalues, eigendecomp.eigenvectors);
 
     let mut V_pi = eigenvectors.clone_owned();
     diag_times_assign(V_pi.as_view_mut(), sqrt_pi_recip.iter().copied());
@@ -139,11 +134,7 @@ fn log_transition_precompute_param<const DIM: usize>(
 pub fn forward_data_precompute_param<const DIM: usize>(
     param: &ParamData<DIM>,
     distances: &[Float],
-) -> ForwardData<DIM>
-where
-    Const<DIM>: Decrementable,
-    DefaultAllocator: DecrementableAllocator<Float, DIM>,
-{
+) -> ForwardData<DIM> {
     let num_nodes = distances.len();
     let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
 
