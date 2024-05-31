@@ -8,20 +8,24 @@ use crate::data_types::*;
 use crate::forward::*;
 use crate::tree::*;
 
-fn forward_column<const DIM: usize, Entry>(
+fn forward_column<const DIM: usize, Entry, D>(
     column_iter: impl Iterator<Item = Entry>,
+    distribution: &D,
     tree: &[TreeNode],
     forward_data: &ForwardData<DIM>,
 ) -> Vec<na::SVector<Float, DIM>>
 where
-    Entry: EntryTrait<LogPType = na::SVector<Float, DIM>>,
+    Entry: EntryTrait,
+    D: Distribution<Entry, Float, DIM>,
 {
     /* Compared to collect(), this reduces the # of allocation calls
     but increases peak memory usage; investigate */
     let num_nodes = tree.len();
+    /* --- Leaf initialization --- */
     let mut log_p = Vec::<na::SVector<Float, DIM>>::with_capacity(num_nodes);
-    log_p.extend(column_iter.map(|x| Entry::to_log_p(&x)));
+    log_p.extend(column_iter.map(|x| distribution.log_p(x)));
     let num_leaves = log_p.len();
+    /* --- / Leaf initialization --- */
 
     /* TODO remove copy */
     for i in num_leaves..(num_nodes - 1) {
@@ -108,13 +112,14 @@ where
 
 /* TODO should we let rayon know that index_pairs is a vector and not just any slice? */
 /* TODO Id<DIM> */
-pub fn train_parallel<const DIM: usize, Residue>(
+pub fn train_parallel<const DIM: usize, Residue, D>(
     index_pairs: &[(usize, usize)],
     residue_sequences_2d: na::DMatrixView<Residue>,
     rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
     log_p_priors: &[na::SVector<Float, DIM>],
     tree: &[TreeNode],
     distances: &[Float],
+    distribution: &D,
 ) -> (
     Vec<Float>,
     Vec<na::SMatrix<Float, DIM, DIM>>,
@@ -122,7 +127,8 @@ pub fn train_parallel<const DIM: usize, Residue>(
 )
 where
     Residue: ResidueTrait,
-    ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Float, DIM>>,
+    D: Distribution<ResiduePair<Residue>, Float, DIM>,
+    //ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Float, DIM>>,
     Const<DIM>: Doubleable + Exponentiable,
     TwoTimesConst<DIM>: Exponentiable,
     DefaultAllocator: ViableAllocator<Float, DIM>,
@@ -150,7 +156,7 @@ where
 
             let forward_data = forward_data_precompute(rate_matrix.as_view(), &distances);
 
-            let log_p = forward_column(column_iter, &tree, &forward_data);
+            let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
             let log_p_root = log_p[num_nodes - 1];
 
             let (log_likelihood_column, grad_log_p_likelihood): (Float, na::SVector<Float, DIM>) =
@@ -237,13 +243,14 @@ fn d_rate_column_param<const DIM: usize>(
     grad_rate_column
 }
 
-pub fn train_parallel_param<const DIM: usize, Residue>(
+pub fn train_parallel_param<const DIM: usize, Residue, D>(
     index_pairs: &[(usize, usize)],
     residue_sequences_2d: na::DMatrixView<Residue>,
     deltas: &[na::SMatrix<Float, DIM, DIM>],
     sqrt_pi: &[na::SVector<Float, DIM>],
     tree: &[TreeNode],
     distances: &[Float],
+    distribution: &D,
 ) -> (
     Vec<Float>,
     Vec<na::SMatrix<Float, DIM, DIM>>,
@@ -252,7 +259,8 @@ pub fn train_parallel_param<const DIM: usize, Residue>(
 )
 where
     Residue: ResidueTrait,
-    ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Float, DIM>>,
+    ResiduePair<Residue>: EntryTrait,
+    D: Distribution<ResiduePair<Residue>, Float, DIM>,
 {
     let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
     let num_nodes = tree.len();
@@ -280,7 +288,7 @@ where
 
             let forward_data = forward_data_precompute_param(&param, &distances);
 
-            let log_p = forward_column(column_iter, &tree, &forward_data);
+            let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
             let log_p_root = log_p[num_nodes - 1];
 
             let log_p_prior = sqrt_pi.map(Float::ln) * (2.0 as Float);

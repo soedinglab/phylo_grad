@@ -62,13 +62,14 @@ pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     /* Placeholder values */
-    type Residue = Residue5;
+    const DIM: usize = 4;
     type Entry = ResiduePair<Residue>;
+    let distribution = DistGaps {};
+    const DIST_DIM: usize = 25;
     let log_p_prior =
-        na::SVector::<Float, { Entry::DIM }>::from_element((Entry::DIM as Float).recip())
-            .map(Float::ln);
+        na::SVector::<Float, DIST_DIM>::from_element((DIST_DIM as Float).recip()).map(Float::ln);
     /* TODO! Use a non-time-symmetric rate matrix for debugging */
-    let rate_matrix = rate_matrix_example::<{ Entry::DIM }>();
+    let rate_matrix = rate_matrix_example::<DIST_DIM>();
     let distance_threshold = 1e-4 as Float;
     const COL_LIMIT: usize = 3;
 
@@ -106,14 +107,14 @@ pub fn main() {
 
     let n_columns = index_pairs.len();
 
-    let rate_matrices: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
+    let rate_matrices: Vec<na::SMatrix<Float, DIST_DIM, DIST_DIM>> =
         std::iter::repeat(rate_matrix).take(n_columns).collect();
-    let log_p_priors: Vec<na::SVector<Float, { Entry::DIM }>> =
+    let log_p_priors: Vec<na::SVector<Float, DIST_DIM>> =
         std::iter::repeat(log_p_prior).take(n_columns).collect();
 
     let log_likelihood_total: Vec<Float>;
-    let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
-    let grad_log_prior_total: Vec<na::SVector<Float, { Entry::DIM }>>;
+    let grad_rate_total: Vec<na::SMatrix<Float, DIST_DIM, DIST_DIM>>;
+    let grad_log_prior_total: Vec<na::SVector<Float, DIST_DIM>>;
 
     (log_likelihood_total, grad_rate_total, grad_log_prior_total) = train_parallel(
         &index_pairs,
@@ -123,6 +124,7 @@ pub fn main() {
         &log_p_priors,
         &tree,
         &distances,
+        &distribution,
     );
 
     for (column_id, log_likelihood_column) in

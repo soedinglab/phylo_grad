@@ -27,9 +27,11 @@ use crate::train::*;
 use crate::tree::*;
 
 /* TODO handle generics (can we still have a generic FTreeBackend?) */
-type Residue = Residue4;
 type Entry = ResiduePair<Residue>;
+//type Float = f64;
 
+/* TODO! FTreeBackend can't know what residue type to use. It should store String,
+and infer() may then call preprocessing::try_residue_sequences_from_strings */
 #[pyclass(subclass)]
 struct FTreeBackend {
     tree: Vec<TreeNodeId<usize>>,
@@ -59,18 +61,25 @@ impl FTreeBackend {
             residue_sequences_2d,
         })
     }
-
-    fn infer(
+    fn infer<const DIM: usize, D>(
         &self,
         index_pairs: &Vec<(usize, usize)>,
         /* TODO as_deref() */
-        rate_matrices: &[na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>],
-        log_p_priors: &[na::SVector<Float, { Entry::DIM }>],
+        rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
+        log_p_priors: &[na::SVector<Float, DIM>],
+        distribution: &D,
     ) -> (
         Vec<Float>,
-        Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>,
-        Vec<na::SVector<Float, { Entry::DIM }>>,
-    ) {
+        Vec<na::SMatrix<Float, DIM, DIM>>,
+        Vec<na::SVector<Float, DIM>>,
+    )
+    where
+        D: Distribution<Entry, Float, DIM>,
+        //ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Floatloat, DIM>>,
+        na::Const<DIM>: Doubleable + Exponentiable,
+        TwoTimesConst<DIM>: Exponentiable,
+        na::DefaultAllocator: ViableAllocator<Float, DIM>,
+    {
         train_parallel(
             index_pairs,
             self.residue_sequences_2d.as_view(),
@@ -78,21 +87,26 @@ impl FTreeBackend {
             log_p_priors,
             &(self.tree),
             &(self.distances),
+            distribution,
         )
     }
 
-    fn infer_param(
+    fn infer_param<const DIM: usize, D>(
         &self,
         index_pairs: &Vec<(usize, usize)>,
         /* TODO as_deref() */
-        deltas: &[na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>],
-        sqrt_pi: &[na::SVector<Float, { Entry::DIM }>],
+        deltas: &[na::SMatrix<Float, DIM, DIM>],
+        sqrt_pi: &[na::SVector<Float, DIM>],
+        distribution: &D,
     ) -> (
         Vec<Float>,
-        Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>,
-        Vec<na::SVector<Float, { Entry::DIM }>>,
-        Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>,
-    ) {
+        Vec<na::SMatrix<Float, DIM, DIM>>,
+        Vec<na::SVector<Float, DIM>>,
+        Vec<na::SMatrix<Float, DIM, DIM>>,
+    )
+    where
+        D: Distribution<Entry, Float, DIM>,
+    {
         train_parallel_param(
             index_pairs,
             self.residue_sequences_2d.as_view(),
@@ -100,6 +114,7 @@ impl FTreeBackend {
             sqrt_pi,
             &(self.tree),
             &(self.distances),
+            distribution,
         )
     }
 }
@@ -211,6 +226,7 @@ impl FTree {
         index_pairs: PyReadonlyArray2<'py, usize>,
         rate_matrices: PyReadonlyArray3<'py, Float>,
         log_p_priors: PyReadonlyArray2<'py, Float>,
+        dim: usize,
     ) -> (
         Bound<'py, PyArray1<Float>>,
         Bound<'py, PyArray3<Float>>,
@@ -225,21 +241,53 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let rate_matrices_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
-            vec_2d_from_python(rate_matrices);
+        let log_likelihood_total_py;
+        let grad_rate_total_py;
+        let grad_log_prior_total_py;
+        if dim == 16 {
+            let distribution = DistNoGaps {};
 
-        let log_p_priors_vec: Vec<na::SVector<Float, { Entry::DIM }>> =
-            vec_1d_from_python(log_p_priors);
+            let rate_matrices_vec: Vec<na::SMatrix<f64, 16, 16>> =
+                vec_2d_from_python(rate_matrices);
 
-        let log_likelihood_total: Vec<Float>;
-        let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
-        let grad_log_prior_total: Vec<na::SVector<Float, { Entry::DIM }>>;
-        (log_likelihood_total, grad_rate_total, grad_log_prior_total) =
-            super_.infer(&index_pairs_vec, &rate_matrices_vec, &log_p_priors_vec);
+            let log_p_priors_vec: Vec<na::SVector<f64, 16>> = vec_1d_from_python(log_p_priors);
 
-        let log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
-        let grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
-        let grad_log_prior_total_py = vec_1d_into_python(grad_log_prior_total, py);
+            let log_likelihood_total: Vec<f64>;
+            let grad_rate_total: Vec<na::SMatrix<f64, 16, 16>>;
+            let grad_log_prior_total: Vec<na::SVector<f64, 16>>;
+            (log_likelihood_total, grad_rate_total, grad_log_prior_total) = super_.infer(
+                &index_pairs_vec,
+                &rate_matrices_vec,
+                &log_p_priors_vec,
+                &distribution,
+            );
+
+            log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
+            grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
+            grad_log_prior_total_py = vec_1d_into_python(grad_log_prior_total, py);
+        } else if dim == 25 {
+            let distribution = DistGaps {};
+            let rate_matrices_vec: Vec<na::SMatrix<f64, 25, 25>> =
+                vec_2d_from_python(rate_matrices);
+
+            let log_p_priors_vec: Vec<na::SVector<f64, 25>> = vec_1d_from_python(log_p_priors);
+
+            let log_likelihood_total: Vec<f64>;
+            let grad_rate_total: Vec<na::SMatrix<f64, 25, 25>>;
+            let grad_log_prior_total: Vec<na::SVector<f64, 25>>;
+            (log_likelihood_total, grad_rate_total, grad_log_prior_total) = super_.infer(
+                &index_pairs_vec,
+                &rate_matrices_vec,
+                &log_p_priors_vec,
+                &distribution,
+            );
+
+            log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
+            grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
+            grad_log_prior_total_py = vec_1d_into_python(grad_log_prior_total, py);
+        } else {
+            panic!("Incorrect dim");
+        }
 
         (
             log_likelihood_total_py,
@@ -253,6 +301,7 @@ impl FTree {
         index_pairs: PyReadonlyArray2<'py, usize>,
         deltas: PyReadonlyArray3<'py, Float>,
         sqrt_pi: PyReadonlyArray2<'py, Float>,
+        dim: usize,
     ) -> (
         Bound<'py, PyArray1<Float>>,
         Bound<'py, PyArray3<Float>>,
@@ -268,25 +317,57 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let deltas_vec: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>> =
-            vec_2d_from_python(deltas);
-        let sqrt_pi_vec: Vec<na::SVector<Float, { Entry::DIM }>> = vec_1d_from_python(sqrt_pi);
+        let log_likelihood_total_py;
+        let grad_delta_total_py;
+        let grad_sqrt_pi_total_py;
+        let grad_rate_total_py;
 
-        let log_likelihood_total: Vec<Float>;
-        let grad_delta_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
-        let grad_sqrt_pi_total: Vec<na::SVector<Float, { Entry::DIM }>>;
-        let grad_rate_total: Vec<na::SMatrix<Float, { Entry::DIM }, { Entry::DIM }>>;
-        (
-            log_likelihood_total,
-            grad_delta_total,
-            grad_sqrt_pi_total,
-            grad_rate_total,
-        ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec);
+        /* TODO also choose Entry */
+        if dim == 16 {
+            let distribution = DistNoGaps {};
 
-        let log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
-        let grad_delta_total_py = vec_2d_into_python(grad_delta_total, py);
-        let grad_sqrt_pi_total_py = vec_1d_into_python(grad_sqrt_pi_total, py);
-        let grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
+            let deltas_vec: Vec<na::SMatrix<f64, 16, 16>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<f64, 16>> = vec_1d_from_python(sqrt_pi);
+
+            let log_likelihood_total: Vec<f64>;
+            let grad_delta_total: Vec<na::SMatrix<f64, 16, 16>>;
+            let grad_sqrt_pi_total: Vec<na::SVector<f64, 16>>;
+            let grad_rate_total: Vec<na::SMatrix<f64, 16, 16>>;
+            (
+                log_likelihood_total,
+                grad_delta_total,
+                grad_sqrt_pi_total,
+                grad_rate_total,
+            ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distribution);
+
+            log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
+            grad_delta_total_py = vec_2d_into_python(grad_delta_total, py);
+            grad_sqrt_pi_total_py = vec_1d_into_python(grad_sqrt_pi_total, py);
+            grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
+        } else if dim == 25 {
+            let distribution = DistGaps {};
+
+            let deltas_vec: Vec<na::SMatrix<f64, 25, 25>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<f64, 25>> = vec_1d_from_python(sqrt_pi);
+
+            let log_likelihood_total: Vec<f64>;
+            let grad_delta_total: Vec<na::SMatrix<f64, 25, 25>>;
+            let grad_sqrt_pi_total: Vec<na::SVector<f64, 25>>;
+            let grad_rate_total: Vec<na::SMatrix<f64, 25, 25>>;
+            (
+                log_likelihood_total,
+                grad_delta_total,
+                grad_sqrt_pi_total,
+                grad_rate_total,
+            ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distribution);
+
+            log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
+            grad_delta_total_py = vec_2d_into_python(grad_delta_total, py);
+            grad_sqrt_pi_total_py = vec_1d_into_python(grad_sqrt_pi_total, py);
+            grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
+        } else {
+            panic!("Incorrect dim");
+        }
 
         (
             log_likelihood_total_py,
