@@ -32,7 +32,7 @@ where
     DefaultAllocator: ViableAllocator<Float, N>,
 {
     /* exp([[X^T, 0], [w, X^T]]) = [[exp(X^T), 0], [w (D_X exp), exp(X^T)]] */
-    let mut block_triangular = MatrixNNAllocated::<Float, TwoTimesConst<N>>::zeros();
+    let mut block_triangular = na::OMatrix::<Float, TwoTimesConst<N>, TwoTimesConst<N>>::zeros();
     let argument_transposed = argument.transpose();
     block_triangular
         .index_mut((..N, ..N))

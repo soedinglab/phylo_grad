@@ -303,8 +303,6 @@ impl FelsensteinError {
 
 pub type TwoTimesConst<const N: usize> = TwoTimes<Const<N>>;
 pub type TwoTimes<N> = <N as DimAdd<N>>::Output;
-pub type MatrixNNAllocated<T, N> =
-    na::Matrix<T, N, N, <DefaultAllocator as Allocator<T, N, N>>::Buffer>;
 pub trait Exponentiable: ToTypenum + DimName + DimMin<Self, Output = Self> {}
 impl<T: ToTypenum + DimName + DimMin<Self, Output = Self>> Exponentiable for T {}
 
