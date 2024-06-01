@@ -64,7 +64,6 @@ pub fn main() {
     /* Placeholder values */
     const DIM: usize = 4;
     type Entry = ResiduePair<Residue>;
-    let distribution = DistGaps {};
     const DIST_DIM: usize = 25;
     let log_p_prior =
         na::SVector::<Float, DIST_DIM>::from_element((DIST_DIM as Float).recip()).map(Float::ln);
@@ -72,6 +71,7 @@ pub fn main() {
     let rate_matrix = rate_matrix_example::<DIST_DIM>();
     let distance_threshold = 1e-4 as Float;
     const COL_LIMIT: usize = 3;
+    let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {}).take(COL_LIMIT).collect();
 
     let raw_data_path = if args.len() >= 2 {
         &args[1]
@@ -124,7 +124,7 @@ pub fn main() {
         &log_p_priors,
         &tree,
         &distances,
-        &distribution,
+        &distributions,
     );
 
     for (column_id, log_likelihood_column) in

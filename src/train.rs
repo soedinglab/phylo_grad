@@ -119,7 +119,7 @@ pub fn train_parallel<const DIM: usize, Residue, D>(
     log_p_priors: &[na::SVector<Float, DIM>],
     tree: &[TreeNode],
     distances: &[Float],
-    distribution: &D,
+    distributions: &[D],
 ) -> (
     Vec<Float>,
     Vec<na::SMatrix<Float, DIM, DIM>>,
@@ -128,7 +128,6 @@ pub fn train_parallel<const DIM: usize, Residue, D>(
 where
     Residue: ResidueTrait,
     D: Distribution<ResiduePair<Residue>, Float, DIM>,
-    //ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Float, DIM>>,
     Const<DIM>: Doubleable + Exponentiable,
     TwoTimesConst<DIM>: Exponentiable,
     DefaultAllocator: ViableAllocator<Float, DIM>,
@@ -142,9 +141,9 @@ where
     (
         log_likelihood_total,
         (grad_rate_total, grad_log_prior_total),
-    ) = (index_pairs, rate_matrices, log_p_priors)
+    ) = (index_pairs, rate_matrices, log_p_priors, distributions)
         .into_par_iter()
-        .map(|(column_id, rate_matrix, log_p_prior)| {
+        .map(|(column_id, rate_matrix, log_p_prior, distribution)| {
             let (left_id, right_id) = *column_id;
             let left_half = residue_sequences_2d.column(left_id);
             let right_half = residue_sequences_2d.column(right_id);
@@ -250,7 +249,7 @@ pub fn train_parallel_param<const DIM: usize, Residue, D>(
     sqrt_pi: &[na::SVector<Float, DIM>],
     tree: &[TreeNode],
     distances: &[Float],
-    distribution: &D,
+    distributions: &[D],
 ) -> (
     Vec<Float>,
     Vec<na::SMatrix<Float, DIM, DIM>>,
@@ -259,7 +258,6 @@ pub fn train_parallel_param<const DIM: usize, Residue, D>(
 )
 where
     Residue: ResidueTrait,
-    ResiduePair<Residue>: EntryTrait,
     D: Distribution<ResiduePair<Residue>, Float, DIM>,
 {
     let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
@@ -272,9 +270,9 @@ where
     (
         log_likelihood_total,
         (grad_delta_total, (grad_sqrt_pi_total, grad_rate_total)),
-    ) = (index_pairs, deltas, sqrt_pi)
+    ) = (index_pairs, deltas, sqrt_pi, distributions)
         .into_par_iter()
-        .map(|(column_id, delta, sqrt_pi)| {
+        .map(|(column_id, delta, sqrt_pi, distribution)| {
             let (left_id, right_id) = *column_id;
             let left_half = residue_sequences_2d.column(left_id);
             let right_half = residue_sequences_2d.column(right_id);
@@ -311,8 +309,7 @@ where
                 d_param(grad_rate_column.as_view(), &param);
 
             let mut grad_sqrt_pi_likelihood = param.sqrt_pi_recip * (2.0 as Float);
-            grad_sqrt_pi_likelihood
-                .component_mul_assign(&na::SVector::<Float, DIM>::from(grad_log_prior_column));
+            grad_sqrt_pi_likelihood.component_mul_assign(&grad_log_prior_column);
             grad_sqrt_pi_column += grad_sqrt_pi_likelihood;
 
             (

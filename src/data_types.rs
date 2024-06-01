@@ -1,6 +1,6 @@
 use std::{collections::HashMap, convert::TryFrom};
 
-use na::{allocator::Allocator, Const, DefaultAllocator, DimAdd, DimMin, DimName, ToTypenum};
+use na::{allocator::Allocator, Const, DimAdd, DimMin, DimName, ToTypenum};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub type Float = f64;
@@ -138,28 +138,27 @@ where
     E: EntryTrait,
     F: FloatTrait,
 {
-    const DIM: usize;
     fn log_p(&self, entry: E) -> na::SVector<F, DIM>;
 }
 
 pub struct Dist<F, const DIM: usize> {
     pub log_p: HashMap<String, na::SVector<F, DIM>>,
 }
-impl<E, F, const DIM: usize> Distribution<E, F, DIM> for Dist<F, DIM>
+impl<R, F, const DIM: usize> Distribution<R, F, DIM> for Dist<F, DIM>
 where
-    E: EntryTrait + Into<String>,
+    R: ResidueTrait + Into<String>,
     F: FloatTrait,
 {
-    const DIM: usize = DIM;
-    fn log_p(&self, entry: E) -> na::SVector<F, DIM> {
+    fn log_p(&self, entry: R) -> na::SVector<F, DIM> {
         let code: String = entry.into();
         self.log_p.get(&code).unwrap().clone_owned()
     }
 }
-
-pub struct DistNoGaps {}
+#[derive(Clone)]
+pub struct DistNoGaps {
+    pub p_none: Option<na::SVector<f64, 4>>,
+}
 impl Distribution<Residue, f64, 4> for DistNoGaps {
-    const DIM: usize = 4;
     fn log_p(&self, entry: Residue) -> na::SVector<f64, 4> {
         use Residue::*;
         let prob: na::SVector<f64, 4> = match entry {
@@ -167,7 +166,13 @@ impl Distribution<Residue, f64, 4> for DistNoGaps {
             C => na::SVector::<f64, 4>::new(0.0, 1.0, 0.0, 0.0),
             G => na::SVector::<f64, 4>::new(0.0, 0.0, 1.0, 0.0),
             T => na::SVector::<f64, 4>::new(0.0, 0.0, 0.0, 1.0),
-            Residue::None => na::SVector::<f64, 4>::new(0.25, 0.25, 0.25, 0.25),
+            //Residue::None => na::SVector::<f64, 4>::new(0.25, 0.25, 0.25, 0.25),
+            Residue::None => match self.p_none {
+                Some(vector) => vector.clone_owned(),
+                Option::<na::SVector<f64, 4>>::None => {
+                    na::SVector::<f64, 4>::new(0.25, 0.25, 0.25, 0.25)
+                }
+            },
             R => na::SVector::<f64, 4>::new(0.5, 0.0, 0.5, 0.0),
             Y => na::SVector::<f64, 4>::new(0.0, 0.5, 0.0, 0.5),
             S => na::SVector::<f64, 4>::new(0.0, 0.5, 0.5, 0.0),
@@ -183,9 +188,9 @@ impl Distribution<Residue, f64, 4> for DistNoGaps {
     }
 }
 
+#[derive(Clone)]
 pub struct DistGaps {}
 impl Distribution<Residue, f64, 5> for DistGaps {
-    const DIM: usize = 5;
     fn log_p(&self, entry: Residue) -> na::SVector<f64, 5> {
         use Residue::*;
         let prob: na::SVector<f64, 5> = match entry {
@@ -232,14 +237,34 @@ where
     }
 }
 
-/* TODO generic over D, DIM, DIM_SQ */
+impl<F, R, const DIM: usize, const DIM_SQ: usize> Distribution<ResiduePair<R>, F, DIM_SQ>
+    for Dist<F, DIM>
+where
+    F: FloatTrait,
+    R: ResidueTrait,
+    Dist<F, DIM>: Distribution<R, F, DIM>,
+    Const<DIM>: na::DimMul<Const<DIM>, Output = Const<DIM_SQ>>,
+{
+    fn log_p(&self, entry: ResiduePair<R>) -> na::SVector<F, DIM_SQ> {
+        let mut result = na::SVector::<F, DIM_SQ>::zeros();
+        let (first, second) = (entry.0, entry.1);
+        let log_p_first = self.log_p(first);
+        let log_p_second = self.log_p(second);
+        for a in 0..DIM {
+            for b in 0..DIM {
+                result[DIM * a + b] = log_p_first[a] + log_p_second[b];
+            }
+        }
+        result
+    }
+}
+
 impl<F, R> Distribution<ResiduePair<R>, F, 16> for DistNoGaps
 where
     F: FloatTrait,
-    R: EntryTrait,
+    R: ResidueTrait,
     DistNoGaps: Distribution<R, F, 4>,
 {
-    const DIM: usize = 16;
     fn log_p(&self, entry: ResiduePair<R>) -> na::SVector<F, 16> {
         let mut result = na::SVector::<F, 16>::zeros();
         let (first, second) = (entry.0, entry.1);
@@ -257,10 +282,9 @@ where
 impl<F, R> Distribution<ResiduePair<R>, F, 25> for DistGaps
 where
     F: FloatTrait,
-    R: EntryTrait,
+    R: ResidueTrait,
     DistGaps: Distribution<R, F, 5>,
 {
-    const DIM: usize = 25;
     fn log_p(&self, entry: ResiduePair<R>) -> na::SVector<F, 25> {
         let mut result = na::SVector::<F, 25>::zeros();
         let (first, second) = (entry.0, entry.1);
@@ -312,19 +336,6 @@ where
 {
 }
 impl<T> Doubleable for T where T: ToTypenum + DimAdd<T> {}
-
-/* pub trait ViableDim
-where
-    Self: ToTypenum + DimName + Doubleable,
-    TwoTimes<Self>: DimName + Exponentiable,
-{
-}
-impl<T> ViableDim for T
-where
-    T: ToTypenum + DimName + Doubleable,
-    TwoTimes<T>: DimName + Exponentiable,
-{
-} */
 
 pub trait ViableAllocator<T, const N: usize>
 where

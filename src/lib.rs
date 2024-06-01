@@ -67,7 +67,7 @@ impl FTreeBackend {
         /* TODO as_deref() */
         rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
         log_p_priors: &[na::SVector<Float, DIM>],
-        distribution: &D,
+        distributions: &[D],
     ) -> (
         Vec<Float>,
         Vec<na::SMatrix<Float, DIM, DIM>>,
@@ -87,7 +87,7 @@ impl FTreeBackend {
             log_p_priors,
             &(self.tree),
             &(self.distances),
-            distribution,
+            distributions,
         )
     }
 
@@ -97,7 +97,7 @@ impl FTreeBackend {
         /* TODO as_deref() */
         deltas: &[na::SMatrix<Float, DIM, DIM>],
         sqrt_pi: &[na::SVector<Float, DIM>],
-        distribution: &D,
+        distributions: &[D],
     ) -> (
         Vec<Float>,
         Vec<na::SMatrix<Float, DIM, DIM>>,
@@ -114,7 +114,7 @@ impl FTreeBackend {
             sqrt_pi,
             &(self.tree),
             &(self.distances),
-            distribution,
+            distributions,
         )
     }
 }
@@ -221,12 +221,14 @@ impl FTree {
         }
     }
 
+    #[pyo3(signature=(index_pairs, rate_matrices, log_p_priors, gaps = false, p_none = None))]
     fn infer<'py>(
         self_: PyRef<'py, Self>,
         index_pairs: PyReadonlyArray2<'py, usize>,
         rate_matrices: PyReadonlyArray3<'py, Float>,
         log_p_priors: PyReadonlyArray2<'py, Float>,
-        dim: usize,
+        gaps: bool,
+        p_none: Option<PyReadonlyArray2<'py, Float>>,
     ) -> (
         Bound<'py, PyArray1<Float>>,
         Bound<'py, PyArray3<Float>>,
@@ -244,8 +246,18 @@ impl FTree {
         let log_likelihood_total_py;
         let grad_rate_total_py;
         let grad_log_prior_total_py;
-        if dim == 16 {
-            let distribution = DistNoGaps {};
+        if !gaps {
+            let distributions: Vec<DistNoGaps> = match p_none {
+                Some(pyarr2) => vec_1d_from_python(pyarr2)
+                    .into_iter()
+                    .map(|p_none| DistNoGaps {
+                        p_none: Some(p_none),
+                    })
+                    .collect(),
+                None => std::iter::repeat(DistNoGaps { p_none: None })
+                    .take(index_pairs_vec.len())
+                    .collect(),
+            };
 
             let rate_matrices_vec: Vec<na::SMatrix<f64, 16, 16>> =
                 vec_2d_from_python(rate_matrices);
@@ -259,14 +271,16 @@ impl FTree {
                 &index_pairs_vec,
                 &rate_matrices_vec,
                 &log_p_priors_vec,
-                &distribution,
+                &distributions,
             );
 
             log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
             grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
             grad_log_prior_total_py = vec_1d_into_python(grad_log_prior_total, py);
-        } else if dim == 25 {
-            let distribution = DistGaps {};
+        } else {
+            let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {})
+                .take(index_pairs_vec.len())
+                .collect();
             let rate_matrices_vec: Vec<na::SMatrix<f64, 25, 25>> =
                 vec_2d_from_python(rate_matrices);
 
@@ -279,14 +293,12 @@ impl FTree {
                 &index_pairs_vec,
                 &rate_matrices_vec,
                 &log_p_priors_vec,
-                &distribution,
+                &distributions,
             );
 
             log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
             grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
             grad_log_prior_total_py = vec_1d_into_python(grad_log_prior_total, py);
-        } else {
-            panic!("Incorrect dim");
         }
 
         (
@@ -295,13 +307,14 @@ impl FTree {
             grad_log_prior_total_py,
         )
     }
-
+    #[pyo3(signature=(index_pairs, deltas, sqrt_pi, gaps = false, p_none = None))]
     fn infer_param<'py>(
         self_: PyRef<'py, Self>,
         index_pairs: PyReadonlyArray2<'py, usize>,
         deltas: PyReadonlyArray3<'py, Float>,
         sqrt_pi: PyReadonlyArray2<'py, Float>,
-        dim: usize,
+        gaps: bool,
+        p_none: Option<PyReadonlyArray2<'py, Float>>,
     ) -> (
         Bound<'py, PyArray1<Float>>,
         Bound<'py, PyArray3<Float>>,
@@ -323,8 +336,18 @@ impl FTree {
         let grad_rate_total_py;
 
         /* TODO also choose Entry */
-        if dim == 16 {
-            let distribution = DistNoGaps {};
+        if !gaps {
+            let distributions: Vec<DistNoGaps> = match p_none {
+                Some(pyarr2) => vec_1d_from_python(pyarr2)
+                    .into_iter()
+                    .map(|p_none| DistNoGaps {
+                        p_none: Some(p_none),
+                    })
+                    .collect(),
+                None => std::iter::repeat(DistNoGaps { p_none: None })
+                    .take(index_pairs_vec.len())
+                    .collect(),
+            };
 
             let deltas_vec: Vec<na::SMatrix<f64, 16, 16>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<f64, 16>> = vec_1d_from_python(sqrt_pi);
@@ -338,14 +361,16 @@ impl FTree {
                 grad_delta_total,
                 grad_sqrt_pi_total,
                 grad_rate_total,
-            ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distribution);
+            ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
 
             log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
             grad_delta_total_py = vec_2d_into_python(grad_delta_total, py);
             grad_sqrt_pi_total_py = vec_1d_into_python(grad_sqrt_pi_total, py);
             grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
-        } else if dim == 25 {
-            let distribution = DistGaps {};
+        } else {
+            let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {})
+                .take(index_pairs_vec.len())
+                .collect();
 
             let deltas_vec: Vec<na::SMatrix<f64, 25, 25>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<f64, 25>> = vec_1d_from_python(sqrt_pi);
@@ -359,14 +384,12 @@ impl FTree {
                 grad_delta_total,
                 grad_sqrt_pi_total,
                 grad_rate_total,
-            ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distribution);
+            ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
 
             log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
             grad_delta_total_py = vec_2d_into_python(grad_delta_total, py);
             grad_sqrt_pi_total_py = vec_1d_into_python(grad_sqrt_pi_total, py);
             grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
-        } else {
-            panic!("Incorrect dim");
         }
 
         (
