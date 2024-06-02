@@ -1,7 +1,6 @@
 use logsumexp::LogSumExp;
 use na::{Const, DefaultAllocator};
-use rayon::prelude::*;
-//use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::backward::*;
 use crate::data_types::*;
@@ -18,8 +17,6 @@ where
     Entry: EntryTrait,
     D: Distribution<Entry, Float, DIM>,
 {
-    /* Compared to collect(), this reduces the # of allocation calls
-    but increases peak memory usage; investigate */
     let num_nodes = tree.len();
     /* --- Leaf initialization --- */
     let mut log_p = Vec::<na::SVector<Float, DIM>>::with_capacity(num_nodes);
@@ -109,9 +106,12 @@ where
     }
     grad_rate_column
 }
+pub struct InferenceResult<F, const DIM: usize> {
+    pub log_likelihood_total: Vec<F>,
+    pub grad_rate_total: Vec<na::SMatrix<F, DIM, DIM>>,
+    pub grad_log_prior_total: Vec<na::SVector<F, DIM>>,
+}
 
-/* TODO should we let rayon know that index_pairs is a vector and not just any slice? */
-/* TODO Id<DIM> */
 pub fn train_parallel<const DIM: usize, Residue, D>(
     index_pairs: &[(usize, usize)],
     residue_sequences_2d: na::DMatrixView<Residue>,
@@ -120,11 +120,7 @@ pub fn train_parallel<const DIM: usize, Residue, D>(
     tree: &[TreeNode],
     distances: &[Float],
     distributions: &[D],
-) -> (
-    Vec<Float>,
-    Vec<na::SMatrix<Float, DIM, DIM>>,
-    Vec<na::SVector<Float, DIM>>,
-)
+) -> InferenceResult<Float, DIM>
 where
     Residue: ResidueTrait,
     D: Distribution<ResiduePair<Residue>, Float, DIM>,
@@ -178,7 +174,11 @@ where
             )
         })
         .unzip();
-    (log_likelihood_total, grad_rate_total, grad_log_prior_total)
+    InferenceResult {
+        log_likelihood_total,
+        grad_rate_total,
+        grad_log_prior_total,
+    }
 }
 
 fn d_rate_column_param<const DIM: usize>(
@@ -242,6 +242,13 @@ fn d_rate_column_param<const DIM: usize>(
     grad_rate_column
 }
 
+pub struct InferenceResultParam<F, const DIM: usize> {
+    pub log_likelihood_total: Vec<F>,
+    pub grad_delta_total: Vec<na::SMatrix<F, DIM, DIM>>,
+    pub grad_sqrt_pi_total: Vec<na::SVector<F, DIM>>,
+    pub grad_rate_total: Vec<na::SMatrix<F, DIM, DIM>>,
+}
+
 pub fn train_parallel_param<const DIM: usize, Residue, D>(
     index_pairs: &[(usize, usize)],
     residue_sequences_2d: na::DMatrixView<Residue>,
@@ -250,12 +257,7 @@ pub fn train_parallel_param<const DIM: usize, Residue, D>(
     tree: &[TreeNode],
     distances: &[Float],
     distributions: &[D],
-) -> (
-    Vec<Float>,
-    Vec<na::SMatrix<Float, DIM, DIM>>,
-    Vec<na::SVector<Float, DIM>>,
-    Vec<na::SMatrix<Float, DIM, DIM>>,
-)
+) -> InferenceResultParam<Float, DIM>
 where
     Residue: ResidueTrait,
     D: Distribution<ResiduePair<Residue>, Float, DIM>,
@@ -318,10 +320,10 @@ where
             )
         })
         .unzip();
-    (
+    InferenceResultParam {
         log_likelihood_total,
         grad_delta_total,
         grad_sqrt_pi_total,
         grad_rate_total,
-    )
+    }
 }

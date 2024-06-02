@@ -6,8 +6,8 @@ use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
 };
 use pyo3::{
-    exceptions::PyValueError, pyclass, pymethods, pymodule, types::PyModule, Bound, PyRef,
-    PyResult, Python,
+    exceptions::PyValueError, pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy,
+    PyObject, PyRef, PyResult, Python,
 };
 
 use std::error::Error;
@@ -68,11 +68,7 @@ impl FTreeBackend {
         rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
         log_p_priors: &[na::SVector<Float, DIM>],
         distributions: &[D],
-    ) -> (
-        Vec<Float>,
-        Vec<na::SMatrix<Float, DIM, DIM>>,
-        Vec<na::SVector<Float, DIM>>,
-    )
+    ) -> InferenceResult<Float, DIM>
     where
         D: Distribution<Entry, Float, DIM>,
         //ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Floatloat, DIM>>,
@@ -98,12 +94,7 @@ impl FTreeBackend {
         deltas: &[na::SMatrix<Float, DIM, DIM>],
         sqrt_pi: &[na::SVector<Float, DIM>],
         distributions: &[D],
-    ) -> (
-        Vec<Float>,
-        Vec<na::SMatrix<Float, DIM, DIM>>,
-        Vec<na::SVector<Float, DIM>>,
-        Vec<na::SMatrix<Float, DIM, DIM>>,
-    )
+    ) -> InferenceResultParam<Float, DIM>
     where
         D: Distribution<Entry, Float, DIM>,
     {
@@ -204,6 +195,42 @@ where
     .into_pyarray_bound(py)
 }
 
+impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResult<F, DIM>
+where
+    F: numpy::Element + na::Scalar + Copy,
+{
+    fn into_py<'py>(self, py: Python<'_>) -> PyObject {
+        let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
+        let grad_rate_total_py = vec_2d_into_python(self.grad_rate_total, py);
+        let grad_log_prior_total_py = vec_1d_into_python(self.grad_log_prior_total, py);
+        (
+            log_likelihood_total_py,
+            grad_rate_total_py,
+            grad_log_prior_total_py,
+        )
+            .into_py(py)
+    }
+}
+
+impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResultParam<F, DIM>
+where
+    F: numpy::Element + na::Scalar + Copy,
+{
+    fn into_py<'py>(self, py: Python<'_>) -> PyObject {
+        let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
+        let grad_delta_total_py = vec_2d_into_python(self.grad_delta_total, py);
+        let grad_sqrt_pi_total_py = vec_1d_into_python(self.grad_sqrt_pi_total, py);
+        let grad_rate_total_py = vec_2d_into_python(self.grad_rate_total, py);
+        (
+            log_likelihood_total_py,
+            grad_delta_total_py,
+            grad_sqrt_pi_total_py,
+            grad_rate_total_py,
+        )
+            .into_py(py)
+    }
+}
+
 #[pyclass(extends=FTreeBackend, subclass)]
 struct FTree {}
 
@@ -229,11 +256,7 @@ impl FTree {
         log_p_priors: PyReadonlyArray2<'py, Float>,
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
-    ) -> (
-        Bound<'py, PyArray1<Float>>,
-        Bound<'py, PyArray3<Float>>,
-        Bound<'py, PyArray2<Float>>,
-    ) {
+    ) -> PyObject {
         let super_ = self_.as_ref();
         let py = self_.py();
 
@@ -243,13 +266,14 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let log_likelihood_total_py;
-        let grad_rate_total_py;
-        let grad_log_prior_total_py;
+        let result_py: PyObject;
+
         if !gaps {
             let distributions: Vec<DistNoGaps> = match p_none {
-                Some(pyarr2) => vec_1d_from_python(pyarr2)
-                    .into_iter()
+                Some(pyarr2) => pyarr2
+                    .as_array()
+                    .axis_iter(Axis(0))
+                    .map(|slice| na::SVector::<f64, 4>::from_iterator(slice.iter().copied()))
                     .map(|p_none| DistNoGaps {
                         p_none: Some(p_none),
                     })
@@ -264,19 +288,15 @@ impl FTree {
 
             let log_p_priors_vec: Vec<na::SVector<f64, 16>> = vec_1d_from_python(log_p_priors);
 
-            let log_likelihood_total: Vec<f64>;
-            let grad_rate_total: Vec<na::SMatrix<f64, 16, 16>>;
-            let grad_log_prior_total: Vec<na::SVector<f64, 16>>;
-            (log_likelihood_total, grad_rate_total, grad_log_prior_total) = super_.infer(
+            let result: InferenceResult<f64, 16>;
+            result = super_.infer(
                 &index_pairs_vec,
                 &rate_matrices_vec,
                 &log_p_priors_vec,
                 &distributions,
             );
 
-            log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
-            grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
-            grad_log_prior_total_py = vec_1d_into_python(grad_log_prior_total, py);
+            result_py = result.into_py(py);
         } else {
             let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {})
                 .take(index_pairs_vec.len())
@@ -286,26 +306,18 @@ impl FTree {
 
             let log_p_priors_vec: Vec<na::SVector<f64, 25>> = vec_1d_from_python(log_p_priors);
 
-            let log_likelihood_total: Vec<f64>;
-            let grad_rate_total: Vec<na::SMatrix<f64, 25, 25>>;
-            let grad_log_prior_total: Vec<na::SVector<f64, 25>>;
-            (log_likelihood_total, grad_rate_total, grad_log_prior_total) = super_.infer(
+            let result: InferenceResult<f64, 25>;
+            result = super_.infer(
                 &index_pairs_vec,
                 &rate_matrices_vec,
                 &log_p_priors_vec,
                 &distributions,
             );
 
-            log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
-            grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
-            grad_log_prior_total_py = vec_1d_into_python(grad_log_prior_total, py);
+            result_py = result.into_py(py);
         }
 
-        (
-            log_likelihood_total_py,
-            grad_rate_total_py,
-            grad_log_prior_total_py,
-        )
+        result_py
     }
     #[pyo3(signature=(index_pairs, deltas, sqrt_pi, gaps = false, p_none = None))]
     fn infer_param<'py>(
@@ -315,12 +327,7 @@ impl FTree {
         sqrt_pi: PyReadonlyArray2<'py, Float>,
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
-    ) -> (
-        Bound<'py, PyArray1<Float>>,
-        Bound<'py, PyArray3<Float>>,
-        Bound<'py, PyArray2<Float>>,
-        Bound<'py, PyArray3<Float>>,
-    ) {
+    ) -> PyObject {
         let super_ = self_.as_ref();
         let py = self_.py();
 
@@ -330,16 +337,13 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let log_likelihood_total_py;
-        let grad_delta_total_py;
-        let grad_sqrt_pi_total_py;
-        let grad_rate_total_py;
-
-        /* TODO also choose Entry */
+        let result_py: PyObject;
         if !gaps {
             let distributions: Vec<DistNoGaps> = match p_none {
-                Some(pyarr2) => vec_1d_from_python(pyarr2)
-                    .into_iter()
+                Some(pyarr2) => pyarr2
+                    .as_array()
+                    .axis_iter(Axis(0))
+                    .map(|slice| na::SVector::<f64, 4>::from_iterator(slice.iter().copied()))
                     .map(|p_none| DistNoGaps {
                         p_none: Some(p_none),
                     })
@@ -352,21 +356,10 @@ impl FTree {
             let deltas_vec: Vec<na::SMatrix<f64, 16, 16>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<f64, 16>> = vec_1d_from_python(sqrt_pi);
 
-            let log_likelihood_total: Vec<f64>;
-            let grad_delta_total: Vec<na::SMatrix<f64, 16, 16>>;
-            let grad_sqrt_pi_total: Vec<na::SVector<f64, 16>>;
-            let grad_rate_total: Vec<na::SMatrix<f64, 16, 16>>;
-            (
-                log_likelihood_total,
-                grad_delta_total,
-                grad_sqrt_pi_total,
-                grad_rate_total,
-            ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
-
-            log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
-            grad_delta_total_py = vec_2d_into_python(grad_delta_total, py);
-            grad_sqrt_pi_total_py = vec_1d_into_python(grad_sqrt_pi_total, py);
-            grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
+            let result: InferenceResultParam<f64, 16>;
+            result =
+                super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            result_py = result.into_py(py);
         } else {
             let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {})
                 .take(index_pairs_vec.len())
@@ -375,29 +368,12 @@ impl FTree {
             let deltas_vec: Vec<na::SMatrix<f64, 25, 25>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<f64, 25>> = vec_1d_from_python(sqrt_pi);
 
-            let log_likelihood_total: Vec<f64>;
-            let grad_delta_total: Vec<na::SMatrix<f64, 25, 25>>;
-            let grad_sqrt_pi_total: Vec<na::SVector<f64, 25>>;
-            let grad_rate_total: Vec<na::SMatrix<f64, 25, 25>>;
-            (
-                log_likelihood_total,
-                grad_delta_total,
-                grad_sqrt_pi_total,
-                grad_rate_total,
-            ) = super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
-
-            log_likelihood_total_py = vec_0d_into_python(log_likelihood_total, py);
-            grad_delta_total_py = vec_2d_into_python(grad_delta_total, py);
-            grad_sqrt_pi_total_py = vec_1d_into_python(grad_sqrt_pi_total, py);
-            grad_rate_total_py = vec_2d_into_python(grad_rate_total, py);
+            let result: InferenceResultParam<f64, 25>;
+            result =
+                super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            result_py = result.into_py(py);
         }
-
-        (
-            log_likelihood_total_py,
-            grad_delta_total_py,
-            grad_sqrt_pi_total_py,
-            grad_rate_total_py,
-        )
+        result_py
     }
 }
 

@@ -112,11 +112,8 @@ pub fn main() {
     let log_p_priors: Vec<na::SVector<Float, DIST_DIM>> =
         std::iter::repeat(log_p_prior).take(n_columns).collect();
 
-    let log_likelihood_total: Vec<Float>;
-    let grad_rate_total: Vec<na::SMatrix<Float, DIST_DIM, DIST_DIM>>;
-    let grad_log_prior_total: Vec<na::SVector<Float, DIST_DIM>>;
-
-    (log_likelihood_total, grad_rate_total, grad_log_prior_total) = train_parallel(
+    let result: InferenceResult<Float, DIST_DIM>;
+    result = train_parallel(
         &index_pairs,
         residue_sequences_2d.as_view(),
         /* TODO as_deref() */
@@ -128,7 +125,7 @@ pub fn main() {
     );
 
     for (column_id, log_likelihood_column) in
-        std::iter::zip(index_pairs.iter(), log_likelihood_total.iter())
+        std::iter::zip(index_pairs.iter(), result.log_likelihood_total.iter())
     {
         println!(
             "Log likelihood #{:?} = {:.8}",
@@ -136,7 +133,7 @@ pub fn main() {
         );
     }
     for (column_id, grad_log_prior_column) in
-        std::iter::zip(index_pairs.iter(), grad_log_prior_total.iter())
+        std::iter::zip(index_pairs.iter(), result.grad_log_prior_total.iter())
     {
         println!(
             "Gradient of log_prior #{:?} = {:.10}",
@@ -144,7 +141,8 @@ pub fn main() {
             DisplayArray(grad_log_prior_column.as_slice())
         );
     }
-    for (column_id, grad_rate_column) in std::iter::zip(index_pairs.iter(), grad_rate_total.iter())
+    for (column_id, grad_rate_column) in
+        std::iter::zip(index_pairs.iter(), result.grad_rate_total.iter())
     {
         println!("Gradient of rate #{:?}:", column_id);
         for row in grad_rate_column.row_iter() {
