@@ -10,6 +10,7 @@ use pyo3::{
     PyObject, PyRef, PyResult, Python,
 };
 
+use std::collections::HashMap;
 use std::error::Error;
 
 mod backward;
@@ -199,16 +200,20 @@ impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResult<F, DIM>
 where
     F: numpy::Element + na::Scalar + Copy,
 {
-    fn into_py<'py>(self, py: Python<'_>) -> PyObject {
+    fn into_py(self, py: Python<'_>) -> PyObject {
         let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
         let grad_rate_total_py = vec_2d_into_python(self.grad_rate_total, py);
         let grad_log_prior_total_py = vec_1d_into_python(self.grad_log_prior_total, py);
-        (
-            log_likelihood_total_py,
-            grad_rate_total_py,
-            grad_log_prior_total_py,
-        )
-            .into_py(py)
+
+        let result: HashMap<String, PyObject> = [
+            ("log_likelihood".to_string(), log_likelihood_total_py.into()),
+            ("grad_rate".to_string(), grad_rate_total_py.into()),
+            ("grad_log_prior".to_string(), grad_log_prior_total_py.into()),
+        ]
+        .into_iter()
+        .collect();
+
+        result.into_py(py)
     }
 }
 
@@ -221,13 +226,17 @@ where
         let grad_delta_total_py = vec_2d_into_python(self.grad_delta_total, py);
         let grad_sqrt_pi_total_py = vec_1d_into_python(self.grad_sqrt_pi_total, py);
         let grad_rate_total_py = vec_2d_into_python(self.grad_rate_total, py);
-        (
-            log_likelihood_total_py,
-            grad_delta_total_py,
-            grad_sqrt_pi_total_py,
-            grad_rate_total_py,
-        )
-            .into_py(py)
+
+        let result: HashMap<String, PyObject> = [
+            ("log_likelihood".to_string(), log_likelihood_total_py.into()),
+            ("grad_delta".to_string(), grad_delta_total_py.into()),
+            ("grad_sqrt_pi".to_string(), grad_sqrt_pi_total_py.into()),
+            ("grad_rate".to_string(), grad_rate_total_py.into()),
+        ]
+        .into_iter()
+        .collect();
+
+        result.into_py(py)
     }
 }
 
