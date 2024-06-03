@@ -401,7 +401,7 @@ where
     }
 }
 
-pub fn log_likelihood_unpaired<const DIM: usize, Residue, D>(
+pub fn train_parallel_param_unpaired<const DIM: usize, Residue, D>(
     idx: &[usize],
     residue_sequences_2d: na::DMatrixView<Residue>,
     deltas: &[na::SMatrix<Float, DIM, DIM>],
@@ -409,29 +409,46 @@ pub fn log_likelihood_unpaired<const DIM: usize, Residue, D>(
     tree: &[TreeNode],
     distances: &[Float],
     distributions: &[D],
-) -> Vec<Float>
+) -> InferenceResultParam<Float, DIM>
 where
     Residue: ResidueTrait,
     D: Distribution<Residue, Float, DIM>,
 {
-    (idx, deltas, sqrt_pi, distributions)
+    let log_likelihood_total: Vec<Float>;
+    let grad_delta_total: Vec<na::SMatrix<Float, DIM, DIM>>;
+    let grad_sqrt_pi_total: Vec<na::SVector<Float, DIM>>;
+    let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
+    (
+        log_likelihood_total,
+        (grad_delta_total, (grad_sqrt_pi_total, grad_rate_total)),
+    ) = (idx, deltas, sqrt_pi, distributions)
         .into_par_iter()
         .map(|(column_id, delta, sqrt_pi, distribution)| {
             let column = residue_sequences_2d.column(*column_id);
             let column_iter = column.iter().copied();
 
-            let param = compute_param_data(delta.as_view(), sqrt_pi.as_view());
+            let result_column = train_column_param(
+                column_iter,
+                delta.as_view(),
+                sqrt_pi.as_view(),
+                tree,
+                distances,
+                distribution,
+            );
 
-            let forward_data = forward_data_precompute_param(&param, &distances);
-
-            let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
-            let log_p_root = log_p.last().unwrap();
-
-            let log_p_prior = sqrt_pi.map(Float::ln) * (2.0 as Float);
-            let lse_arg = log_p_root + log_p_prior;
-            let log_likelihood = lse_arg.iter().ln_sum_exp();
-
-            log_likelihood
+            (
+                result_column.log_likelihood,
+                (
+                    result_column.grad_delta,
+                    (result_column.grad_sqrt_pi, result_column.grad_rate),
+                ),
+            )
         })
-        .collect()
+        .unzip();
+    InferenceResultParam {
+        log_likelihood_total,
+        grad_delta_total,
+        grad_sqrt_pi_total,
+        grad_rate_total,
+    }
 }

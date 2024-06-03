@@ -110,17 +110,17 @@ impl FTreeBackend {
         )
     }
 
-    fn log_likelihood_unpaired<const DIM: usize, D>(
+    fn infer_param_unpaired<const DIM: usize, D>(
         &self,
         idx: &[usize],
         deltas: &[na::SMatrix<Float, DIM, DIM>],
         sqrt_pi: &[na::SVector<Float, DIM>],
         distributions: &[D],
-    ) -> Vec<Float>
+    ) -> InferenceResultParam<Float, DIM>
     where
         D: Distribution<Residue, Float, DIM>,
     {
-        log_likelihood_unpaired(
+        train_parallel_param_unpaired(
             idx,
             self.residue_sequences_2d.as_view(),
             deltas,
@@ -407,20 +407,20 @@ impl FTree {
     }
 
     #[pyo3(signature=(idx, deltas, sqrt_pi, gaps = false, p_none = None))]
-    fn log_likelihood_unpaired<'py>(
+    fn infer_param_unpaired<'py>(
         self_: PyRef<'py, Self>,
         idx: PyReadonlyArray1<'py, usize>,
         deltas: PyReadonlyArray3<'py, Float>,
         sqrt_pi: PyReadonlyArray2<'py, Float>,
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
-    ) -> Bound<'py, PyArray1<Float>> {
+    ) -> PyObject {
         let super_ = self_.as_ref();
         let py = self_.py();
 
         let idx_vec = vec_0d_from_python(idx);
 
-        let result: Vec<Float>;
+        let result_py: PyObject;
         if !gaps {
             let distributions: Vec<DistNoGaps> = match p_none {
                 Some(pyarr2) => pyarr2
@@ -439,8 +439,10 @@ impl FTree {
             let deltas_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 4>> = vec_1d_from_python(sqrt_pi);
 
+            let result: InferenceResultParam<Float, 4>;
             result =
-                super_.log_likelihood_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+                super_.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            result_py = result.into_py(py);
         } else {
             let distributions: Vec<DistGaps> =
                 std::iter::repeat(DistGaps {}).take(idx_vec.len()).collect();
@@ -448,10 +450,12 @@ impl FTree {
             let deltas_vec: Vec<na::SMatrix<Float, 5, 5>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 5>> = vec_1d_from_python(sqrt_pi);
 
+            let result: InferenceResultParam<Float, 5>;
             result =
-                super_.log_likelihood_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+                super_.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            result_py = result.into_py(py);
         }
-        vec_0d_into_python(result, py)
+        result_py
     }
 }
 
