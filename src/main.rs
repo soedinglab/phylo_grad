@@ -1,6 +1,5 @@
 #![allow(dead_code, non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
-/* TODO pyo3 */
 
 use itertools::Itertools;
 
@@ -62,7 +61,6 @@ pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     /* Placeholder values */
-    const DIM: usize = 4;
     type Entry = ResiduePair<Residue>;
     const DIST_DIM: usize = 25;
     let log_p_prior =
@@ -112,8 +110,7 @@ pub fn main() {
     let log_p_priors: Vec<na::SVector<Float, DIST_DIM>> =
         std::iter::repeat(log_p_prior).take(n_columns).collect();
 
-    let result: InferenceResult<Float, DIST_DIM>;
-    result = train_parallel(
+    let result: InferenceResult<Float, DIST_DIM> = train_parallel(
         &index_pairs,
         residue_sequences_2d.as_view(),
         /* TODO as_deref() */

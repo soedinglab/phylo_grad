@@ -1,11 +1,10 @@
 use std::{collections::HashMap, convert::TryFrom};
 
 use na::{allocator::Allocator, Const, DimAdd, DimMin, DimName, ToTypenum};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 pub type Float = f64;
 //pub type ColumnId = usize;
-pub type Id = usize;
+//pub type Id = usize;
 
 pub const EPS_DIV: f64 = 1e-10;
 pub const EPS_LOG: f64 = 1e-100;
@@ -32,9 +31,7 @@ pub trait ResidueTrait: EntryTrait + TryFrom<char> + na::Scalar + std::marker::S
     ) -> impl Iterator<Item = Result<Self, FelsensteinError>>;
 }
 
-/* TODO! either remove the u8-stuff or make it work */
-#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive, IntoPrimitive)]
-#[repr(u8)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Residue {
     A,
     C,

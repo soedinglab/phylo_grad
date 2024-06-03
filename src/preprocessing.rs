@@ -29,12 +29,11 @@ where
             if s.len() == seq_length {
                 Ok(s)
             } else {
-                return Err(FelsensteinError::SEQ_LENGTH);
+                Err(FelsensteinError::SEQ_LENGTH)
             }
         }),
         |iter| {
-            iter.map(|s| Residue::try_deserialize_string_iter(s))
-                .flatten()
+            iter.flat_map(|s| Residue::try_deserialize_string_iter(s))
                 .collect::<Result<Vec<Residue>, FelsensteinError>>()
         },
     )??;
@@ -82,7 +81,7 @@ pub fn preprocess_weak(
     */
 
     /* Initialization */
-    let mut num_children: Vec<i32> = vec![0 as i32; num_nodes];
+    let mut num_children: Vec<i32> = vec![0_i32; num_nodes];
 
     for node in raw_tree.iter() {
         if node.parent >= 0 {
@@ -108,7 +107,7 @@ pub fn preprocess_weak(
     ordered_ids.push(root_id);
 
     /* Index map */
-    let mut new_from_old = vec![1_000_000 as usize; num_nodes];
+    let mut new_from_old = vec![1_000_000_usize; num_nodes];
     for (new_id, old_id) in ordered_ids.iter().enumerate() {
         new_from_old[*old_id] = new_id;
     }
@@ -132,9 +131,9 @@ pub fn preprocess_weak(
         let new_id = new_from_old[old_id];
         let parent_old_id = node.parent as usize;
         let parent_new_id = new_from_old[parent_old_id];
-        if let None = left[parent_new_id] {
+        if left[parent_new_id].is_none() {
             left[parent_new_id] = Some(new_id);
-        } else if let None = right[parent_new_id] {
+        } else if right[parent_new_id].is_none() {
             right[parent_new_id] = Some(new_id);
         } else {
             dbg!(parent_old_id);

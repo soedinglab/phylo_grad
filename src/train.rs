@@ -129,9 +129,9 @@ where
 {
     let num_leaves = column_iter.len();
 
-    let forward_data = forward_data_precompute(rate_matrix.as_view(), &distances);
+    let forward_data = forward_data_precompute(rate_matrix.as_view(), distances);
 
-    let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
+    let log_p = forward_column(column_iter, distribution, tree, &forward_data);
     let log_p_root = log_p.last().unwrap();
 
     let (log_likelihood, grad_log_p_likelihood): (Float, na::SVector<Float, DIM>) =
@@ -141,9 +141,9 @@ where
 
     let grad_rate = d_rate_column(
         grad_log_p_root.as_view(),
-        &tree,
+        tree,
         &log_p,
-        &distances,
+        distances,
         &forward_data,
         num_leaves,
     );
@@ -302,9 +302,9 @@ where
 
     let param = compute_param_data(delta.as_view(), sqrt_pi.as_view());
 
-    let forward_data = forward_data_precompute_param(&param, &distances);
+    let forward_data = forward_data_precompute_param(&param, distances);
 
-    let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
+    let log_p = forward_column(column_iter, distribution, tree, &forward_data);
     let log_p_root = log_p.last().unwrap();
 
     let log_p_prior = sqrt_pi.map(Float::ln) * (2.0 as Float);
@@ -315,9 +315,9 @@ where
 
     let grad_rate = d_rate_column_param(
         grad_log_p_root.as_view(),
-        &tree,
+        tree,
         &log_p,
-        &distances,
+        distances,
         &forward_data,
         &param,
         num_leaves,

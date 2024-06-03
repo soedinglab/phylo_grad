@@ -27,20 +27,16 @@ use crate::preprocessing::*;
 use crate::train::*;
 use crate::tree::*;
 
-/* TODO handle generics (can we still have a generic FTreeBackend?) */
-type Entry = ResiduePair<Residue>;
-//type Float = f64;
-
-/* TODO! FTreeBackend can't know what residue type to use. It should store String,
-and infer() may then call preprocessing::try_residue_sequences_from_strings */
-#[pyclass(subclass)]
-struct FTreeBackend {
+struct FTreeBackend<F, R> {
     tree: Vec<TreeNodeId<usize>>,
-    distances: Vec<Float>,
-    residue_sequences_2d: na::DMatrix<Residue>,
+    distances: Vec<F>,
+    residue_sequences_2d: na::DMatrix<R>,
 }
 
-impl FTreeBackend {
+impl<R> FTreeBackend<Float, R>
+where
+    R: ResidueTrait,
+{
     fn try_from_file(data_path: &str, distance_threshold: Float) -> Result<Self, Box<dyn Error>> {
         let mut record_reader = read_raw_csv(data_path, 1)?;
         let raw_tree = deserialize_raw_tree(&mut record_reader)?;
@@ -64,15 +60,14 @@ impl FTreeBackend {
     }
     fn infer<const DIM: usize, D>(
         &self,
-        index_pairs: &Vec<(usize, usize)>,
+        index_pairs: &[(usize, usize)],
         /* TODO as_deref() */
         rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
         log_p_priors: &[na::SVector<Float, DIM>],
         distributions: &[D],
     ) -> InferenceResult<Float, DIM>
     where
-        D: Distribution<Entry, Float, DIM>,
-        //ResiduePair<Residue>: EntryTrait<LogPType = na::SVector<Floatloat, DIM>>,
+        D: Distribution<ResiduePair<R>, Float, DIM>,
         na::Const<DIM>: Doubleable + Exponentiable,
         TwoTimesConst<DIM>: Exponentiable,
         na::DefaultAllocator: ViableAllocator<Float, DIM>,
@@ -90,14 +85,14 @@ impl FTreeBackend {
 
     fn infer_param<const DIM: usize, D>(
         &self,
-        index_pairs: &Vec<(usize, usize)>,
+        index_pairs: &[(usize, usize)],
         /* TODO as_deref() */
         deltas: &[na::SMatrix<Float, DIM, DIM>],
         sqrt_pi: &[na::SVector<Float, DIM>],
         distributions: &[D],
     ) -> InferenceResultParam<Float, DIM>
     where
-        D: Distribution<Entry, Float, DIM>,
+        D: Distribution<ResiduePair<R>, Float, DIM>,
     {
         train_parallel_param(
             index_pairs,
@@ -118,7 +113,7 @@ impl FTreeBackend {
         distributions: &[D],
     ) -> InferenceResultParam<Float, DIM>
     where
-        D: Distribution<Residue, Float, DIM>,
+        D: Distribution<R, Float, DIM>,
     {
         train_parallel_param_unpaired(
             idx,
@@ -131,12 +126,6 @@ impl FTreeBackend {
         )
     }
 }
-
-/* struct InferenceResult {
-    log_likelihood_total:
-    grad_rate_total:
-    grad_log_prior_total:
-} */
 
 fn vec_0d_from_python<'py, T>(py_array1: PyReadonlyArray1<'py, T>) -> Vec<T>
 where
@@ -261,16 +250,18 @@ where
     }
 }
 
-#[pyclass(extends=FTreeBackend, subclass)]
-struct FTree {}
+#[pyclass]
+struct FTree {
+    backend: FTreeBackend<Float, Residue>,
+}
 
 #[pymethods]
 impl FTree {
     #[new]
-    fn py_new<'py>(data_path: &str, distance_threshold: Float) -> PyResult<(Self, FTreeBackend)> {
+    fn py_new(data_path: &str, distance_threshold: Float) -> PyResult<Self> {
         let result = FTreeBackend::try_from_file(data_path, distance_threshold);
         match result {
-            Ok(backend) => Ok((FTree {}, backend)),
+            Ok(backend) => Ok(FTree { backend }),
             Err(error) => Err(PyValueError::new_err(format!(
                 "Failed to create FTree: {}",
                 error
@@ -287,7 +278,7 @@ impl FTree {
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
     ) -> PyObject {
-        let super_ = self_.as_ref();
+        let backend = &self_.backend;
         let py = self_.py();
 
         let index_pairs_ndarray = index_pairs.as_array();
@@ -318,8 +309,7 @@ impl FTree {
 
             let log_p_priors_vec: Vec<na::SVector<Float, 16>> = vec_1d_from_python(log_p_priors);
 
-            let result: InferenceResult<Float, 16>;
-            result = super_.infer(
+            let result: InferenceResult<Float, 16> = backend.infer(
                 &index_pairs_vec,
                 &rate_matrices_vec,
                 &log_p_priors_vec,
@@ -336,8 +326,7 @@ impl FTree {
 
             let log_p_priors_vec: Vec<na::SVector<Float, 25>> = vec_1d_from_python(log_p_priors);
 
-            let result: InferenceResult<Float, 25>;
-            result = super_.infer(
+            let result: InferenceResult<Float, 25> = backend.infer(
                 &index_pairs_vec,
                 &rate_matrices_vec,
                 &log_p_priors_vec,
@@ -358,7 +347,7 @@ impl FTree {
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
     ) -> PyObject {
-        let super_ = self_.as_ref();
+        let backend = &self_.backend;
         let py = self_.py();
 
         let index_pairs_ndarray = index_pairs.as_array();
@@ -386,9 +375,8 @@ impl FTree {
             let deltas_vec: Vec<na::SMatrix<Float, 16, 16>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 16>> = vec_1d_from_python(sqrt_pi);
 
-            let result: InferenceResultParam<Float, 16>;
-            result =
-                super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            let result: InferenceResultParam<Float, 16> =
+                backend.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         } else {
             let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {})
@@ -398,9 +386,8 @@ impl FTree {
             let deltas_vec: Vec<na::SMatrix<Float, 25, 25>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 25>> = vec_1d_from_python(sqrt_pi);
 
-            let result: InferenceResultParam<Float, 25>;
-            result =
-                super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            let result: InferenceResultParam<Float, 25> =
+                backend.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         }
         result_py
@@ -415,10 +402,10 @@ impl FTree {
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
     ) -> PyObject {
-        let super_ = self_.as_ref();
+        let backend = &self_.backend;
         let py = self_.py();
 
-        let idx_vec = vec_0d_from_python(idx);
+        let idx_vec: Vec<usize> = vec_0d_from_python(idx);
 
         let result_py: PyObject;
         if !gaps {
@@ -439,9 +426,8 @@ impl FTree {
             let deltas_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 4>> = vec_1d_from_python(sqrt_pi);
 
-            let result: InferenceResultParam<Float, 4>;
-            result =
-                super_.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            let result: InferenceResultParam<Float, 4> =
+                backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         } else {
             let distributions: Vec<DistGaps> =
@@ -450,9 +436,8 @@ impl FTree {
             let deltas_vec: Vec<na::SMatrix<Float, 5, 5>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 5>> = vec_1d_from_python(sqrt_pi);
 
-            let result: InferenceResultParam<Float, 5>;
-            result =
-                super_.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            let result: InferenceResultParam<Float, 5> =
+                backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         }
         result_py

@@ -146,7 +146,7 @@ pub fn forward_data_precompute_param<const DIM: usize>(
     forward_data.log_transition.extend(
         distances
             .iter()
-            .map(|dist| log_transition_precompute_param(&param, *dist)),
+            .map(|dist| log_transition_precompute_param(param, *dist)),
     );
     forward_data
 }
@@ -188,7 +188,7 @@ where
 }
 
 fn child_input<const DIM: usize>(
-    child_id: Id, //only used in forward_data
+    child_id: usize, //only used in forward_data
     log_p: na::SVectorView<Float, DIM>,
     forward_data: &ForwardData<DIM>,
 ) -> na::SVector<Float, DIM> {
@@ -206,7 +206,7 @@ fn child_input<const DIM: usize>(
 /// forward_node expects that the node tree[id] is non-terminal!
 /// To initialize a leaf node, call Entry::to_log_p().
 pub fn forward_node<const DIM: usize>(
-    id: Id,
+    id: usize,
     tree: &[TreeNode],
     log_p: &[na::SVector<Float, DIM>],
     forward_data: &ForwardData<DIM>,
@@ -235,7 +235,7 @@ pub fn forward_node<const DIM: usize>(
 }
 
 pub fn forward_root<const DIM: usize>(
-    id: Id,
+    id: usize,
     tree: &[TreeNode],
     log_p: &[na::SVector<Float, DIM>],
     forward_data: &ForwardData<DIM>,

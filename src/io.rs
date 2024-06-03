@@ -42,7 +42,6 @@ where
     Ok(rdr)
 }
 
-/* TODO multiunzip */
 pub fn deserialize_raw_tree<R>(
     reader: &mut csv::Reader<R>,
 ) -> Result<Vec<RawInputRecord>, csv::Error>

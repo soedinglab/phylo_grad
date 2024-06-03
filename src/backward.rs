@@ -81,20 +81,20 @@ where
     result
 }
 
-/* verified */
+/* TODO! excessive precision for constants */
 fn exprel(x: f64) -> f64 {
     const THRESHOLD: f64 = 2e-3;
     /* LOG_F64_MAX = f64::MAX.log() */
     const LOG_F64_MAX: f64 = 7.0978271289338397e+02;
     /* LOG_F64_MIN = ? */
     const LOG_F64_MIN: f64 = -7.0839641853226408e+02;
-    if x < LOG_F64_MIN as f64 {
+    if x < LOG_F64_MIN {
         -1.0 / x
     } else if x < -THRESHOLD {
         (x.exp() - 1.0) / x
     } else if x < THRESHOLD {
         1.0 + 0.5 * x * (1.0 + x / 3.0 * (1.0 + 0.25 * x * (1.0 + 0.2 * x)))
-    } else if x < LOG_F64_MAX as f64 {
+    } else if x < LOG_F64_MAX {
         (x.exp() - 1.0) / x
     } else {
         f64::MAX
@@ -126,7 +126,7 @@ fn X_transposed<const DIM: usize>(
         id_iter.map(|(i, j)| (eigenvalues[j] - eigenvalues[i]) * distance),
     );
     let mut result = arg_1.map(exprel);
-    result.fill_diagonal(1 as f64);
+    result.fill_diagonal(1_f64);
     times_diag_assign(result.as_view_mut(), coeff.iter().copied());
 
     result
