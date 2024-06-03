@@ -109,6 +109,27 @@ impl FTreeBackend {
             distributions,
         )
     }
+
+    fn log_likelihood_unpaired<const DIM: usize, D>(
+        &self,
+        idx: &[usize],
+        deltas: &[na::SMatrix<Float, DIM, DIM>],
+        sqrt_pi: &[na::SVector<Float, DIM>],
+        distributions: &[D],
+    ) -> Vec<Float>
+    where
+        D: Distribution<Residue, Float, DIM>,
+    {
+        log_likelihood_unpaired(
+            idx,
+            self.residue_sequences_2d.as_view(),
+            deltas,
+            sqrt_pi,
+            &(self.tree),
+            &(self.distances),
+            distributions,
+        )
+    }
 }
 
 /* struct InferenceResult {
@@ -383,6 +404,54 @@ impl FTree {
             result_py = result.into_py(py);
         }
         result_py
+    }
+
+    #[pyo3(signature=(idx, deltas, sqrt_pi, gaps = false, p_none = None))]
+    fn log_likelihood_unpaired<'py>(
+        self_: PyRef<'py, Self>,
+        idx: PyReadonlyArray1<'py, usize>,
+        deltas: PyReadonlyArray3<'py, Float>,
+        sqrt_pi: PyReadonlyArray2<'py, Float>,
+        gaps: bool,
+        p_none: Option<PyReadonlyArray2<'py, Float>>,
+    ) -> Bound<'py, PyArray1<Float>> {
+        let super_ = self_.as_ref();
+        let py = self_.py();
+
+        let idx_vec = vec_0d_from_python(idx);
+
+        let result: Vec<Float>;
+        if !gaps {
+            let distributions: Vec<DistNoGaps> = match p_none {
+                Some(pyarr2) => pyarr2
+                    .as_array()
+                    .axis_iter(Axis(0))
+                    .map(|slice| na::SVector::<f64, 4>::from_iterator(slice.iter().copied()))
+                    .map(|p_none| DistNoGaps {
+                        p_none: Some(p_none),
+                    })
+                    .collect(),
+                None => std::iter::repeat(DistNoGaps { p_none: None })
+                    .take(idx_vec.len())
+                    .collect(),
+            };
+
+            let deltas_vec: Vec<na::SMatrix<f64, 4, 4>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<f64, 4>> = vec_1d_from_python(sqrt_pi);
+
+            result =
+                super_.log_likelihood_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+        } else {
+            let distributions: Vec<DistGaps> =
+                std::iter::repeat(DistGaps {}).take(idx_vec.len()).collect();
+
+            let deltas_vec: Vec<na::SMatrix<f64, 5, 5>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<f64, 5>> = vec_1d_from_python(sqrt_pi);
+
+            result =
+                super_.log_likelihood_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+        }
+        vec_0d_into_python(result, py)
     }
 }
 

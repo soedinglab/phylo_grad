@@ -18,11 +18,9 @@ where
     D: Distribution<Entry, Float, DIM>,
 {
     let num_nodes = tree.len();
-    /* --- Leaf initialization --- */
     let mut log_p = Vec::<na::SVector<Float, DIM>>::with_capacity(num_nodes);
     log_p.extend(column_iter.map(|x| distribution.log_p(x)));
     let num_leaves = log_p.len();
-    /* --- / Leaf initialization --- */
 
     /* TODO remove copy */
     for i in num_leaves..(num_nodes - 1) {
@@ -106,6 +104,57 @@ where
     }
     grad_rate_column
 }
+
+struct TrainColumnResult<F, const DIM: usize> {
+    log_likelihood: F,
+    grad_rate: na::SMatrix<F, DIM, DIM>,
+    grad_log_prior: na::SVector<F, DIM>,
+}
+
+fn train_column<const DIM: usize, Entry, I, D>(
+    column_iter: I,
+    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
+    log_p_prior: na::SVectorView<Float, DIM>,
+    tree: &[TreeNode],
+    distances: &[Float],
+    distribution: &D,
+) -> TrainColumnResult<Float, DIM>
+where
+    Entry: EntryTrait,
+    I: ExactSizeIterator<Item = Entry>,
+    D: Distribution<Entry, Float, DIM>,
+    Const<DIM>: Doubleable + Exponentiable,
+    TwoTimesConst<DIM>: Exponentiable,
+    DefaultAllocator: ViableAllocator<Float, DIM>,
+{
+    let num_leaves = column_iter.len();
+
+    let forward_data = forward_data_precompute(rate_matrix.as_view(), &distances);
+
+    let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
+    let log_p_root = log_p.last().unwrap();
+
+    let (log_likelihood, grad_log_p_likelihood): (Float, na::SVector<Float, DIM>) =
+        process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
+    let grad_log_prior = grad_log_p_likelihood;
+    let grad_log_p_root = grad_log_p_likelihood;
+
+    let grad_rate = d_rate_column(
+        grad_log_p_root.as_view(),
+        &tree,
+        &log_p,
+        &distances,
+        &forward_data,
+        num_leaves,
+    );
+
+    TrainColumnResult::<Float, DIM> {
+        log_likelihood,
+        grad_rate,
+        grad_log_prior,
+    }
+}
+
 pub struct InferenceResult<F, const DIM: usize> {
     pub log_likelihood_total: Vec<F>,
     pub grad_rate_total: Vec<na::SMatrix<F, DIM, DIM>>,
@@ -128,9 +177,6 @@ where
     TwoTimesConst<DIM>: Exponentiable,
     DefaultAllocator: ViableAllocator<Float, DIM>,
 {
-    let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
-    let num_nodes = tree.len();
-
     let log_likelihood_total: Vec<Float>;
     let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
     let grad_log_prior_total: Vec<na::SVector<Float, DIM>>;
@@ -149,28 +195,18 @@ where
                 },
             );
 
-            let forward_data = forward_data_precompute(rate_matrix.as_view(), &distances);
-
-            let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
-            let log_p_root = log_p[num_nodes - 1];
-
-            let (log_likelihood_column, grad_log_p_likelihood): (Float, na::SVector<Float, DIM>) =
-                process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
-            let grad_log_prior_column = grad_log_p_likelihood;
-            let grad_log_p_root = grad_log_p_likelihood;
-
-            let grad_rate_column = d_rate_column(
-                grad_log_p_root.as_view(),
-                &tree,
-                &log_p,
-                &distances,
-                &forward_data,
-                num_leaves,
+            let result_column = train_column(
+                column_iter,
+                rate_matrix.as_view(),
+                log_p_prior.as_view(),
+                tree,
+                distances,
+                distribution,
             );
 
             (
-                log_likelihood_column,
-                (grad_rate_column, grad_log_prior_column),
+                result_column.log_likelihood,
+                (result_column.grad_rate, result_column.grad_log_prior),
             )
         })
         .unzip();
@@ -242,6 +278,64 @@ fn d_rate_column_param<const DIM: usize>(
     grad_rate_column
 }
 
+struct TrainColumnParamResult<F, const DIM: usize> {
+    log_likelihood: F,
+    grad_delta: na::SMatrix<F, DIM, DIM>,
+    grad_sqrt_pi: na::SVector<F, DIM>,
+    grad_rate: na::SMatrix<F, DIM, DIM>,
+}
+
+fn train_column_param<const DIM: usize, Entry, I, D>(
+    column_iter: I,
+    delta: na::SMatrixView<Float, DIM, DIM>,
+    sqrt_pi: na::SVectorView<Float, DIM>,
+    tree: &[TreeNode],
+    distances: &[Float],
+    distribution: &D,
+) -> TrainColumnParamResult<Float, DIM>
+where
+    Entry: EntryTrait,
+    I: ExactSizeIterator<Item = Entry>,
+    D: Distribution<Entry, Float, DIM>,
+{
+    let num_leaves = column_iter.len();
+
+    let param = compute_param_data(delta.as_view(), sqrt_pi.as_view());
+
+    let forward_data = forward_data_precompute_param(&param, &distances);
+
+    let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
+    let log_p_root = log_p.last().unwrap();
+
+    let log_p_prior = sqrt_pi.map(Float::ln) * (2.0 as Float);
+    let (log_likelihood, grad_log_p_likelihood): (Float, na::SVector<Float, DIM>) =
+        process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
+    let grad_log_prior = grad_log_p_likelihood;
+    let grad_log_p_root = grad_log_p_likelihood;
+
+    let grad_rate = d_rate_column_param(
+        grad_log_p_root.as_view(),
+        &tree,
+        &log_p,
+        &distances,
+        &forward_data,
+        &param,
+        num_leaves,
+    );
+
+    let (grad_delta, mut grad_sqrt_pi) = d_param(grad_rate.as_view(), &param);
+
+    let mut grad_sqrt_pi_likelihood = param.sqrt_pi_recip * (2.0 as Float);
+    grad_sqrt_pi_likelihood.component_mul_assign(&grad_log_prior);
+    grad_sqrt_pi += grad_sqrt_pi_likelihood;
+    TrainColumnParamResult::<Float, DIM> {
+        log_likelihood,
+        grad_delta,
+        grad_sqrt_pi,
+        grad_rate,
+    }
+}
+
 pub struct InferenceResultParam<F, const DIM: usize> {
     pub log_likelihood_total: Vec<F>,
     pub grad_delta_total: Vec<na::SMatrix<F, DIM, DIM>>,
@@ -262,9 +356,6 @@ where
     Residue: ResidueTrait,
     D: Distribution<ResiduePair<Residue>, Float, DIM>,
 {
-    let (num_leaves, _residue_seq_length) = residue_sequences_2d.shape();
-    let num_nodes = tree.len();
-
     let log_likelihood_total: Vec<Float>;
     let grad_delta_total: Vec<na::SMatrix<Float, DIM, DIM>>;
     let grad_sqrt_pi_total: Vec<na::SVector<Float, DIM>>;
@@ -284,39 +375,21 @@ where
                 },
             );
 
-            let param = compute_param_data(delta.as_view(), sqrt_pi.as_view());
-
-            let forward_data = forward_data_precompute_param(&param, &distances);
-
-            let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
-            let log_p_root = log_p[num_nodes - 1];
-
-            let log_p_prior = sqrt_pi.map(Float::ln) * (2.0 as Float);
-            let (log_likelihood_column, grad_log_p_likelihood): (Float, na::SVector<Float, DIM>) =
-                process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
-            let grad_log_prior_column = grad_log_p_likelihood;
-            let grad_log_p_root = grad_log_p_likelihood;
-
-            let grad_rate_column = d_rate_column_param(
-                grad_log_p_root.as_view(),
-                &tree,
-                &log_p,
-                &distances,
-                &forward_data,
-                &param,
-                num_leaves,
+            let result_column = train_column_param(
+                column_iter,
+                delta.as_view(),
+                sqrt_pi.as_view(),
+                tree,
+                distances,
+                distribution,
             );
 
-            let (grad_delta_column, mut grad_sqrt_pi_column) =
-                d_param(grad_rate_column.as_view(), &param);
-
-            let mut grad_sqrt_pi_likelihood = param.sqrt_pi_recip * (2.0 as Float);
-            grad_sqrt_pi_likelihood.component_mul_assign(&grad_log_prior_column);
-            grad_sqrt_pi_column += grad_sqrt_pi_likelihood;
-
             (
-                log_likelihood_column,
-                (grad_delta_column, (grad_sqrt_pi_column, grad_rate_column)),
+                result_column.log_likelihood,
+                (
+                    result_column.grad_delta,
+                    (result_column.grad_sqrt_pi, result_column.grad_rate),
+                ),
             )
         })
         .unzip();
@@ -326,4 +399,39 @@ where
         grad_sqrt_pi_total,
         grad_rate_total,
     }
+}
+
+pub fn log_likelihood_unpaired<const DIM: usize, Residue, D>(
+    idx: &[usize],
+    residue_sequences_2d: na::DMatrixView<Residue>,
+    deltas: &[na::SMatrix<Float, DIM, DIM>],
+    sqrt_pi: &[na::SVector<Float, DIM>],
+    tree: &[TreeNode],
+    distances: &[Float],
+    distributions: &[D],
+) -> Vec<Float>
+where
+    Residue: ResidueTrait,
+    D: Distribution<Residue, Float, DIM>,
+{
+    (idx, deltas, sqrt_pi, distributions)
+        .into_par_iter()
+        .map(|(column_id, delta, sqrt_pi, distribution)| {
+            let column = residue_sequences_2d.column(*column_id);
+            let column_iter = column.iter().copied();
+
+            let param = compute_param_data(delta.as_view(), sqrt_pi.as_view());
+
+            let forward_data = forward_data_precompute_param(&param, &distances);
+
+            let log_p = forward_column(column_iter, distribution, &tree, &forward_data);
+            let log_p_root = log_p.last().unwrap();
+
+            let log_p_prior = sqrt_pi.map(Float::ln) * (2.0 as Float);
+            let lse_arg = log_p_root + log_p_prior;
+            let log_likelihood = lse_arg.iter().ln_sum_exp();
+
+            log_likelihood
+        })
+        .collect()
 }
