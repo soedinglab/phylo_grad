@@ -40,11 +40,12 @@ pub struct ParamData<const DIM: usize> {
 }
 
 /// In-place multiplication by a diagonal matrix on the left
-pub fn diag_times_assign<I, const N: usize>(
-    mut matrix: na::SMatrixViewMut<Float, N, N>,
+pub fn diag_times_assign<I, F, const N: usize>(
+    mut matrix: na::SMatrixViewMut<F, N, N>,
     diagonal_entries: I,
 ) where
-    I: Iterator<Item = Float>,
+    F: FloatTrait,
+    I: Iterator<Item = F>,
 {
     for (mut row, scale) in std::iter::zip(matrix.row_iter_mut(), diagonal_entries) {
         row *= scale;
@@ -52,11 +53,12 @@ pub fn diag_times_assign<I, const N: usize>(
 }
 
 /// In-place multiplication by a diagonal matrix on the right
-pub fn times_diag_assign<I, const N: usize>(
-    mut matrix: na::SMatrixViewMut<Float, N, N>,
+pub fn times_diag_assign<I, F, const N: usize>(
+    mut matrix: na::SMatrixViewMut<F, N, N>,
     diagonal_entries: I,
 ) where
-    I: Iterator<Item = Float>,
+    F: FloatTrait,
+    I: Iterator<Item = F>,
 {
     for (mut col, scale) in std::iter::zip(matrix.column_iter_mut(), diagonal_entries) {
         col *= scale;
@@ -67,7 +69,7 @@ pub fn compute_param_data<const DIM: usize>(
     delta: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
 ) -> ParamData<DIM> {
-    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV)));
+    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV as Float)));
 
     let mut symmetric_output = delta.clone_owned();
     for i in 0..DIM {
@@ -125,7 +127,7 @@ fn log_transition_precompute_param<const DIM: usize>(
     );
     step_2 *= param.V_pi_inv;
 
-    let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG)));
+    let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG as Float)));
 
     LogTransitionForwardData {
         step_1,
@@ -158,7 +160,7 @@ where
 {
     let step_1 = rate_matrix * distance;
     let step_2 = step_1.exp();
-    let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG)));
+    let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG as Float)));
 
     LogTransitionForwardData {
         step_1,

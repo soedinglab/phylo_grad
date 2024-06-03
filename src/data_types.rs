@@ -19,14 +19,8 @@ where
         + std::marker::Sync,
 {
 }
-impl<F> FloatTrait for F where
-    F: num_traits::Float
-        + std::ops::AddAssign
-        + std::ops::MulAssign
-        + na::Scalar
-        + std::marker::Sync
-{
-}
+impl FloatTrait for f32 {}
+impl FloatTrait for f64 {}
 
 pub trait EntryTrait: Sized + Copy {
     const TOTAL: usize;
@@ -156,61 +150,61 @@ where
 }
 #[derive(Clone)]
 pub struct DistNoGaps {
-    pub p_none: Option<na::SVector<f64, 4>>,
+    pub p_none: Option<na::SVector<Float, 4>>,
 }
-impl Distribution<Residue, f64, 4> for DistNoGaps {
-    fn log_p(&self, entry: Residue) -> na::SVector<f64, 4> {
+impl Distribution<Residue, Float, 4> for DistNoGaps {
+    fn log_p(&self, entry: Residue) -> na::SVector<Float, 4> {
         use Residue::*;
-        let prob: na::SVector<f64, 4> = match entry {
-            A => na::SVector::<f64, 4>::new(1.0, 0.0, 0.0, 0.0),
-            C => na::SVector::<f64, 4>::new(0.0, 1.0, 0.0, 0.0),
-            G => na::SVector::<f64, 4>::new(0.0, 0.0, 1.0, 0.0),
-            T => na::SVector::<f64, 4>::new(0.0, 0.0, 0.0, 1.0),
-            //Residue::None => na::SVector::<f64, 4>::new(0.25, 0.25, 0.25, 0.25),
+        let prob: na::SVector<Float, 4> = match entry {
+            A => na::SVector::<Float, 4>::new(1.0, 0.0, 0.0, 0.0),
+            C => na::SVector::<Float, 4>::new(0.0, 1.0, 0.0, 0.0),
+            G => na::SVector::<Float, 4>::new(0.0, 0.0, 1.0, 0.0),
+            T => na::SVector::<Float, 4>::new(0.0, 0.0, 0.0, 1.0),
+            //Residue::None => na::SVector::<Float, 4>::new(0.25, 0.25, 0.25, 0.25),
             Residue::None => match self.p_none {
                 Some(vector) => vector.clone_owned(),
-                Option::<na::SVector<f64, 4>>::None => {
-                    na::SVector::<f64, 4>::new(0.25, 0.25, 0.25, 0.25)
+                Option::<na::SVector<Float, 4>>::None => {
+                    na::SVector::<Float, 4>::new(0.25, 0.25, 0.25, 0.25)
                 }
             },
-            R => na::SVector::<f64, 4>::new(0.5, 0.0, 0.5, 0.0),
-            Y => na::SVector::<f64, 4>::new(0.0, 0.5, 0.0, 0.5),
-            S => na::SVector::<f64, 4>::new(0.0, 0.5, 0.5, 0.0),
-            W => na::SVector::<f64, 4>::new(0.5, 0.0, 0.0, 0.5),
-            K => na::SVector::<f64, 4>::new(0.0, 0.0, 0.5, 0.5),
-            M => na::SVector::<f64, 4>::new(0.5, 0.5, 0.0, 0.0),
-            B => na::SVector::<f64, 4>::new(0.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
-            D => na::SVector::<f64, 4>::new(1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0 / 3.0),
-            H => na::SVector::<f64, 4>::new(1.0 / 3.0, 1.0 / 3.0, 0.0, 1.0 / 3.0),
-            V => na::SVector::<f64, 4>::new(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
+            R => na::SVector::<Float, 4>::new(0.5, 0.0, 0.5, 0.0),
+            Y => na::SVector::<Float, 4>::new(0.0, 0.5, 0.0, 0.5),
+            S => na::SVector::<Float, 4>::new(0.0, 0.5, 0.5, 0.0),
+            W => na::SVector::<Float, 4>::new(0.5, 0.0, 0.0, 0.5),
+            K => na::SVector::<Float, 4>::new(0.0, 0.0, 0.5, 0.5),
+            M => na::SVector::<Float, 4>::new(0.5, 0.5, 0.0, 0.0),
+            B => na::SVector::<Float, 4>::new(0.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+            D => na::SVector::<Float, 4>::new(1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0 / 3.0),
+            H => na::SVector::<Float, 4>::new(1.0 / 3.0, 1.0 / 3.0, 0.0, 1.0 / 3.0),
+            V => na::SVector::<Float, 4>::new(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
         };
-        prob.map(f64::ln)
+        prob.map(Float::ln)
     }
 }
 
 #[derive(Clone)]
 pub struct DistGaps {}
-impl Distribution<Residue, f64, 5> for DistGaps {
-    fn log_p(&self, entry: Residue) -> na::SVector<f64, 5> {
+impl Distribution<Residue, Float, 5> for DistGaps {
+    fn log_p(&self, entry: Residue) -> na::SVector<Float, 5> {
         use Residue::*;
-        let prob: na::SVector<f64, 5> = match entry {
-            A => na::SVector::<f64, 5>::new(1.0, 0.0, 0.0, 0.0, 0.0),
-            C => na::SVector::<f64, 5>::new(0.0, 1.0, 0.0, 0.0, 0.0),
-            G => na::SVector::<f64, 5>::new(0.0, 0.0, 1.0, 0.0, 0.0),
-            T => na::SVector::<f64, 5>::new(0.0, 0.0, 0.0, 1.0, 0.0),
-            Residue::None => na::SVector::<f64, 5>::new(0.0, 0.0, 0.0, 0.0, 1.0),
-            R => na::SVector::<f64, 5>::new(0.5, 0.0, 0.5, 0.0, 0.0),
-            Y => na::SVector::<f64, 5>::new(0.0, 0.5, 0.0, 0.5, 0.0),
-            S => na::SVector::<f64, 5>::new(0.0, 0.5, 0.5, 0.0, 0.0),
-            W => na::SVector::<f64, 5>::new(0.5, 0.0, 0.0, 0.5, 0.0),
-            K => na::SVector::<f64, 5>::new(0.0, 0.0, 0.5, 0.5, 0.0),
-            M => na::SVector::<f64, 5>::new(0.5, 0.5, 0.0, 0.0, 0.0),
-            B => na::SVector::<f64, 5>::new(0.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
-            D => na::SVector::<f64, 5>::new(1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
-            H => na::SVector::<f64, 5>::new(1.0 / 3.0, 1.0 / 3.0, 0.0, 1.0 / 3.0, 0.0),
-            V => na::SVector::<f64, 5>::new(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0, 0.0),
+        let prob: na::SVector<Float, 5> = match entry {
+            A => na::SVector::<Float, 5>::new(1.0, 0.0, 0.0, 0.0, 0.0),
+            C => na::SVector::<Float, 5>::new(0.0, 1.0, 0.0, 0.0, 0.0),
+            G => na::SVector::<Float, 5>::new(0.0, 0.0, 1.0, 0.0, 0.0),
+            T => na::SVector::<Float, 5>::new(0.0, 0.0, 0.0, 1.0, 0.0),
+            Residue::None => na::SVector::<Float, 5>::new(0.0, 0.0, 0.0, 0.0, 1.0),
+            R => na::SVector::<Float, 5>::new(0.5, 0.0, 0.5, 0.0, 0.0),
+            Y => na::SVector::<Float, 5>::new(0.0, 0.5, 0.0, 0.5, 0.0),
+            S => na::SVector::<Float, 5>::new(0.0, 0.5, 0.5, 0.0, 0.0),
+            W => na::SVector::<Float, 5>::new(0.5, 0.0, 0.0, 0.5, 0.0),
+            K => na::SVector::<Float, 5>::new(0.0, 0.0, 0.5, 0.5, 0.0),
+            M => na::SVector::<Float, 5>::new(0.5, 0.5, 0.0, 0.0, 0.0),
+            B => na::SVector::<Float, 5>::new(0.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
+            D => na::SVector::<Float, 5>::new(1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
+            H => na::SVector::<Float, 5>::new(1.0 / 3.0, 1.0 / 3.0, 0.0, 1.0 / 3.0, 0.0),
+            V => na::SVector::<Float, 5>::new(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0, 0.0),
         };
-        prob.map(f64::ln)
+        prob.map(Float::ln)
     }
 }
 
@@ -237,6 +231,7 @@ where
     }
 }
 
+/* Can't make generic over Dist, as DIM becomes unrestricted */
 impl<F, R, const DIM: usize, const DIM_SQ: usize> Distribution<ResiduePair<R>, F, DIM_SQ>
     for Dist<F, DIM>
 where

@@ -104,9 +104,9 @@ fn exprel(x: f64) -> f64 {
 /* verified */
 /* TODO simplify */
 fn X_transposed<const DIM: usize>(
-    eigenvalues: na::SVectorView<Float, DIM>,
-    distance: Float,
-) -> na::SMatrix<Float, DIM, DIM> {
+    eigenvalues: na::SVectorView<f64, DIM>,
+    distance: f64,
+) -> na::SMatrix<f64, DIM, DIM> {
     /* X = coeff[:, None] * y,
     y = { exprel( d * (lambda[:, None] - lambda[None, :]) ) if i!=j,
         { 1 if i==j
@@ -122,11 +122,11 @@ fn X_transposed<const DIM: usize>(
         (0..DIM).flat_map(|n| std::iter::repeat(n).take(DIM)),
         std::iter::repeat(0..DIM).flatten(),
     );
-    let arg_1 = na::SMatrix::<Float, DIM, DIM>::from_iterator(
+    let arg_1 = na::SMatrix::<f64, DIM, DIM>::from_iterator(
         id_iter.map(|(i, j)| (eigenvalues[j] - eigenvalues[i]) * distance),
     );
     let mut result = arg_1.map(exprel);
-    result.fill_diagonal(1 as Float);
+    result.fill_diagonal(1 as f64);
     times_diag_assign(result.as_view_mut(), coeff.iter().copied());
 
     result
@@ -149,7 +149,12 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
     let B = param.V_pi_inv.transpose();
     let B_inv = param.V_pi.transpose();
 
-    let X_T = X_transposed(param.eigenvalues.as_view(), distance);
+    let X_T =
+        na::convert::<na::SMatrix<f64, DIM, DIM>, na::SMatrix<Float, DIM, DIM>>(X_transposed(
+            na::convert::<na::SVector<Float, DIM>, na::SVector<f64, DIM>>(param.eigenvalues)
+                .as_view(),
+            distance as f64,
+        ));
 
     /* TODO optimize */
     //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X_T)) * B_inv;

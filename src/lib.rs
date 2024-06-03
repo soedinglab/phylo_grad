@@ -267,7 +267,7 @@ struct FTree {}
 #[pymethods]
 impl FTree {
     #[new]
-    fn py_new<'py>(data_path: &str, distance_threshold: f64) -> PyResult<(Self, FTreeBackend)> {
+    fn py_new<'py>(data_path: &str, distance_threshold: Float) -> PyResult<(Self, FTreeBackend)> {
         let result = FTreeBackend::try_from_file(data_path, distance_threshold);
         match result {
             Ok(backend) => Ok((FTree {}, backend)),
@@ -303,7 +303,7 @@ impl FTree {
                 Some(pyarr2) => pyarr2
                     .as_array()
                     .axis_iter(Axis(0))
-                    .map(|slice| na::SVector::<f64, 4>::from_iterator(slice.iter().copied()))
+                    .map(|slice| na::SVector::<Float, 4>::from_iterator(slice.iter().copied()))
                     .map(|p_none| DistNoGaps {
                         p_none: Some(p_none),
                     })
@@ -313,12 +313,12 @@ impl FTree {
                     .collect(),
             };
 
-            let rate_matrices_vec: Vec<na::SMatrix<f64, 16, 16>> =
+            let rate_matrices_vec: Vec<na::SMatrix<Float, 16, 16>> =
                 vec_2d_from_python(rate_matrices);
 
-            let log_p_priors_vec: Vec<na::SVector<f64, 16>> = vec_1d_from_python(log_p_priors);
+            let log_p_priors_vec: Vec<na::SVector<Float, 16>> = vec_1d_from_python(log_p_priors);
 
-            let result: InferenceResult<f64, 16>;
+            let result: InferenceResult<Float, 16>;
             result = super_.infer(
                 &index_pairs_vec,
                 &rate_matrices_vec,
@@ -331,12 +331,12 @@ impl FTree {
             let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {})
                 .take(index_pairs_vec.len())
                 .collect();
-            let rate_matrices_vec: Vec<na::SMatrix<f64, 25, 25>> =
+            let rate_matrices_vec: Vec<na::SMatrix<Float, 25, 25>> =
                 vec_2d_from_python(rate_matrices);
 
-            let log_p_priors_vec: Vec<na::SVector<f64, 25>> = vec_1d_from_python(log_p_priors);
+            let log_p_priors_vec: Vec<na::SVector<Float, 25>> = vec_1d_from_python(log_p_priors);
 
-            let result: InferenceResult<f64, 25>;
+            let result: InferenceResult<Float, 25>;
             result = super_.infer(
                 &index_pairs_vec,
                 &rate_matrices_vec,
@@ -373,7 +373,7 @@ impl FTree {
                 Some(pyarr2) => pyarr2
                     .as_array()
                     .axis_iter(Axis(0))
-                    .map(|slice| na::SVector::<f64, 4>::from_iterator(slice.iter().copied()))
+                    .map(|slice| na::SVector::<Float, 4>::from_iterator(slice.iter().copied()))
                     .map(|p_none| DistNoGaps {
                         p_none: Some(p_none),
                     })
@@ -383,10 +383,10 @@ impl FTree {
                     .collect(),
             };
 
-            let deltas_vec: Vec<na::SMatrix<f64, 16, 16>> = vec_2d_from_python(deltas);
-            let sqrt_pi_vec: Vec<na::SVector<f64, 16>> = vec_1d_from_python(sqrt_pi);
+            let deltas_vec: Vec<na::SMatrix<Float, 16, 16>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<Float, 16>> = vec_1d_from_python(sqrt_pi);
 
-            let result: InferenceResultParam<f64, 16>;
+            let result: InferenceResultParam<Float, 16>;
             result =
                 super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
@@ -395,10 +395,10 @@ impl FTree {
                 .take(index_pairs_vec.len())
                 .collect();
 
-            let deltas_vec: Vec<na::SMatrix<f64, 25, 25>> = vec_2d_from_python(deltas);
-            let sqrt_pi_vec: Vec<na::SVector<f64, 25>> = vec_1d_from_python(sqrt_pi);
+            let deltas_vec: Vec<na::SMatrix<Float, 25, 25>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<Float, 25>> = vec_1d_from_python(sqrt_pi);
 
-            let result: InferenceResultParam<f64, 25>;
+            let result: InferenceResultParam<Float, 25>;
             result =
                 super_.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
@@ -426,7 +426,7 @@ impl FTree {
                 Some(pyarr2) => pyarr2
                     .as_array()
                     .axis_iter(Axis(0))
-                    .map(|slice| na::SVector::<f64, 4>::from_iterator(slice.iter().copied()))
+                    .map(|slice| na::SVector::<Float, 4>::from_iterator(slice.iter().copied()))
                     .map(|p_none| DistNoGaps {
                         p_none: Some(p_none),
                     })
@@ -436,8 +436,8 @@ impl FTree {
                     .collect(),
             };
 
-            let deltas_vec: Vec<na::SMatrix<f64, 4, 4>> = vec_2d_from_python(deltas);
-            let sqrt_pi_vec: Vec<na::SVector<f64, 4>> = vec_1d_from_python(sqrt_pi);
+            let deltas_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<Float, 4>> = vec_1d_from_python(sqrt_pi);
 
             result =
                 super_.log_likelihood_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
@@ -445,8 +445,8 @@ impl FTree {
             let distributions: Vec<DistGaps> =
                 std::iter::repeat(DistGaps {}).take(idx_vec.len()).collect();
 
-            let deltas_vec: Vec<na::SMatrix<f64, 5, 5>> = vec_2d_from_python(deltas);
-            let sqrt_pi_vec: Vec<na::SVector<f64, 5>> = vec_1d_from_python(sqrt_pi);
+            let deltas_vec: Vec<na::SMatrix<Float, 5, 5>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<Float, 5>> = vec_1d_from_python(sqrt_pi);
 
             result =
                 super_.log_likelihood_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
