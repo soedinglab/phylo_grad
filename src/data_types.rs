@@ -124,23 +124,26 @@ impl ResidueTrait for Residue {
     }
 }
 
-pub trait Distribution<E, F, const DIM: usize>: std::marker::Sync
+pub trait Distribution<E, F>
 where
+    Self: std::marker::Sync,
     E: EntryTrait,
     F: FloatTrait,
 {
-    fn log_p(&self, entry: E) -> na::SVector<F, DIM>;
+    type Value;
+    fn log_p(&self, entry: E) -> Self::Value;
 }
 
 pub struct Dist<F, const DIM: usize> {
     pub log_p: HashMap<String, na::SVector<F, DIM>>,
 }
-impl<R, F, const DIM: usize> Distribution<R, F, DIM> for Dist<F, DIM>
+impl<R, F, const DIM: usize> Distribution<R, F> for Dist<F, DIM>
 where
     R: ResidueTrait + Into<String>,
     F: FloatTrait,
 {
-    fn log_p(&self, entry: R) -> na::SVector<F, DIM> {
+    type Value = na::SVector<F, DIM>;
+    fn log_p(&self, entry: R) -> Self::Value {
         let code: String = entry.into();
         self.log_p.get(&code).unwrap().clone_owned()
     }
@@ -149,8 +152,9 @@ where
 pub struct DistNoGaps {
     pub p_none: Option<na::SVector<Float, 4>>,
 }
-impl Distribution<Residue, Float, 4> for DistNoGaps {
-    fn log_p(&self, entry: Residue) -> na::SVector<Float, 4> {
+impl Distribution<Residue, Float> for DistNoGaps {
+    type Value = na::SVector<Float, 4>;
+    fn log_p(&self, entry: Residue) -> Self::Value {
         use Residue::*;
         let prob: na::SVector<Float, 4> = match entry {
             A => na::SVector::<Float, 4>::new(1.0, 0.0, 0.0, 0.0),
@@ -181,8 +185,9 @@ impl Distribution<Residue, Float, 4> for DistNoGaps {
 
 #[derive(Clone)]
 pub struct DistGaps {}
-impl Distribution<Residue, Float, 5> for DistGaps {
-    fn log_p(&self, entry: Residue) -> na::SVector<Float, 5> {
+impl Distribution<Residue, Float> for DistGaps {
+    type Value = na::SVector<Float, 5>;
+    fn log_p(&self, entry: Residue) -> Self::Value {
         use Residue::*;
         let prob: na::SVector<Float, 5> = match entry {
             A => na::SVector::<Float, 5>::new(1.0, 0.0, 0.0, 0.0, 0.0),
@@ -228,63 +233,24 @@ where
     }
 }
 
-/* Can't make generic over Dist, as DIM becomes unrestricted */
-impl<F, R, const DIM: usize, const DIM_SQ: usize> Distribution<ResiduePair<R>, F, DIM_SQ>
-    for Dist<F, DIM>
+impl<F, R, D, Dim> Distribution<ResiduePair<R>, F> for D
 where
     F: FloatTrait,
     R: ResidueTrait,
-    Dist<F, DIM>: Distribution<R, F, DIM>,
-    Const<DIM>: na::DimMul<Const<DIM>, Output = Const<DIM_SQ>>,
+    D: Distribution<R, F, Value = na::OVector<F, Dim>>,
+    Dim: DimName + Squareable,
+    Squared<Dim>: DimName,
+    na::DefaultAllocator: SquareableAllocator<Dim, R, F>,
 {
-    fn log_p(&self, entry: ResiduePair<R>) -> na::SVector<F, DIM_SQ> {
-        let mut result = na::SVector::<F, DIM_SQ>::zeros();
+    type Value = na::OVector<F, Squared<Dim>>;
+    fn log_p(&self, entry: ResiduePair<R>) -> Self::Value {
+        let mut result = na::OVector::<F, Squared<Dim>>::zeros();
         let (first, second) = (entry.0, entry.1);
         let log_p_first = self.log_p(first);
         let log_p_second = self.log_p(second);
-        for a in 0..DIM {
-            for b in 0..DIM {
-                result[DIM * a + b] = log_p_first[a] + log_p_second[b];
-            }
-        }
-        result
-    }
-}
-
-impl<F, R> Distribution<ResiduePair<R>, F, 16> for DistNoGaps
-where
-    F: FloatTrait,
-    R: ResidueTrait,
-    DistNoGaps: Distribution<R, F, 4>,
-{
-    fn log_p(&self, entry: ResiduePair<R>) -> na::SVector<F, 16> {
-        let mut result = na::SVector::<F, 16>::zeros();
-        let (first, second) = (entry.0, entry.1);
-        let log_p_first = self.log_p(first);
-        let log_p_second = self.log_p(second);
-        for a in 0..4 {
-            for b in 0..4 {
-                result[4 * a + b] = log_p_first[a] + log_p_second[b];
-            }
-        }
-        result
-    }
-}
-
-impl<F, R> Distribution<ResiduePair<R>, F, 25> for DistGaps
-where
-    F: FloatTrait,
-    R: ResidueTrait,
-    DistGaps: Distribution<R, F, 5>,
-{
-    fn log_p(&self, entry: ResiduePair<R>) -> na::SVector<F, 25> {
-        let mut result = na::SVector::<F, 25>::zeros();
-        let (first, second) = (entry.0, entry.1);
-        let log_p_first = self.log_p(first);
-        let log_p_second = self.log_p(second);
-        for a in 0..5 {
-            for b in 0..5 {
-                result[5 * a + b] = log_p_first[a] + log_p_second[b];
+        for a in 0..Dim::dim() {
+            for b in 0..Dim::dim() {
+                result[Dim::dim() * a + b] = log_p_first[a] + log_p_second[b];
             }
         }
         result
@@ -319,6 +285,7 @@ impl FelsensteinError {
 
 pub type TwoTimesConst<const N: usize> = TwoTimes<Const<N>>;
 pub type TwoTimes<N> = <N as DimAdd<N>>::Output;
+type Squared<N> = <N as na::DimMul<N>>::Output;
 pub trait Exponentiable: ToTypenum + DimName + DimMin<Self, Output = Self> {}
 impl<T: ToTypenum + DimName + DimMin<Self, Output = Self>> Exponentiable for T {}
 
@@ -328,6 +295,19 @@ where
 {
 }
 impl<T> Doubleable for T where T: ToTypenum + DimAdd<T> {}
+
+trait Squareable
+where
+    Self: na::DimMul<Self>,
+    <Self as na::DimMul<Self>>::Output: DimName,
+{
+}
+impl<T> Squareable for T
+where
+    T: na::DimMul<T>,
+    <T as na::DimMul<T>>::Output: DimName,
+{
+}
 
 pub trait ViableAllocator<T, const N: usize>
 where
@@ -345,5 +325,24 @@ where
         + Allocator<T, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
         + Allocator<T, TwoTimesConst<N>>,
     Const<N>: Doubleable,
+{
+}
+
+trait SquareableAllocator<N, E, F>
+where
+    N: DimName + Squareable,
+    Squared<N>: DimName,
+    F: FloatTrait,
+    E: EntryTrait,
+    Self: Allocator<F, N> + Allocator<F, Squared<N>>,
+{
+}
+impl<A, N, E, F> SquareableAllocator<N, E, F> for A
+where
+    N: DimName + Squareable,
+    Squared<N>: DimName,
+    F: FloatTrait,
+    E: EntryTrait,
+    A: Allocator<F, N> + Allocator<F, Squared<N>>,
 {
 }

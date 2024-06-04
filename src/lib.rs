@@ -67,7 +67,7 @@ where
         distributions: &[D],
     ) -> InferenceResult<Float, DIM>
     where
-        D: Distribution<ResiduePair<R>, Float, DIM>,
+        D: Distribution<ResiduePair<R>, Float, Value = na::SVector<Float, DIM>>,
         na::Const<DIM>: Doubleable + Exponentiable,
         TwoTimesConst<DIM>: Exponentiable,
         na::DefaultAllocator: ViableAllocator<Float, DIM>,
@@ -92,7 +92,7 @@ where
         distributions: &[D],
     ) -> InferenceResultParam<Float, DIM>
     where
-        D: Distribution<ResiduePair<R>, Float, DIM>,
+        D: Distribution<ResiduePair<R>, Float, Value = na::SVector<Float, DIM>>,
     {
         train_parallel_param(
             index_pairs,
@@ -113,7 +113,7 @@ where
         distributions: &[D],
     ) -> InferenceResultParam<Float, DIM>
     where
-        D: Distribution<R, Float, DIM>,
+        D: Distribution<R, Float, Value = na::SVector<Float, DIM>>,
     {
         train_parallel_param_unpaired(
             idx,

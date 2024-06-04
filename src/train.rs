@@ -15,7 +15,7 @@ fn forward_column<const DIM: usize, Entry, D>(
 ) -> Vec<na::SVector<Float, DIM>>
 where
     Entry: EntryTrait,
-    D: Distribution<Entry, Float, DIM>,
+    D: Distribution<Entry, Float, Value = na::SVector<Float, DIM>>,
 {
     let num_nodes = tree.len();
     let mut log_p = Vec::<na::SVector<Float, DIM>>::with_capacity(num_nodes);
@@ -122,7 +122,7 @@ fn train_column<const DIM: usize, Entry, I, D>(
 where
     Entry: EntryTrait,
     I: ExactSizeIterator<Item = Entry>,
-    D: Distribution<Entry, Float, DIM>,
+    D: Distribution<Entry, Float, Value = na::SVector<Float, DIM>>,
     Const<DIM>: Doubleable + Exponentiable,
     TwoTimesConst<DIM>: Exponentiable,
     DefaultAllocator: ViableAllocator<Float, DIM>,
@@ -172,7 +172,7 @@ pub fn train_parallel<const DIM: usize, Residue, D>(
 ) -> InferenceResult<Float, DIM>
 where
     Residue: ResidueTrait,
-    D: Distribution<ResiduePair<Residue>, Float, DIM>,
+    D: Distribution<ResiduePair<Residue>, Float, Value = na::SVector<Float, DIM>>,
     Const<DIM>: Doubleable + Exponentiable,
     TwoTimesConst<DIM>: Exponentiable,
     DefaultAllocator: ViableAllocator<Float, DIM>,
@@ -296,7 +296,7 @@ fn train_column_param<const DIM: usize, Entry, I, D>(
 where
     Entry: EntryTrait,
     I: ExactSizeIterator<Item = Entry>,
-    D: Distribution<Entry, Float, DIM>,
+    D: Distribution<Entry, Float, Value = na::SVector<Float, DIM>>,
 {
     let num_leaves = column_iter.len();
 
@@ -354,7 +354,7 @@ pub fn train_parallel_param<const DIM: usize, Residue, D>(
 ) -> InferenceResultParam<Float, DIM>
 where
     Residue: ResidueTrait,
-    D: Distribution<ResiduePair<Residue>, Float, DIM>,
+    D: Distribution<ResiduePair<Residue>, Float, Value = na::SVector<Float, DIM>>,
 {
     let log_likelihood_total: Vec<Float>;
     let grad_delta_total: Vec<na::SMatrix<Float, DIM, DIM>>;
@@ -412,7 +412,7 @@ pub fn train_parallel_param_unpaired<const DIM: usize, Residue, D>(
 ) -> InferenceResultParam<Float, DIM>
 where
     Residue: ResidueTrait,
-    D: Distribution<Residue, Float, DIM>,
+    D: Distribution<Residue, Float, Value = na::SVector<Float, DIM>>,
 {
     let log_likelihood_total: Vec<Float>;
     let grad_delta_total: Vec<na::SMatrix<Float, DIM, DIM>>;
