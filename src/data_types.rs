@@ -240,7 +240,7 @@ where
     D: Distribution<R, F, Value = na::OVector<F, Dim>>,
     Dim: DimName + Squareable,
     Squared<Dim>: DimName,
-    na::DefaultAllocator: SquareableAllocator<Dim, R, F>,
+    na::DefaultAllocator: SquareableAllocator<Dim, F>,
 {
     type Value = na::OVector<F, Squared<Dim>>;
     fn log_p(&self, entry: ResiduePair<R>) -> Self::Value {
@@ -328,21 +328,19 @@ where
 {
 }
 
-trait SquareableAllocator<N, E, F>
+trait SquareableAllocator<N, F>
 where
     N: DimName + Squareable,
     Squared<N>: DimName,
     F: FloatTrait,
-    E: EntryTrait,
     Self: Allocator<F, N> + Allocator<F, Squared<N>>,
 {
 }
-impl<A, N, E, F> SquareableAllocator<N, E, F> for A
+impl<A, N, F> SquareableAllocator<N, F> for A
 where
     N: DimName + Squareable,
     Squared<N>: DimName,
     F: FloatTrait,
-    E: EntryTrait,
     A: Allocator<F, N> + Allocator<F, Squared<N>>,
 {
 }
