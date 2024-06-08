@@ -23,7 +23,7 @@ impl<const DIM: usize> ForwardData<DIM> {
 }
 
 pub struct LogTransitionForwardData<const DIM: usize> {
-    pub step_1: na::SMatrix<Float, DIM, DIM>,
+    pub step_1: Option<na::SMatrix<Float, DIM, DIM>>,
     pub step_2: na::SMatrix<Float, DIM, DIM>,
     pub log_transition: na::SMatrix<Float, DIM, DIM>,
 }
@@ -36,7 +36,6 @@ pub struct ParamData<const DIM: usize> {
     pub eigenvalues: na::SVector<Float, DIM>,
     pub V_pi: na::SMatrix<Float, DIM, DIM>,
     pub V_pi_inv: na::SMatrix<Float, DIM, DIM>,
-    pub rate_matrix: na::SMatrix<Float, DIM, DIM>,
 }
 
 /// In-place multiplication by a diagonal matrix on the left
@@ -109,7 +108,6 @@ pub fn compute_param_data<const DIM: usize>(
         eigenvalues,
         V_pi,
         V_pi_inv,
-        rate_matrix,
     }
 }
 
@@ -117,9 +115,6 @@ fn log_transition_precompute_param<const DIM: usize>(
     param: &ParamData<DIM>,
     distance: Float,
 ) -> LogTransitionForwardData<DIM> {
-    /* TODO remove step_1 */
-    let step_1 = param.rate_matrix * distance;
-
     let mut step_2 = param.V_pi.clone_owned();
     times_diag_assign(
         step_2.as_view_mut(),
@@ -130,7 +125,7 @@ fn log_transition_precompute_param<const DIM: usize>(
     let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG as Float)));
 
     LogTransitionForwardData {
-        step_1,
+        step_1: None,
         step_2,
         log_transition,
     }
@@ -163,7 +158,7 @@ where
     let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG as Float)));
 
     LogTransitionForwardData {
-        step_1,
+        step_1: Some(step_1),
         step_2,
         log_transition,
     }

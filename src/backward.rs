@@ -72,7 +72,7 @@ where
 {
     /* log_tr*|y (w) = mul*|rx @ exp*|exp(rx) @ map_ln*|y @ w
      */
-    let forward_1 = forward.step_1;
+    let forward_1 = forward.step_1.unwrap();
     let forward_2 = forward.step_2;
 
     let reverse_1 = d_map_ln_vjp(cotangent_vector, forward_2.as_view());
