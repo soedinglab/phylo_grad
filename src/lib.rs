@@ -299,9 +299,7 @@ impl FTree {
                         p_none: Some(p_none),
                     })
                     .collect(),
-                None => std::iter::repeat(DistNoGaps { p_none: None })
-                    .take(index_pairs_vec.len())
-                    .collect(),
+                None => vec![DistNoGaps { p_none: None }; index_pairs_vec.len()],
             };
 
             let rate_matrices_vec: Vec<na::SMatrix<Float, 16, 16>> =
@@ -318,9 +316,7 @@ impl FTree {
 
             result_py = result.into_py(py);
         } else {
-            let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {})
-                .take(index_pairs_vec.len())
-                .collect();
+            let distributions: Vec<DistGaps> = vec![DistGaps {}; index_pairs_vec.len()];
             let rate_matrices_vec: Vec<na::SMatrix<Float, 25, 25>> =
                 vec_2d_from_python(rate_matrices);
 
@@ -367,9 +363,7 @@ impl FTree {
                         p_none: Some(p_none),
                     })
                     .collect(),
-                None => std::iter::repeat(DistNoGaps { p_none: None })
-                    .take(index_pairs_vec.len())
-                    .collect(),
+                None => vec![DistNoGaps { p_none: None }; index_pairs_vec.len()],
             };
 
             let deltas_vec: Vec<na::SMatrix<Float, 16, 16>> = vec_2d_from_python(deltas);
@@ -379,10 +373,7 @@ impl FTree {
                 backend.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         } else {
-            let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {})
-                .take(index_pairs_vec.len())
-                .collect();
-
+            let distributions: Vec<DistGaps> = vec![DistGaps {}; index_pairs_vec.len()];
             let deltas_vec: Vec<na::SMatrix<Float, 25, 25>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 25>> = vec_1d_from_python(sqrt_pi);
 
@@ -418,9 +409,7 @@ impl FTree {
                         p_none: Some(p_none),
                     })
                     .collect(),
-                None => std::iter::repeat(DistNoGaps { p_none: None })
-                    .take(idx_vec.len())
-                    .collect(),
+                None => vec![DistNoGaps { p_none: None }; idx_vec.len()],
             };
 
             let deltas_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(deltas);
@@ -430,8 +419,7 @@ impl FTree {
                 backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         } else {
-            let distributions: Vec<DistGaps> =
-                std::iter::repeat(DistGaps {}).take(idx_vec.len()).collect();
+            let distributions: Vec<DistGaps> = vec![DistGaps {}; idx_vec.len()];
 
             let deltas_vec: Vec<na::SMatrix<Float, 5, 5>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 5>> = vec_1d_from_python(sqrt_pi);

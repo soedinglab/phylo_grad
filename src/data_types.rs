@@ -312,9 +312,9 @@ where
 pub trait ViableAllocator<T, const N: usize>
 where
     Self: Allocator<T, TwoTimesConst<N>, TwoTimesConst<N>>
+        + Allocator<(usize, usize), TwoTimesConst<N>>
         + Allocator<T, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
-        + Allocator<T, TwoTimesConst<N>>
-        + Allocator<(usize, usize), TwoTimesConst<N>>,
+        + Allocator<T, TwoTimesConst<N>>,
     Const<N>: Doubleable,
 {
 }
