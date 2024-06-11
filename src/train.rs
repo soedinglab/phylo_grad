@@ -111,13 +111,13 @@ struct TrainColumnResult<F, const DIM: usize> {
     grad_log_prior: na::SVector<F, DIM>,
 }
 
-fn train_column<const DIM: usize, Entry, I, D>(
+fn train_column<'a, const DIM: usize, Entry, I, D>(
     column_iter: I,
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     log_p_prior: na::SVectorView<Float, DIM>,
     tree: &[TreeNode],
     distances: &[Float],
-    distribution: &D,
+    distribution: &'a D,
 ) -> TrainColumnResult<Float, DIM>
 where
     Entry: EntryTrait,
@@ -161,18 +161,19 @@ pub struct InferenceResult<F, const DIM: usize> {
     pub grad_log_prior_total: Vec<na::SVector<F, DIM>>,
 }
 
-pub fn train_parallel<const DIM: usize, Residue, D>(
+pub fn train_parallel<'a, const DIM: usize, Residue, D>(
     index_pairs: &[(usize, usize)],
     residue_sequences_2d: na::DMatrixView<Residue>,
     rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
     log_p_priors: &[na::SVector<Float, DIM>],
     tree: &[TreeNode],
     distances: &[Float],
-    distributions: &[D],
+    distributions: &'a [D],
 ) -> InferenceResult<Float, DIM>
 where
     Residue: ResidueTrait,
-    D: Distribution<ResiduePair<Residue>, Float, Value = na::SVector<Float, DIM>>,
+    D: std::marker::Sync,
+    (&'a D, &'a D): Distribution<ResiduePair<Residue>, Float, Value = na::SVector<Float, DIM>> + 'a,
     Const<DIM>: Doubleable + Exponentiable,
     TwoTimesConst<DIM>: Exponentiable,
     DefaultAllocator: ViableAllocator<Float, DIM>,
@@ -183,9 +184,9 @@ where
     (
         log_likelihood_total,
         (grad_rate_total, grad_log_prior_total),
-    ) = (index_pairs, rate_matrices, log_p_priors, distributions)
+    ) = (index_pairs, rate_matrices, log_p_priors)
         .into_par_iter()
-        .map(|(column_id, rate_matrix, log_p_prior, distribution)| {
+        .map(|(column_id, rate_matrix, log_p_prior)| {
             let (left_id, right_id) = *column_id;
             let left_half = residue_sequences_2d.column(left_id);
             let right_half = residue_sequences_2d.column(right_id);
@@ -195,13 +196,15 @@ where
                 },
             );
 
+            let distribution = (&distributions[left_id], &distributions[right_id]);
+
             let result_column = train_column(
                 column_iter,
                 rate_matrix.as_view(),
                 log_p_prior.as_view(),
                 tree,
                 distances,
-                distribution,
+                &distribution,
             );
 
             (
@@ -285,13 +288,13 @@ struct TrainColumnParamResult<F, const DIM: usize> {
     grad_rate: na::SMatrix<F, DIM, DIM>,
 }
 
-fn train_column_param<const DIM: usize, Entry, I, D>(
+fn train_column_param<'a, const DIM: usize, Entry, I, D>(
     column_iter: I,
     delta: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
     tree: &[TreeNode],
     distances: &[Float],
-    distribution: &D,
+    distribution: &'a D,
 ) -> TrainColumnParamResult<Float, DIM>
 where
     Entry: EntryTrait,
@@ -343,18 +346,19 @@ pub struct InferenceResultParam<F, const DIM: usize> {
     pub grad_rate_total: Vec<na::SMatrix<F, DIM, DIM>>,
 }
 
-pub fn train_parallel_param<const DIM: usize, Residue, D>(
+pub fn train_parallel_param<'a, const DIM: usize, Residue, D>(
     index_pairs: &[(usize, usize)],
     residue_sequences_2d: na::DMatrixView<Residue>,
     deltas: &[na::SMatrix<Float, DIM, DIM>],
     sqrt_pi: &[na::SVector<Float, DIM>],
     tree: &[TreeNode],
     distances: &[Float],
-    distributions: &[D],
+    distributions: &'a [D],
 ) -> InferenceResultParam<Float, DIM>
 where
     Residue: ResidueTrait,
-    D: Distribution<ResiduePair<Residue>, Float, Value = na::SVector<Float, DIM>>,
+    D: std::marker::Sync,
+    (&'a D, &'a D): Distribution<ResiduePair<Residue>, Float, Value = na::SVector<Float, DIM>> + 'a,
 {
     let log_likelihood_total: Vec<Float>;
     let grad_delta_total: Vec<na::SMatrix<Float, DIM, DIM>>;
@@ -363,9 +367,9 @@ where
     (
         log_likelihood_total,
         (grad_delta_total, (grad_sqrt_pi_total, grad_rate_total)),
-    ) = (index_pairs, deltas, sqrt_pi, distributions)
+    ) = (index_pairs, deltas, sqrt_pi)
         .into_par_iter()
-        .map(|(column_id, delta, sqrt_pi, distribution)| {
+        .map(|(column_id, delta, sqrt_pi)| {
             let (left_id, right_id) = *column_id;
             let left_half = residue_sequences_2d.column(left_id);
             let right_half = residue_sequences_2d.column(right_id);
@@ -375,13 +379,15 @@ where
                 },
             );
 
+            let distribution = (&distributions[left_id], &distributions[right_id]);
+
             let result_column = train_column_param(
                 column_iter,
                 delta.as_view(),
                 sqrt_pi.as_view(),
                 tree,
                 distances,
-                distribution,
+                &distribution,
             );
 
             (

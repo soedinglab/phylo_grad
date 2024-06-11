@@ -69,7 +69,6 @@ pub fn main() {
     let rate_matrix = rate_matrix_example::<DIST_DIM>();
     let distance_threshold = 1e-4 as Float;
     const COL_LIMIT: usize = 3;
-    let distributions: Vec<DistGaps> = std::iter::repeat(DistGaps {}).take(COL_LIMIT).collect();
 
     let raw_data_path = if args.len() >= 2 {
         &args[1]
@@ -104,6 +103,8 @@ pub fn main() {
         .collect();
 
     let n_columns = index_pairs.len();
+
+    let distributions: Vec<DistGaps> = vec![DistGaps {}; residue_seq_length];
 
     let rate_matrices: Vec<na::SMatrix<Float, DIST_DIM, DIST_DIM>> =
         std::iter::repeat(rate_matrix).take(n_columns).collect();

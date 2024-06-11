@@ -58,16 +58,17 @@ where
             residue_sequences_2d,
         })
     }
-    fn infer<const DIM: usize, D>(
+    fn infer<'a, const DIM: usize, D>(
         &self,
         index_pairs: &[(usize, usize)],
         /* TODO as_deref() */
         rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
         log_p_priors: &[na::SVector<Float, DIM>],
-        distributions: &[D],
+        distributions: &'a [D],
     ) -> InferenceResult<Float, DIM>
     where
-        D: Distribution<ResiduePair<R>, Float, Value = na::SVector<Float, DIM>>,
+        D: std::marker::Sync,
+        (&'a D, &'a D): Distribution<ResiduePair<R>, Float, Value = na::SVector<Float, DIM>>,
         na::Const<DIM>: Doubleable + Exponentiable,
         TwoTimesConst<DIM>: Exponentiable,
         na::DefaultAllocator: ViableAllocator<Float, DIM>,
@@ -83,16 +84,17 @@ where
         )
     }
 
-    fn infer_param<const DIM: usize, D>(
+    fn infer_param<'a, const DIM: usize, D>(
         &self,
         index_pairs: &[(usize, usize)],
         /* TODO as_deref() */
         deltas: &[na::SMatrix<Float, DIM, DIM>],
         sqrt_pi: &[na::SVector<Float, DIM>],
-        distributions: &[D],
+        distributions: &'a [D],
     ) -> InferenceResultParam<Float, DIM>
     where
-        D: Distribution<ResiduePair<R>, Float, Value = na::SVector<Float, DIM>>,
+        D: std::marker::Sync,
+        (&'a D, &'a D): Distribution<ResiduePair<R>, Float, Value = na::SVector<Float, DIM>>,
     {
         train_parallel_param(
             index_pairs,
@@ -277,7 +279,7 @@ impl FTree {
         log_p_priors: PyReadonlyArray2<'py, Float>,
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
-    ) -> PyObject {
+    ) -> PyResult<PyObject> {
         let backend = &self_.backend;
         let py = self_.py();
 
@@ -287,8 +289,9 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
-        let result_py: PyObject;
+        let (_, seq_length) = backend.residue_sequences_2d.shape();
 
+        let result_py: PyObject;
         if !gaps {
             let distributions: Vec<DistNoGaps> = match p_none {
                 Some(pyarr2) => pyarr2
@@ -299,8 +302,15 @@ impl FTree {
                         p_none: Some(p_none),
                     })
                     .collect(),
-                None => vec![DistNoGaps { p_none: None }; index_pairs_vec.len()],
+                None => vec![DistNoGaps { p_none: None }; seq_length],
             };
+
+            /* TODO move this to the correct place */
+            if distributions.len() != seq_length {
+                return Err(PyValueError::new_err(
+                    "p_none should have shape (4, seq_length)",
+                ));
+            }
 
             let rate_matrices_vec: Vec<na::SMatrix<Float, 16, 16>> =
                 vec_2d_from_python(rate_matrices);
@@ -316,7 +326,7 @@ impl FTree {
 
             result_py = result.into_py(py);
         } else {
-            let distributions: Vec<DistGaps> = vec![DistGaps {}; index_pairs_vec.len()];
+            let distributions = vec![DistGaps {}; seq_length];
             let rate_matrices_vec: Vec<na::SMatrix<Float, 25, 25>> =
                 vec_2d_from_python(rate_matrices);
 
@@ -332,7 +342,7 @@ impl FTree {
             result_py = result.into_py(py);
         }
 
-        result_py
+        Ok(result_py)
     }
     #[pyo3(signature=(index_pairs, deltas, sqrt_pi, gaps = false, p_none = None))]
     fn infer_param<'py>(
@@ -352,6 +362,8 @@ impl FTree {
             .map(|col| (col[0], col[1]))
             .collect();
 
+        let (_, seq_length) = backend.residue_sequences_2d.shape();
+
         let result_py: PyObject;
         if !gaps {
             let distributions: Vec<DistNoGaps> = match p_none {
@@ -363,7 +375,7 @@ impl FTree {
                         p_none: Some(p_none),
                     })
                     .collect(),
-                None => vec![DistNoGaps { p_none: None }; index_pairs_vec.len()],
+                None => vec![DistNoGaps { p_none: None }; seq_length],
             };
 
             let deltas_vec: Vec<na::SMatrix<Float, 16, 16>> = vec_2d_from_python(deltas);
@@ -373,7 +385,8 @@ impl FTree {
                 backend.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         } else {
-            let distributions: Vec<DistGaps> = vec![DistGaps {}; index_pairs_vec.len()];
+            let distributions = vec![DistGaps {}; seq_length];
+
             let deltas_vec: Vec<na::SMatrix<Float, 25, 25>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 25>> = vec_1d_from_python(sqrt_pi);
 
@@ -398,6 +411,8 @@ impl FTree {
 
         let idx_vec: Vec<usize> = vec_0d_from_python(idx);
 
+        let (_, seq_length) = backend.residue_sequences_2d.shape();
+
         let result_py: PyObject;
         if !gaps {
             let distributions: Vec<DistNoGaps> = match p_none {
@@ -409,7 +424,7 @@ impl FTree {
                         p_none: Some(p_none),
                     })
                     .collect(),
-                None => vec![DistNoGaps { p_none: None }; idx_vec.len()],
+                None => vec![DistNoGaps { p_none: None }; seq_length],
             };
 
             let deltas_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(deltas);
@@ -419,7 +434,7 @@ impl FTree {
                 backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         } else {
-            let distributions: Vec<DistGaps> = vec![DistGaps {}; idx_vec.len()];
+            let distributions = vec![DistGaps {}; seq_length];
 
             let deltas_vec: Vec<na::SMatrix<Float, 5, 5>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 5>> = vec_1d_from_python(sqrt_pi);
