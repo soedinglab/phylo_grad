@@ -183,7 +183,7 @@ impl Distribution<Residue, Float> for DistNoGaps {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct DistGaps {}
 impl Distribution<Residue, Float> for DistGaps {
     type Value = na::SVector<Float, 5>;
@@ -233,11 +233,12 @@ where
     }
 }
 
-impl<F, R, D, Dim> Distribution<ResiduePair<R>, F> for D
+impl<F, R, DLeft, DRight, Dim> Distribution<ResiduePair<R>, F> for (&DLeft, &DRight)
 where
     F: FloatTrait,
     R: ResidueTrait,
-    D: Distribution<R, F, Value = na::OVector<F, Dim>>,
+    DLeft: Distribution<R, F, Value = na::OVector<F, Dim>>,
+    DRight: Distribution<R, F, Value = na::OVector<F, Dim>>,
     Dim: DimName + Squareable,
     Squared<Dim>: DimName,
     na::DefaultAllocator: SquareableAllocator<Dim, F>,
@@ -246,8 +247,8 @@ where
     fn log_p(&self, entry: ResiduePair<R>) -> Self::Value {
         let mut result = na::OVector::<F, Squared<Dim>>::zeros();
         let (first, second) = (entry.0, entry.1);
-        let log_p_first = self.log_p(first);
-        let log_p_second = self.log_p(second);
+        let log_p_first = self.0.log_p(first);
+        let log_p_second = self.1.log_p(second);
         for a in 0..Dim::dim() {
             for b in 0..Dim::dim() {
                 result[Dim::dim() * a + b] = log_p_first[a] + log_p_second[b];
