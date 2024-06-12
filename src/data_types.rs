@@ -246,12 +246,12 @@ where
     type Value = na::OVector<F, Squared<Dim>>;
     fn log_p(&self, entry: ResiduePair<R>) -> Self::Value {
         let mut result = na::OVector::<F, Squared<Dim>>::zeros();
-        let (first, second) = (entry.0, entry.1);
-        let log_p_first = self.0.log_p(first);
-        let log_p_second = self.1.log_p(second);
+        let (left, right) = (entry.0, entry.1);
+        let log_p_left = self.0.log_p(left);
+        let log_p_right = self.1.log_p(right);
         for a in 0..Dim::dim() {
             for b in 0..Dim::dim() {
-                result[Dim::dim() * a + b] = log_p_first[a] + log_p_second[b];
+                result[Dim::dim() * a + b] = log_p_left[a] + log_p_right[b];
             }
         }
         result
