@@ -427,11 +427,13 @@ where
     (
         log_likelihood_total,
         (grad_delta_total, (grad_sqrt_pi_total, grad_rate_total)),
-    ) = (idx, deltas, sqrt_pi, distributions)
+    ) = (idx, deltas, sqrt_pi)
         .into_par_iter()
-        .map(|(column_id, delta, sqrt_pi, distribution)| {
-            let column = residue_sequences_2d.column(*column_id);
+        .map(|(&column_id, delta, sqrt_pi)| {
+            let column = residue_sequences_2d.column(column_id);
             let column_iter = column.iter().copied();
+
+            let distribution = &distributions[column_id];
 
             let result_column = train_column_param(
                 column_iter,
