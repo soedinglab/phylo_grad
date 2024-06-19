@@ -263,7 +263,7 @@ impl FTree {
     fn py_new(data_path: &str, distance_threshold: Float) -> PyResult<Self> {
         let result = FTreeBackend::try_from_file(data_path, distance_threshold);
         match result {
-            Ok(backend) => Ok(FTree { backend }),
+            Ok(backend) => Ok(Self { backend }),
             Err(error) => Err(PyValueError::new_err(format!(
                 "Failed to create FTree: {}",
                 error
@@ -293,7 +293,7 @@ impl FTree {
 
         let result_py: PyObject;
         if !gaps {
-            let distributions: Vec<DistNoGaps> = match p_none {
+            let distributions: Vec<DistNoGaps<4>> = match p_none {
                 Some(pyarr2) => pyarr2
                     .as_array()
                     .axis_iter(Axis(0))
@@ -352,7 +352,7 @@ impl FTree {
         sqrt_pi: PyReadonlyArray2<'py, Float>,
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
-    ) -> PyObject {
+    ) -> PyResult<PyObject> {
         let backend = &self_.backend;
         let py = self_.py();
 
@@ -366,7 +366,7 @@ impl FTree {
 
         let result_py: PyObject;
         if !gaps {
-            let distributions: Vec<DistNoGaps> = match p_none {
+            let distributions: Vec<DistNoGaps<4>> = match p_none {
                 Some(pyarr2) => pyarr2
                     .as_array()
                     .axis_iter(Axis(0))
@@ -377,6 +377,12 @@ impl FTree {
                     .collect(),
                 None => vec![DistNoGaps { p_none: None }; seq_length],
             };
+
+            if distributions.len() != seq_length {
+                return Err(PyValueError::new_err(
+                    "p_none should have shape (4, seq_length)",
+                ));
+            }
 
             let deltas_vec: Vec<na::SMatrix<Float, 16, 16>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 16>> = vec_1d_from_python(sqrt_pi);
@@ -394,7 +400,7 @@ impl FTree {
                 backend.infer_param(&index_pairs_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         }
-        result_py
+        Ok(result_py)
     }
 
     #[pyo3(signature=(idx, deltas, sqrt_pi, gaps = false, p_none = None))]
@@ -405,7 +411,7 @@ impl FTree {
         sqrt_pi: PyReadonlyArray2<'py, Float>,
         gaps: bool,
         p_none: Option<PyReadonlyArray2<'py, Float>>,
-    ) -> PyObject {
+    ) -> PyResult<PyObject> {
         let backend = &self_.backend;
         let py = self_.py();
 
@@ -415,7 +421,7 @@ impl FTree {
 
         let result_py: PyObject;
         if !gaps {
-            let distributions: Vec<DistNoGaps> = match p_none {
+            let distributions: Vec<DistNoGaps<4>> = match p_none {
                 Some(pyarr2) => pyarr2
                     .as_array()
                     .axis_iter(Axis(0))
@@ -426,6 +432,12 @@ impl FTree {
                     .collect(),
                 None => vec![DistNoGaps { p_none: None }; seq_length],
             };
+
+            if distributions.len() != seq_length {
+                return Err(PyValueError::new_err(
+                    "p_none should have shape (4, seq_length)",
+                ));
+            }
 
             let deltas_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(deltas);
             let sqrt_pi_vec: Vec<na::SVector<Float, 4>> = vec_1d_from_python(sqrt_pi);
@@ -443,12 +455,87 @@ impl FTree {
                 backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
             result_py = result.into_py(py);
         }
-        result_py
+        Ok(result_py)
+    }
+}
+
+#[pyclass]
+struct FTreeAminoacid {
+    backend: FTreeBackend<Float, Aminoacid>,
+}
+#[pymethods]
+impl FTreeAminoacid {
+    #[new]
+    fn py_new(data_path: &str, distance_threshold: Float) -> PyResult<Self> {
+        let result = FTreeBackend::try_from_file(data_path, distance_threshold);
+        match result {
+            Ok(backend) => Ok(Self { backend }),
+            Err(error) => Err(PyValueError::new_err(format!(
+                "Failed to create FTree: {}",
+                error
+            ))),
+        }
+    }
+
+    #[pyo3(signature=(idx, deltas, sqrt_pi, gaps = false, p_none = None))]
+    fn infer_param_unpaired<'py>(
+        self_: PyRef<'py, Self>,
+        idx: PyReadonlyArray1<'py, usize>,
+        deltas: PyReadonlyArray3<'py, Float>,
+        sqrt_pi: PyReadonlyArray2<'py, Float>,
+        gaps: bool,
+        p_none: Option<PyReadonlyArray2<'py, Float>>,
+    ) -> PyResult<PyObject> {
+        let backend = &self_.backend;
+        let py = self_.py();
+
+        let idx_vec: Vec<usize> = vec_0d_from_python(idx);
+
+        let (_, seq_length) = backend.residue_sequences_2d.shape();
+
+        let result_py: PyObject;
+        if !gaps {
+            let distributions: Vec<DistNoGaps<20>> = match p_none {
+                Some(pyarr2) => pyarr2
+                    .as_array()
+                    .axis_iter(Axis(0))
+                    .map(|slice| na::SVector::<Float, 20>::from_iterator(slice.iter().copied()))
+                    .map(|p_none| DistNoGaps {
+                        p_none: Some(p_none),
+                    })
+                    .collect(),
+                None => vec![DistNoGaps { p_none: None }; seq_length],
+            };
+
+            if distributions.len() != seq_length {
+                return Err(PyValueError::new_err(
+                    "p_none should have shape (20, seq_length)",
+                ));
+            }
+
+            let deltas_vec: Vec<na::SMatrix<Float, 20, 20>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<Float, 20>> = vec_1d_from_python(sqrt_pi);
+
+            let result: InferenceResultParam<Float, 20> =
+                backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            result_py = result.into_py(py);
+        } else {
+            let distributions = vec![DistGaps {}; seq_length];
+
+            let deltas_vec: Vec<na::SMatrix<Float, 21, 21>> = vec_2d_from_python(deltas);
+            let sqrt_pi_vec: Vec<na::SVector<Float, 21>> = vec_1d_from_python(sqrt_pi);
+
+            let result: InferenceResultParam<Float, 21> =
+                backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            result_py = result.into_py(py);
+        }
+        Ok(result_py)
     }
 }
 
 #[pymodule]
 fn felsenstein_rs<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<FTree>()?;
+    m.add_class::<FTreeAminoacid>()?;
     Ok(())
 }

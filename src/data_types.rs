@@ -25,10 +25,14 @@ pub trait EntryTrait: Sized + Copy {
     const TOTAL: usize;
     const CHARS: usize;
 }
-pub trait ResidueTrait: EntryTrait + TryFrom<char> + na::Scalar + std::marker::Sync {
+pub trait ResidueTrait:
+    EntryTrait + TryFrom<char, Error = FelsensteinError> + na::Scalar + std::marker::Sync
+{
     fn try_deserialize_string_iter(
         input: &str,
-    ) -> impl Iterator<Item = Result<Self, FelsensteinError>>;
+    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> {
+        input.chars().map(Self::try_from)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -116,13 +120,104 @@ impl EntryTrait for Residue {
     const CHARS: usize = 1;
 }
 
-impl ResidueTrait for Residue {
-    fn try_deserialize_string_iter(
-        input: &str,
-    ) -> impl Iterator<Item = Result<Self, FelsensteinError>> {
-        input.chars().map(Self::try_from)
+impl ResidueTrait for Residue {}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Aminoacid {
+    A,
+    R,
+    N,
+    D,
+    C,
+    E,
+    Q,
+    G,
+    H,
+    I,
+    L,
+    K,
+    M,
+    F,
+    P,
+    S,
+    T,
+    W,
+    Y,
+    V,
+    None,
+}
+
+impl TryFrom<char> for Aminoacid {
+    type Error = FelsensteinError;
+
+    fn try_from(char: char) -> Result<Self, Self::Error> {
+        use Aminoacid::*;
+        let res: Aminoacid = match char.to_ascii_uppercase() {
+            'A' => A,
+            'R' => R,
+            'N' => N,
+            'D' => D,
+            'C' => C,
+            'E' => E,
+            'Q' => Q,
+            'G' => G,
+            'H' => H,
+            'I' => I,
+            'L' => L,
+            'K' => K,
+            'M' => M,
+            'F' => F,
+            'P' => P,
+            'S' => S,
+            'T' => T,
+            'W' => W,
+            'Y' => Y,
+            'V' => V,
+            '-' => None,
+            _ => return Err(FelsensteinError::INVALID_CHAR),
+        };
+        Ok(res)
     }
 }
+impl Into<char> for Aminoacid {
+    fn into(self) -> char {
+        use Aminoacid::*;
+        match self {
+            A => 'A',
+            R => 'R',
+            N => 'N',
+            D => 'D',
+            C => 'C',
+            E => 'E',
+            Q => 'Q',
+            G => 'G',
+            H => 'H',
+            I => 'I',
+            L => 'L',
+            K => 'K',
+            M => 'M',
+            F => 'F',
+            P => 'P',
+            S => 'S',
+            T => 'T',
+            W => 'W',
+            Y => 'Y',
+            V => 'V',
+            Self::None => '-',
+        }
+    }
+}
+impl Into<String> for Aminoacid {
+    fn into(self) -> String {
+        let ch: char = self.into();
+        ch.into()
+    }
+}
+impl EntryTrait for Aminoacid {
+    const TOTAL: usize = 21;
+    const CHARS: usize = 1;
+}
+impl ResidueTrait for Aminoacid {}
 
 pub trait Distribution<E, F>
 where
@@ -149,10 +244,10 @@ where
     }
 }
 #[derive(Clone)]
-pub struct DistNoGaps {
-    pub p_none: Option<na::SVector<Float, 4>>,
+pub struct DistNoGaps<const N: usize> {
+    pub p_none: Option<na::SVector<Float, N>>,
 }
-impl Distribution<Residue, Float> for DistNoGaps {
+impl Distribution<Residue, Float> for DistNoGaps<4> {
     type Value = na::SVector<Float, 4>;
     fn log_p(&self, entry: Residue) -> Self::Value {
         use Residue::*;
@@ -207,6 +302,34 @@ impl Distribution<Residue, Float> for DistGaps {
             V => na::SVector::<Float, 5>::new(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0, 0.0),
         };
         prob.map(Float::ln)
+    }
+}
+
+impl Distribution<Aminoacid, Float> for DistNoGaps<20> {
+    type Value = na::SVector<Float, 20>;
+
+    fn log_p(&self, entry: Aminoacid) -> Self::Value {
+        if entry == Aminoacid::None {
+            self.p_none
+                .unwrap_or(na::SVector::<Float, 20>::from_element(
+                    (20.0 as Float).recip(),
+                ))
+                .map(Float::ln)
+        } else {
+            let mut prob = na::SVector::<Float, 20>::from_element(Float::NEG_INFINITY);
+            prob[entry as usize] = 0.0 as Float;
+            prob
+        }
+    }
+}
+
+impl Distribution<Aminoacid, Float> for DistGaps {
+    type Value = na::SVector<Float, 21>;
+
+    fn log_p(&self, entry: Aminoacid) -> Self::Value {
+        let mut prob = Self::Value::from_element(Float::NEG_INFINITY);
+        prob[entry as usize] = 0.0 as Float;
+        prob
     }
 }
 
