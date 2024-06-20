@@ -1,7 +1,7 @@
 #![allow(dead_code, non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
 
-use numpy::ndarray::{Array, Axis};
+use numpy::ndarray::{Array, ArrayView1, ArrayView2, Axis};
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
 };
@@ -127,6 +127,27 @@ where
             distributions,
         )
     }
+
+    fn infer_param_unpaired_common_rate<const DIM: usize, D>(
+        &self,
+        idx: &[usize],
+        delta: na::SMatrixView<Float, DIM, DIM>,
+        sqrt_pi: na::SVectorView<Float, DIM>,
+        distributions: &[D],
+    ) -> InferenceResultParamCommonRate<Float, DIM>
+    where
+        D: Distribution<R, Float, Value = na::SVector<Float, DIM>>,
+    {
+        train_parallel_param_unpaired_common_rate(
+            idx,
+            self.residue_sequences_2d.as_view(),
+            delta,
+            sqrt_pi,
+            &(self.tree),
+            &(self.distances),
+            distributions,
+        )
+    }
 }
 
 fn vec_0d_from_python<'py, T>(py_array1: PyReadonlyArray1<'py, T>) -> Vec<T>
@@ -146,6 +167,13 @@ where
         .into_pyarray_bound(py)
 }
 
+fn na_1d_from_python<'py, T, const N: usize>(py_array1: ArrayView1<'py, T>) -> na::SVector<T, N>
+where
+    T: numpy::Element + na::Scalar + Copy,
+{
+    na::SVector::<T, N>::from_iterator(py_array1.iter().copied())
+}
+
 fn vec_1d_from_python<'py, T, const N: usize>(
     py_array2: PyReadonlyArray2<'py, T>,
 ) -> Vec<na::SVector<T, N>>
@@ -153,11 +181,20 @@ where
     T: numpy::Element + na::Scalar + Copy,
 {
     let ndarray = py_array2.as_array();
-    let vec: Vec<na::SVector<T, N>> = ndarray
-        .axis_iter(Axis(0))
-        .map(|slice| na::SVector::<T, N>::from_iterator(slice.iter().copied()))
-        .collect();
+    let vec: Vec<na::SVector<T, N>> = ndarray.axis_iter(Axis(0)).map(na_1d_from_python).collect();
     vec
+}
+
+fn na_1d_into_python<'py, T, const N: usize>(
+    vector: na::SVector<T, N>,
+    py: Python<'py>,
+) -> Bound<'py, PyArray1<T>>
+where
+    T: numpy::Element + na::Scalar + Copy,
+{
+    Array::<T, _>::from_shape_vec(N, vector.iter().copied().collect::<Vec<T>>())
+        .unwrap()
+        .into_pyarray_bound(py)
 }
 
 fn vec_1d_into_python<'py, T, const N: usize>(
@@ -177,6 +214,15 @@ where
     .into_pyarray_bound(py)
 }
 
+fn na_2d_from_python<'py, T, const R: usize, const C: usize>(
+    py_array2: ArrayView2<'py, T>,
+) -> na::SMatrix<T, R, C>
+where
+    T: numpy::Element + na::Scalar + Copy,
+{
+    na::SMatrix::<T, R, C>::from_iterator(py_array2.t().iter().copied())
+}
+
 fn vec_2d_from_python<'py, T, const R: usize, const C: usize>(
     py_array3: PyReadonlyArray3<'py, T>,
 ) -> Vec<na::SMatrix<T, R, C>>
@@ -184,11 +230,24 @@ where
     T: numpy::Element + na::Scalar + Copy,
 {
     let ndarray = py_array3.as_array();
-    let vec: Vec<na::SMatrix<T, R, C>> = ndarray
-        .axis_iter(Axis(0))
-        .map(|slice_2d| na::SMatrix::<T, R, C>::from_iterator(slice_2d.t().iter().copied()))
-        .collect();
+    let vec: Vec<na::SMatrix<T, R, C>> =
+        ndarray.axis_iter(Axis(0)).map(na_2d_from_python).collect();
     vec
+}
+
+fn na_2d_into_python<'py, T, const R: usize, const C: usize>(
+    matrix: na::SMatrix<T, R, C>,
+    py: Python<'py>,
+) -> Bound<'py, PyArray2<T>>
+where
+    T: numpy::Element + na::Scalar + Copy,
+{
+    Array::<T, _>::from_shape_vec(
+        (R, C),
+        matrix.transpose().into_iter().copied().collect::<Vec<T>>(),
+    )
+    .unwrap()
+    .into_pyarray_bound(py)
 }
 
 fn vec_2d_into_python<'py, T, const R: usize, const C: usize>(
@@ -244,6 +303,29 @@ where
             ("grad_delta".to_string(), grad_delta_total_py.into()),
             ("grad_sqrt_pi".to_string(), grad_sqrt_pi_total_py.into()),
             ("grad_rate".to_string(), grad_rate_total_py.into()),
+        ]
+        .into_iter()
+        .collect();
+
+        result.into_py(py)
+    }
+}
+
+impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResultParamCommonRate<F, DIM>
+where
+    F: numpy::Element + na::Scalar + Copy,
+{
+    fn into_py<'py>(self, py: Python<'_>) -> PyObject {
+        let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
+        let grad_delta_py = na_2d_into_python(self.grad_delta, py);
+        let grad_sqrt_pi_py = na_1d_into_python(self.grad_sqrt_pi, py);
+        let grad_rate_py = na_2d_into_python(self.grad_rate, py);
+
+        let result: HashMap<String, PyObject> = [
+            ("log_likelihood".to_string(), log_likelihood_total_py.into()),
+            ("grad_delta".to_string(), grad_delta_py.into()),
+            ("grad_sqrt_pi".to_string(), grad_sqrt_pi_py.into()),
+            ("grad_rate".to_string(), grad_rate_py.into()),
         ]
         .into_iter()
         .collect();
@@ -527,6 +609,71 @@ impl FTreeAminoacid {
 
             let result: InferenceResultParam<Float, 21> =
                 backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
+            result_py = result.into_py(py);
+        }
+        Ok(result_py)
+    }
+
+    #[pyo3(signature=(idx, delta, sqrt_pi, gaps = false, p_none = None))]
+    fn infer_param_unpaired_common_rate<'py>(
+        self_: PyRef<'py, Self>,
+        idx: PyReadonlyArray1<'py, usize>,
+        delta: PyReadonlyArray2<'py, Float>,
+        sqrt_pi: PyReadonlyArray1<'py, Float>,
+        gaps: bool,
+        p_none: Option<PyReadonlyArray2<'py, Float>>,
+    ) -> PyResult<PyObject> {
+        let backend = &self_.backend;
+        let py = self_.py();
+
+        let idx_vec: Vec<usize> = vec_0d_from_python(idx);
+
+        let (_, seq_length) = backend.residue_sequences_2d.shape();
+
+        let result_py: PyObject;
+        if !gaps {
+            let distributions: Vec<DistNoGaps<20>> = match p_none {
+                Some(pyarr2) => pyarr2
+                    .as_array()
+                    .axis_iter(Axis(0))
+                    .map(|slice| na::SVector::<Float, 20>::from_iterator(slice.iter().copied()))
+                    .map(|p_none| DistNoGaps {
+                        p_none: Some(p_none),
+                    })
+                    .collect(),
+                None => vec![DistNoGaps { p_none: None }; seq_length],
+            };
+
+            if distributions.len() != seq_length {
+                return Err(PyValueError::new_err(
+                    "p_none should have shape (20, seq_length)",
+                ));
+            }
+
+            let delta: na::SMatrix<Float, 20, 20> = na_2d_from_python(delta.as_array());
+            let sqrt_pi: na::SVector<Float, 20> = na_1d_from_python(sqrt_pi.as_array());
+
+            let result: InferenceResultParamCommonRate<Float, 20> = backend
+                .infer_param_unpaired_common_rate(
+                    &idx_vec,
+                    delta.as_view(),
+                    sqrt_pi.as_view(),
+                    &distributions,
+                );
+            result_py = result.into_py(py);
+        } else {
+            let distributions = vec![DistGaps {}; seq_length];
+
+            let delta: na::SMatrix<Float, 21, 21> = na_2d_from_python(delta.as_array());
+            let sqrt_pi: na::SVector<Float, 21> = na_1d_from_python(sqrt_pi.as_array());
+
+            let result: InferenceResultParamCommonRate<Float, 21> = backend
+                .infer_param_unpaired_common_rate(
+                    &idx_vec,
+                    delta.as_view(),
+                    sqrt_pi.as_view(),
+                    &distributions,
+                );
             result_py = result.into_py(py);
         }
         Ok(result_py)

@@ -460,3 +460,72 @@ where
         grad_rate_total,
     }
 }
+
+pub struct InferenceResultParamCommonRate<F, const DIM: usize> {
+    pub log_likelihood_total: Vec<F>,
+    pub grad_delta: na::SMatrix<F, DIM, DIM>,
+    pub grad_sqrt_pi: na::SVector<F, DIM>,
+    pub grad_rate: na::SMatrix<F, DIM, DIM>,
+}
+
+pub fn train_parallel_param_unpaired_common_rate<const DIM: usize, Residue, D>(
+    idx: &[usize],
+    residue_sequences_2d: na::DMatrixView<Residue>,
+    delta: na::SMatrixView<Float, DIM, DIM>,
+    sqrt_pi: na::SVectorView<Float, DIM>,
+    tree: &[TreeNode],
+    distances: &[Float],
+    distributions: &[D],
+) -> InferenceResultParamCommonRate<Float, DIM>
+where
+    Residue: ResidueTrait,
+    D: Distribution<Residue, Float, Value = na::SVector<Float, DIM>>,
+{
+    let log_likelihood_total: Vec<Float>;
+    let grad_delta_total: Vec<na::SMatrix<Float, DIM, DIM>>;
+    let grad_sqrt_pi_total: Vec<na::SVector<Float, DIM>>;
+    let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
+    (
+        log_likelihood_total,
+        (grad_delta_total, (grad_sqrt_pi_total, grad_rate_total)),
+    ) = idx
+        .into_par_iter()
+        .map(|&column_id| {
+            let column = residue_sequences_2d.column(column_id);
+            let column_iter = column.iter().copied();
+
+            let distribution = &distributions[column_id];
+
+            let result_column =
+                train_column_param(column_iter, delta, sqrt_pi, tree, distances, distribution);
+
+            (
+                result_column.log_likelihood,
+                (
+                    result_column.grad_delta,
+                    (result_column.grad_sqrt_pi, result_column.grad_rate),
+                ),
+            )
+        })
+        .unzip();
+
+    let mut grad_delta = na::SMatrix::<Float, DIM, DIM>::zeros();
+    for grad_delta_col in grad_delta_total {
+        grad_delta += grad_delta_col;
+    }
+    let mut grad_sqrt_pi = na::SVector::<Float, DIM>::zeros();
+    for grad_sqrt_pi_col in grad_sqrt_pi_total {
+        grad_sqrt_pi += grad_sqrt_pi_col;
+    }
+    let mut grad_rate = na::SMatrix::<Float, DIM, DIM>::zeros();
+    for grad_rate_col in grad_rate_total {
+        grad_rate += grad_rate_col;
+    }
+
+    InferenceResultParamCommonRate {
+        log_likelihood_total,
+        grad_delta,
+        grad_sqrt_pi,
+        grad_rate,
+    }
+}
