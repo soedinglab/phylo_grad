@@ -67,7 +67,7 @@ pub fn times_diag_assign<I, F, const N: usize>(
 pub fn compute_param_data<const DIM: usize>(
     delta: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
-) -> ParamData<DIM> {
+) -> Option<ParamData<DIM>> {
     let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV as Float)));
 
     let mut symmetric_output = delta.clone_owned();
@@ -91,7 +91,7 @@ pub fn compute_param_data<const DIM: usize>(
     }
 
     //let eigendecomp = symmetric_output.symmetric_eigen();
-    let eigendecomp = nalgebra_lapack::SymmetricEigen::new(symmetric_output);
+    let eigendecomp = nalgebra_lapack::SymmetricEigen::try_new(symmetric_output)?;
     let (eigenvalues, eigenvectors) = (eigendecomp.eigenvalues, eigendecomp.eigenvectors);
 
     let mut V_pi = eigenvectors.clone_owned();
@@ -100,7 +100,7 @@ pub fn compute_param_data<const DIM: usize>(
     let mut V_pi_inv = eigenvectors.transpose();
     times_diag_assign(V_pi_inv.as_view_mut(), sqrt_pi.iter().copied());
 
-    ParamData {
+    Some(ParamData {
         symmetric_matrix: symmetric_output,
         sqrt_pi: sqrt_pi.clone_owned(),
         sqrt_pi_recip,
@@ -108,7 +108,7 @@ pub fn compute_param_data<const DIM: usize>(
         eigenvalues,
         V_pi,
         V_pi_inv,
-    }
+    })
 }
 
 fn log_transition_precompute_param<const DIM: usize>(

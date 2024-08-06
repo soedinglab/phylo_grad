@@ -303,7 +303,17 @@ where
 {
     let num_leaves = column_iter.len();
 
-    let param = compute_param_data(delta.as_view(), sqrt_pi.as_view());
+    let param = match compute_param_data(delta.as_view(), sqrt_pi.as_view()) {
+        Some(param) => param,
+        None => {
+            return TrainColumnParamResult::<Float, DIM> {
+                log_likelihood: Float::NEG_INFINITY,
+                grad_delta: na::SMatrix::<Float, DIM, DIM>::zeros(),
+                grad_sqrt_pi: na::SVector::<Float, DIM>::zeros(),
+                grad_rate: na::SMatrix::<Float, DIM, DIM>::zeros(),
+            }
+        }
+    };
 
     let forward_data = forward_data_precompute_param(&param, distances);
 
