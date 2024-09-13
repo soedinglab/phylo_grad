@@ -3,6 +3,7 @@ use crate::tree::*;
 use logsumexp::LogSumExp;
 
 use na::Const;
+use nalgebra_lapack::SymmetricEigen;
 
 impl FelsensteinError {
     pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
@@ -90,9 +91,13 @@ pub fn compute_param_data<const DIM: usize>(
         rate_matrix[(i, i)] = S_symmetric[(i, i)];
     }
 
-    //let eigendecomp = symmetric_output.symmetric_eigen();
-    let eigendecomp = nalgebra_lapack::SymmetricEigen::try_new(S_symmetric)?;
-    let (eigenvalues, eigenvectors) = (eigendecomp.eigenvalues, eigendecomp.eigenvectors);
+    let SymmetricEigen{eigenvalues, eigenvectors} = nalgebra_lapack::SymmetricEigen::try_new(S_symmetric)?;
+
+    // Prevent numerical instability
+    let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<Float>();
+    if norm_eigenvals > 1e5 {
+        return None;
+    }
 
     let mut V_pi = eigenvectors.clone_owned();
     diag_times_assign(V_pi.as_view_mut(), sqrt_pi_recip.iter().copied());
