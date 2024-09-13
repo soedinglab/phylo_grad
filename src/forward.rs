@@ -65,33 +65,33 @@ pub fn times_diag_assign<I, F, const N: usize>(
 }
 
 pub fn compute_param_data<const DIM: usize>(
-    delta: na::SMatrixView<Float, DIM, DIM>,
+    S: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
 ) -> Option<ParamData<DIM>> {
     let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV as Float)));
 
-    let mut symmetric_output = delta.clone_owned();
+    let mut S_symmetric = S.clone_owned();
     for i in 0..DIM {
         for j in 0..i {
-            symmetric_output[(i, j)] = symmetric_output[(j, i)];
+            S_symmetric[(i, j)] = S_symmetric[(j, i)];
         }
     }
 
     /* TODO remove */
     /* rate_matrix = diag(sqrt_pi_recip) * S_output * diag(sqrt_pi) */
-    let mut rate_matrix = symmetric_output.clone_owned();
+    let mut rate_matrix = S_symmetric.clone_owned();
     diag_times_assign(rate_matrix.as_view_mut(), sqrt_pi_recip.iter().copied());
     times_diag_assign(rate_matrix.as_view_mut(), sqrt_pi.iter().copied());
 
     for i in 0..DIM {
         let row = rate_matrix.row(i).clone_owned();
-        symmetric_output[(i, i)] = -(row.as_slice()[..i].iter().sum::<Float>()
+        S_symmetric[(i, i)] = -(row.as_slice()[..i].iter().sum::<Float>()
             + row.as_slice()[i + 1..].iter().sum::<Float>());
-        rate_matrix[(i, i)] = symmetric_output[(i, i)];
+        rate_matrix[(i, i)] = S_symmetric[(i, i)];
     }
 
     //let eigendecomp = symmetric_output.symmetric_eigen();
-    let eigendecomp = nalgebra_lapack::SymmetricEigen::try_new(symmetric_output)?;
+    let eigendecomp = nalgebra_lapack::SymmetricEigen::try_new(S_symmetric)?;
     let (eigenvalues, eigenvectors) = (eigendecomp.eigenvalues, eigendecomp.eigenvectors);
 
     let mut V_pi = eigenvectors.clone_owned();
@@ -101,7 +101,7 @@ pub fn compute_param_data<const DIM: usize>(
     times_diag_assign(V_pi_inv.as_view_mut(), sqrt_pi.iter().copied());
 
     Some(ParamData {
-        symmetric_matrix: symmetric_output,
+        symmetric_matrix: S_symmetric,
         sqrt_pi: sqrt_pi.clone_owned(),
         sqrt_pi_recip,
         eigenvectors,

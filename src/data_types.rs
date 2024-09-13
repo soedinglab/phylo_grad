@@ -144,7 +144,7 @@ pub enum Aminoacid {
     W,
     Y,
     V,
-    None,
+    Gap,
 }
 
 impl TryFrom<char> for Aminoacid {
@@ -173,7 +173,7 @@ impl TryFrom<char> for Aminoacid {
             'W' => W,
             'Y' => Y,
             'V' => V,
-            '-' => None,
+            '-' => Gap,
             _ => return Err(FelsensteinError::INVALID_CHAR),
         };
         Ok(res)
@@ -203,7 +203,7 @@ impl Into<char> for Aminoacid {
             W => 'W',
             Y => 'Y',
             V => 'V',
-            Self::None => '-',
+            Self::Gap => '-',
         }
     }
 }
@@ -309,7 +309,7 @@ impl Distribution<Aminoacid, Float> for DistNoGaps<20> {
     type Value = na::SVector<Float, 20>;
 
     fn log_p(&self, entry: Aminoacid) -> Self::Value {
-        if entry == Aminoacid::None {
+        if entry == Aminoacid::Gap {
             self.p_none
                 .unwrap_or(na::SVector::<Float, 20>::from_element(
                     (20.0 as Float).recip(),
