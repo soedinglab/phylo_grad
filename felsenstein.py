@@ -67,3 +67,13 @@ def rate_matrix_from_S(S, sqrt_pi):
     S = S + S.transpose(1,2)
     rate = torch.diag_embed(1/sqrt_pi) @ S @ torch.diag_embed(sqrt_pi)
     return rate - torch.diag_embed(torch.sum(rate, axis=-1))
+
+def gradients(tree, S, sqrt_pi):
+    S.requires_grad = True
+    sqrt_pi.requires_grad = True
+    
+    logP = tree.log_likelihood(S, sqrt_pi)
+    
+    logP.sum().backward()
+    
+    return S.grad, sqrt_pi.grad
