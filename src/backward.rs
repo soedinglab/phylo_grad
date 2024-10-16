@@ -61,7 +61,7 @@ fn X<F : FloatTrait, const DIM: usize>(
     result
 }
 
-/// Backward pass for expm(sqrt_pi @ S @ sqrt_pi)
+/// Backward pass for expm(1/sqrt_pi @ S @ sqrt_pi)
 fn d_expm<F : FloatTrait, const DIM: usize>(
     cotangent_vector: na::SMatrixView<F, DIM, DIM>,
     distance: F,
