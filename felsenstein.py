@@ -41,7 +41,7 @@ class FelsensteinTree:
         self.nodes = [FelsensteinNode(t) for _,t,_ in tree]
         
         for i, (parent, _, seq) in enumerate(tree):
-            if seq:
+            if seq is not None:
                 self.nodes[i].precomp = seq
             
             
