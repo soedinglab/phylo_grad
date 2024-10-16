@@ -20,7 +20,7 @@ class FelsensteinNode:
 
     def compute(self, matrices):
         """
-            matrices will be [B,S,S]
+            matrices will be [L,S,S]
         """
         # [a,b] := log p(x_m = b | x_n = a, t)
         rate = self.time * matrices
@@ -29,11 +29,11 @@ class FelsensteinNode:
         self.log_transitions = torch.log(mexp)
         
         if len(self.children) > 0: # Inner node
-            self.precomp = torch.zeros([1,1], dtype=matrices.dtype) # this will be broadcasted to [B,S]
+            self.precomp = torch.zeros([1,1], dtype=matrices.dtype) # this will be broadcasted to [L,S]
             
             for child in self.children:
-                child.precompute(matrices)
-                self.precomp = self.precomp + (child.precomp.unsqueeze(1) + child.transitions).logsumexp(dim = 2)
+                child.compute(matrices)
+                self.precomp = self.precomp + (child.precomp.unsqueeze(1) + child.log_transitions).logsumexp(dim = 2)
 
 class FelsensteinTree:
     
@@ -49,3 +49,21 @@ class FelsensteinTree:
                 self.root = self.nodes[i]
                 continue
             self.nodes[parent].children.append(self.nodes[i])
+            
+    def log_likelihood(self, S, sqrt_pi):
+        matrices = rate_matrix_from_S(S, sqrt_pi)
+        self.root.compute(matrices)
+        
+        root_likelihood = self.root.precomp
+        
+        return (root_likelihood + torch.log(sqrt_pi) * 2).logsumexp(dim = 1).sum()
+    
+
+def rate_matrix_from_S(S, sqrt_pi):
+    """
+        Only upper halve of S is considered
+    """
+    S = torch.triu(S)
+    S = S + S.transpose(1,2)
+    rate = torch.diag_embed(1/sqrt_pi) @ S @ torch.diag_embed(sqrt_pi)
+    return rate - torch.diag_embed(torch.sum(rate, axis=-1))

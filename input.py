@@ -19,7 +19,7 @@ def read_tree_file_seq(tree: str):
 def seq_to_onehot(seq: str | None) -> torch.Tensor | None:
     if seq is None:
         return None
-    onehot = torch.full((len(seq), 21), -1000)
+    onehot = torch.full((len(seq), 5), -1000)
     for i, c in enumerate(seq):
         onehot[i, nuc_mapping[c]] = 0
     return onehot
