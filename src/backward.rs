@@ -20,7 +20,7 @@ fn d_map_ln_vjp<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     argument: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
-    (argument.map(|x| x.recip())) * cotangent_vector
+    (argument.map(|x| x.recip())).component_mul(&cotangent_vector)
 }
 
 /* TODO! excessive precision for constants */
