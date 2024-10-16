@@ -5,7 +5,7 @@ pub struct BackwardData<const DIM: usize> {
     pub grad_log_p: na::SVector<Float, DIM>,
 }
 
-pub fn softmax<F : FloatTrait, const N: usize>(x: na::SVectorView<F, N>) -> na::SVector<F, N> {
+pub fn softmax<F: FloatTrait, const N: usize>(x: na::SVectorView<F, N>) -> na::SVector<F, N> {
     let x_max = x.max();
 
     let mut result = x.add_scalar(-x_max);
@@ -16,7 +16,7 @@ pub fn softmax<F : FloatTrait, const N: usize>(x: na::SVectorView<F, N>) -> na::
     result
 }
 
-fn d_map_ln_vjp<const DIM: usize>(
+fn d_ln_vjp<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     argument: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
@@ -43,7 +43,7 @@ fn exprel(x: f64) -> f64 {
     }
 }
 
-fn X<F : FloatTrait, const DIM: usize>(
+fn X<F: FloatTrait, const DIM: usize>(
     eigenvalues: na::SVectorView<F, DIM>,
     distance: F,
 ) -> na::SMatrix<F, DIM, DIM> {
@@ -53,7 +53,10 @@ fn X<F : FloatTrait, const DIM: usize>(
         if i == j {
             F::from(1.0).unwrap()
         } else {
-            F::from(exprel((distance * (eigenvalues[i] - eigenvalues[j])).into())).unwrap()
+            F::from(exprel(
+                (distance * (eigenvalues[i] - eigenvalues[j])).into(),
+            ))
+            .unwrap()
         }
     });
     times_diag_assign(result.as_view_mut(), diag.iter().copied());
@@ -61,8 +64,8 @@ fn X<F : FloatTrait, const DIM: usize>(
     result
 }
 
-/// Backward pass for expm(1/sqrt_pi @ S @ sqrt_pi)
-fn d_expm<F : FloatTrait, const DIM: usize>(
+/// Backward pass for expm(distance * 1/sqrt_pi @ S @ sqrt_pi)
+fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: na::SMatrixView<F, DIM, DIM>,
     distance: F,
     param: &ParamPrecomp<F, DIM>,
@@ -90,6 +93,7 @@ fn d_expm<F : FloatTrait, const DIM: usize>(
     result
 }
 
+/// Backward pass for rho(W) = 1/sqrt_pi @ S @ sqrt_pi
 pub fn d_param<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     param: &ParamPrecomp<Float, DIM>,
@@ -214,9 +218,9 @@ pub fn d_child_input_param<const DIM: usize>(
         d_log_transition_child_input_vjp(cotangent_vector, log_p, forward, compute_grad_log_p);
 
     let transition = forward.step_2;
-    let grad_transition = d_map_ln_vjp(grad_log_transition.as_view(), transition.as_view());
+    let grad_transition = d_ln_vjp(grad_log_transition.as_view(), transition.as_view());
 
-    let grad_rate = d_expm(grad_transition.as_view(), distance, param);
+    let grad_rate = d_expm_vjp(grad_transition.as_view(), distance, param);
 
     (grad_rate, grad_log_p)
 }
