@@ -38,186 +38,19 @@ fn process_likelihood<const DIM: usize>(
 ) -> (Float, na::SVector<Float, DIM>) {
     let lse_arg = log_p_root + log_p_prior;
     let log_likelihood_column = lse_arg.iter().ln_sum_exp();
-    let grad_log_p_outgoing = softmax_na(lse_arg.as_view());
+    let grad_log_p_outgoing = softmax(lse_arg.as_view());
     (log_likelihood_column, grad_log_p_outgoing)
 }
-
-fn d_rate_column<const DIM: usize>(
-    grad_log_p_root: na::SVectorView<Float, DIM>,
-    tree: &[TreeNode],
-    log_p: &[na::SVector<Float, DIM>],
-    distances: &[Float],
-    forward_data: &ForwardData<DIM>,
-    num_leaves: usize,
-) -> na::SMatrix<Float, DIM, DIM>
-where
-    Const<DIM>: Doubleable,
-    TwoTimesConst<DIM>: Exponentiable,
-    DefaultAllocator: ViableAllocator<Float, DIM>,
-{
-    /* Notice that child_input values are always added, so the log_p input for children is always the same.
-    We will therefore store their common grad_log_p in the parent node's BackwardData. */
-    /* TODO: it is possible to free grad_log_p's for the previous tree level. */
-    let num_nodes = tree.len();
-    let mut backward_data = Vec::<BackwardData<DIM>>::with_capacity(num_nodes - num_leaves);
-    let mut grad_rate_column = na::SMatrix::<Float, DIM, DIM>::from_element(0.0 as Float);
-    /* root.backward */
-    backward_data.push(BackwardData {
-        grad_log_p: grad_log_p_root.clone_owned(),
-    });
-    /* node.backward for non-terminal nodes */
-    for id in (num_leaves..num_nodes - 1).rev() {
-        let parent_id = &tree[id].parent;
-        let parent_backward_id = num_nodes - parent_id - 1;
-        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
-        let log_p_input = log_p[id].as_view();
-        let distance_current = distances[id];
-        let fwd_data_current = &forward_data.log_transition[id];
-        let (grad_rate, grad_log_p) = d_child_input_vjp(
-            grad_log_p_input,
-            distance_current,
-            log_p_input,
-            fwd_data_current,
-            true,
-        );
-        grad_rate_column += grad_rate;
-        backward_data.push(BackwardData {
-            grad_log_p: grad_log_p.unwrap(),
-        });
-    }
-    /* For leaves, we only compute grad_rate */
-    for id in (0..num_leaves).rev() {
-        let parent_id = &tree[id].parent;
-        let parent_backward_id = num_nodes - parent_id - 1;
-        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
-        let log_p_input = log_p[id].as_view();
-        let distance_current = distances[id];
-        let fwd_data_current = &forward_data.log_transition[id];
-        let (grad_rate, _) = d_child_input_vjp(
-            grad_log_p_input,
-            distance_current,
-            log_p_input,
-            fwd_data_current,
-            false,
-        );
-        grad_rate_column += grad_rate;
-    }
-    grad_rate_column
-}
-
-struct TrainColumnResult<F, const DIM: usize> {
+struct TrainSideResult<F, const DIM: usize> {
     log_likelihood: F,
-    grad_rate: na::SMatrix<F, DIM, DIM>,
-    grad_log_prior: na::SVector<F, DIM>,
-}
-
-fn train_column<'a, const DIM: usize, Entry, I, D>(
-    column_iter: I,
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    log_p_prior: na::SVectorView<Float, DIM>,
-    tree: &[TreeNode],
-    distances: &[Float],
-    distribution: &'a D,
-) -> TrainColumnResult<Float, DIM>
-where
-    Entry: EntryTrait,
-    I: ExactSizeIterator<Item = Entry>,
-    D: Distribution<Entry, Float, Value = na::SVector<Float, DIM>>,
-    Const<DIM>: Doubleable + Exponentiable,
-    TwoTimesConst<DIM>: Exponentiable,
-    DefaultAllocator: ViableAllocator<Float, DIM>,
-{
-    let num_leaves = column_iter.len();
-
-    let forward_data = forward_data_precompute(rate_matrix.as_view(), distances);
-
-    let log_p = forward_column(column_iter, distribution, tree, &forward_data);
-    let log_p_root = log_p.last().unwrap();
-
-    let (log_likelihood, grad_log_p_likelihood): (Float, na::SVector<Float, DIM>) =
-        process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
-    let grad_log_prior = grad_log_p_likelihood;
-    let grad_log_p_root = grad_log_p_likelihood;
-
-    let grad_rate = d_rate_column(
-        grad_log_p_root.as_view(),
-        tree,
-        &log_p,
-        distances,
-        &forward_data,
-        num_leaves,
-    );
-
-    TrainColumnResult::<Float, DIM> {
-        log_likelihood,
-        grad_rate,
-        grad_log_prior,
-    }
+    grad_S: na::SMatrix<F, DIM, DIM>,
+    grad_sqrt_pi: na::SVector<F, DIM>,
 }
 
 pub struct InferenceResult<F, const DIM: usize> {
     pub log_likelihood_total: Vec<F>,
     pub grad_rate_total: Vec<na::SMatrix<F, DIM, DIM>>,
     pub grad_log_prior_total: Vec<na::SVector<F, DIM>>,
-}
-
-pub fn train_parallel<'a, const DIM: usize, Residue, D>(
-    index_pairs: &[(usize, usize)],
-    residue_sequences_2d: na::DMatrixView<Residue>,
-    rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
-    log_p_priors: &[na::SVector<Float, DIM>],
-    tree: &[TreeNode],
-    distances: &[Float],
-    distributions: &'a [D],
-) -> InferenceResult<Float, DIM>
-where
-    Residue: ResidueTrait,
-    D: std::marker::Sync,
-    (&'a D, &'a D): Distribution<ResiduePair<Residue>, Float, Value = na::SVector<Float, DIM>> + 'a,
-    Const<DIM>: Doubleable + Exponentiable,
-    TwoTimesConst<DIM>: Exponentiable,
-    DefaultAllocator: ViableAllocator<Float, DIM>,
-{
-    let log_likelihood_total: Vec<Float>;
-    let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
-    let grad_log_prior_total: Vec<na::SVector<Float, DIM>>;
-    (
-        log_likelihood_total,
-        (grad_rate_total, grad_log_prior_total),
-    ) = (index_pairs, rate_matrices, log_p_priors)
-        .into_par_iter()
-        .map(|(column_id, rate_matrix, log_p_prior)| {
-            let (left_id, right_id) = *column_id;
-            let left_half = residue_sequences_2d.column(left_id);
-            let right_half = residue_sequences_2d.column(right_id);
-            let column_iter = std::iter::zip(left_half.iter(), right_half.iter()).map(
-                |(left_residue, right_residue)| {
-                    ResiduePair::<Residue>(*left_residue, *right_residue)
-                },
-            );
-
-            let distribution = (&distributions[left_id], &distributions[right_id]);
-
-            let result_column = train_column(
-                column_iter,
-                rate_matrix.as_view(),
-                log_p_prior.as_view(),
-                tree,
-                distances,
-                &distribution,
-            );
-
-            (
-                result_column.log_likelihood,
-                (result_column.grad_rate, result_column.grad_log_prior),
-            )
-        })
-        .unzip();
-    InferenceResult {
-        log_likelihood_total,
-        grad_rate_total,
-        grad_log_prior_total,
-    }
 }
 
 fn d_rate_column_param<const DIM: usize>(

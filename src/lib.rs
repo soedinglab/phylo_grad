@@ -58,31 +58,6 @@ where
             residue_sequences_2d,
         })
     }
-    fn infer<'a, const DIM: usize, D>(
-        &self,
-        index_pairs: &[(usize, usize)],
-        /* TODO as_deref() */
-        rate_matrices: &[na::SMatrix<Float, DIM, DIM>],
-        log_p_priors: &[na::SVector<Float, DIM>],
-        distributions: &'a [D],
-    ) -> InferenceResult<Float, DIM>
-    where
-        D: std::marker::Sync,
-        (&'a D, &'a D): Distribution<ResiduePair<R>, Float, Value = na::SVector<Float, DIM>>,
-        na::Const<DIM>: Doubleable + Exponentiable,
-        TwoTimesConst<DIM>: Exponentiable,
-        na::DefaultAllocator: ViableAllocator<Float, DIM>,
-    {
-        train_parallel(
-            index_pairs,
-            self.residue_sequences_2d.as_view(),
-            rate_matrices,
-            log_p_priors,
-            &(self.tree),
-            &(self.distances),
-            distributions,
-        )
-    }
 
     fn infer_param<'a, const DIM: usize, D>(
         &self,
@@ -353,79 +328,6 @@ impl FTree {
         }
     }
 
-    #[pyo3(signature=(index_pairs, rate_matrices, log_p_priors, gaps = false, p_none = None))]
-    fn infer<'py>(
-        self_: PyRef<'py, Self>,
-        index_pairs: PyReadonlyArray2<'py, usize>,
-        rate_matrices: PyReadonlyArray3<'py, Float>,
-        log_p_priors: PyReadonlyArray2<'py, Float>,
-        gaps: bool,
-        p_none: Option<PyReadonlyArray2<'py, Float>>,
-    ) -> PyResult<PyObject> {
-        let backend = &self_.backend;
-        let py = self_.py();
-
-        let index_pairs_ndarray = index_pairs.as_array();
-        let index_pairs_vec: Vec<(_, _)> = index_pairs_ndarray
-            .axis_iter(Axis(0))
-            .map(|col| (col[0], col[1]))
-            .collect();
-
-        let (_, seq_length) = backend.residue_sequences_2d.shape();
-
-        let result_py: PyObject;
-        if !gaps {
-            let distributions: Vec<DistNoGaps<4>> = match p_none {
-                Some(pyarr2) => pyarr2
-                    .as_array()
-                    .axis_iter(Axis(0))
-                    .map(|slice| na::SVector::<Float, 4>::from_iterator(slice.iter().copied()))
-                    .map(|p_none| DistNoGaps {
-                        p_none: Some(p_none),
-                    })
-                    .collect(),
-                None => vec![DistNoGaps { p_none: None }; seq_length],
-            };
-
-            /* TODO move this to the correct place */
-            if distributions.len() != seq_length {
-                return Err(PyValueError::new_err(
-                    "p_none should have shape (4, seq_length)",
-                ));
-            }
-
-            let rate_matrices_vec: Vec<na::SMatrix<Float, 16, 16>> =
-                vec_2d_from_python(rate_matrices);
-
-            let log_p_priors_vec: Vec<na::SVector<Float, 16>> = vec_1d_from_python(log_p_priors);
-
-            let result: InferenceResult<Float, 16> = backend.infer(
-                &index_pairs_vec,
-                &rate_matrices_vec,
-                &log_p_priors_vec,
-                &distributions,
-            );
-
-            result_py = result.into_py(py);
-        } else {
-            let distributions = vec![DistGaps {}; seq_length];
-            let rate_matrices_vec: Vec<na::SMatrix<Float, 25, 25>> =
-                vec_2d_from_python(rate_matrices);
-
-            let log_p_priors_vec: Vec<na::SVector<Float, 25>> = vec_1d_from_python(log_p_priors);
-
-            let result: InferenceResult<Float, 25> = backend.infer(
-                &index_pairs_vec,
-                &rate_matrices_vec,
-                &log_p_priors_vec,
-                &distributions,
-            );
-
-            result_py = result.into_py(py);
-        }
-
-        Ok(result_py)
-    }
     #[pyo3(signature=(index_pairs, deltas, sqrt_pi, gaps = false, p_none = None))]
     fn infer_param<'py>(
         self_: PyRef<'py, Self>,

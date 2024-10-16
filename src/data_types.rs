@@ -15,7 +15,8 @@ where
         + std::ops::AddAssign
         + std::ops::MulAssign
         + na::Scalar
-        + std::marker::Sync,
+        + std::marker::Sync
+        + nalgebra::SimdPartialOrd
 {
 }
 impl FloatTrait for f32 {}
