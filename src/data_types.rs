@@ -17,6 +17,7 @@ where
         + na::Scalar
         + std::marker::Sync
         + nalgebra::SimdPartialOrd
+        + Into<f64>
 {
 }
 impl FloatTrait for f32 {}

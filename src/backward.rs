@@ -1,8 +1,6 @@
 use crate::data_types::*;
 use crate::forward::*;
 
-use na::{Const, DefaultAllocator};
-
 pub struct BackwardData<const DIM: usize> {
     pub grad_log_p: na::SVector<Float, DIM>,
 }
@@ -22,11 +20,7 @@ fn d_map_ln_vjp<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     argument: na::SMatrixView<Float, DIM, DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
-    /* If w = \sum w_kl dy_kl, then
-    map_ln^*(w) = \sum_kl (w_kl / x_kl) dx_kl = map_recip(x) \odot w */
-    let mut rec = argument.map(Float::recip);
-    rec.component_mul_assign(&cotangent_vector);
-    rec
+    (argument.map(|x| x.recip())) * cotangent_vector
 }
 
 /* TODO! excessive precision for constants */
@@ -49,33 +43,20 @@ fn exprel(x: f64) -> f64 {
     }
 }
 
-/* verified */
-/* TODO simplify */
-fn X_transposed<const DIM: usize>(
-    eigenvalues: na::SVectorView<f64, DIM>,
-    distance: f64,
-) -> na::SMatrix<f64, DIM, DIM> {
-    /* X = coeff[:, None] * y,
-    y = { exprel( d * (lambda[:, None] - lambda[None, :]) ) if i!=j,
-        { 1 if i==j
-    coeff = exp(d * lambda) * d */
+fn X<F : FloatTrait, const DIM: usize>(
+    eigenvalues: na::SVectorView<F, DIM>,
+    distance: F,
+) -> na::SMatrix<F, DIM, DIM> {
+    let diag = (eigenvalues * distance).map(|x| x.exp()) * distance;
 
-    /* X_T = coeff[None, :] * y_T
-    y_T = { 1 if i == j,
-          { exprel(d * lambda[None, :] - lambda[:, None] if i!=j) */
-
-    /* Assuming exprel(0) is Nan and not a runtime error. */
-    let coeff = (distance * eigenvalues).map(f64::exp) * distance;
-    let id_iter = std::iter::zip(
-        (0..DIM).flat_map(|n| std::iter::repeat(n).take(DIM)),
-        std::iter::repeat(0..DIM).flatten(),
-    );
-    let arg_1 = na::SMatrix::<f64, DIM, DIM>::from_iterator(
-        id_iter.map(|(i, j)| (eigenvalues[j] - eigenvalues[i]) * distance),
-    );
-    let mut result = arg_1.map(exprel);
-    result.fill_diagonal(1_f64);
-    times_diag_assign(result.as_view_mut(), coeff.iter().copied());
+    let mut result = na::SMatrix::<F, DIM, DIM>::from_fn(|i, j| {
+        if i == j {
+            F::from(1.0).unwrap()
+        } else {
+            F::from(exprel((distance * (eigenvalues[i] - eigenvalues[j])).into())).unwrap()
+        }
+    });
+    times_diag_assign(result.as_view_mut(), diag.iter().copied());
 
     result
 }
@@ -98,7 +79,7 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
     let B_inv = param.V_pi.transpose();
 
     let X_T =
-        na::convert::<na::SMatrix<f64, DIM, DIM>, na::SMatrix<Float, DIM, DIM>>(X_transposed(
+        na::convert::<na::SMatrix<f64, DIM, DIM>, na::SMatrix<Float, DIM, DIM>>(X(
             na::convert::<na::SVector<Float, DIM>, na::SVector<f64, DIM>>(param.eigenvalues)
                 .as_view(),
             distance as f64,
