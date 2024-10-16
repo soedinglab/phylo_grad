@@ -29,7 +29,7 @@ pub struct LogTransitionForwardData<const DIM: usize> {
     pub log_transition: na::SMatrix<Float, DIM, DIM>,
 }
 
-pub struct ParamData<const DIM: usize> {
+pub struct ParamPrecomp<const DIM: usize> {
     pub symmetric_matrix: na::SMatrix<Float, DIM, DIM>,
     pub sqrt_pi: na::SVector<Float, DIM>,
     pub sqrt_pi_recip: na::SVector<Float, DIM>,
@@ -68,7 +68,7 @@ pub fn times_diag_assign<I, F, const N: usize>(
 pub fn compute_param_data<const DIM: usize>(
     S: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
-) -> Option<ParamData<DIM>> {
+) -> Option<ParamPrecomp<DIM>> {
     let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV as Float)));
 
     let mut S_symmetric = S.clone_owned();
@@ -105,7 +105,7 @@ pub fn compute_param_data<const DIM: usize>(
     let mut V_pi_inv = eigenvectors.transpose();
     times_diag_assign(V_pi_inv.as_view_mut(), sqrt_pi.iter().copied());
 
-    Some(ParamData {
+    Some(ParamPrecomp {
         symmetric_matrix: S_symmetric,
         sqrt_pi: sqrt_pi.clone_owned(),
         sqrt_pi_recip,
@@ -117,7 +117,7 @@ pub fn compute_param_data<const DIM: usize>(
 }
 
 fn log_transition_precompute_param<const DIM: usize>(
-    param: &ParamData<DIM>,
+    param: &ParamPrecomp<DIM>,
     distance: Float,
 ) -> LogTransitionForwardData<DIM> {
     let mut step_2 = param.V_pi.clone_owned();
@@ -137,7 +137,7 @@ fn log_transition_precompute_param<const DIM: usize>(
 }
 
 pub fn forward_data_precompute_param<const DIM: usize>(
-    param: &ParamData<DIM>,
+    param: &ParamPrecomp<DIM>,
     distances: &[Float],
 ) -> ForwardData<DIM> {
     let num_nodes = distances.len();

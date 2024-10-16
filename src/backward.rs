@@ -65,7 +65,7 @@ fn X<F : FloatTrait, const DIM: usize>(
 fn d_transition_mcgibbon_pande<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
     distance: Float,
-    param: &ParamData<DIM>,
+    param: &ParamPrecomp<DIM>,
 ) -> na::SMatrix<Float, DIM, DIM> {
     /*
     B = V_pi_invT
@@ -98,7 +98,7 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
 
 pub fn d_param<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
-    param: &ParamData<DIM>,
+    param: &ParamPrecomp<DIM>,
 ) -> (na::SMatrix<Float, DIM, DIM>, na::SVector<Float, DIM>) {
     let sqrt_pi = param.sqrt_pi.clone_owned();
     let sqrt_pi_recip = param.sqrt_pi_recip.clone_owned();
@@ -208,7 +208,7 @@ fn d_log_transition_child_input_vjp<const DIM: usize>(
 pub fn d_child_input_param<const DIM: usize>(
     cotangent_vector: na::SVectorView<Float, DIM>,
     distance: Float,
-    param: &ParamData<DIM>,
+    param: &ParamPrecomp<DIM>,
     log_p: na::SVectorView<Float, DIM>,
     forward: &LogTransitionForwardData<DIM>,
     compute_grad_log_p: bool,
