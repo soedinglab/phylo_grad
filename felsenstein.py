@@ -56,7 +56,7 @@ class FelsensteinTree:
         
         root_likelihood = self.root.precomp
         
-        return (root_likelihood + torch.log(sqrt_pi) * 2).logsumexp(dim = 1).sum()
+        return (root_likelihood + torch.log(sqrt_pi) * 2).logsumexp(dim = 1)
     
 
 def rate_matrix_from_S(S, sqrt_pi):
