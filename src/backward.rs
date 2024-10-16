@@ -61,12 +61,12 @@ fn X<F : FloatTrait, const DIM: usize>(
     result
 }
 
-/* verified */
-fn d_transition_mcgibbon_pande<const DIM: usize>(
-    cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
-    distance: Float,
-    param: &ParamPrecomp<DIM>,
-) -> na::SMatrix<Float, DIM, DIM> {
+/// Backward pass for expm(sqrt_pi @ S @ sqrt_pi)
+fn d_expm<F : FloatTrait, const DIM: usize>(
+    cotangent_vector: na::SMatrixView<F, DIM, DIM>,
+    distance: F,
+    param: &ParamPrecomp<F, DIM>,
+) -> na::SMatrix<F, DIM, DIM> {
     /*
     B = V_pi_invT
     B_inv = V_pi_T
@@ -78,18 +78,12 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
     let B = param.V_pi_inv.transpose();
     let B_inv = param.V_pi.transpose();
 
-    let X_T =
-        na::convert::<na::SMatrix<f64, DIM, DIM>, na::SMatrix<Float, DIM, DIM>>(X(
-            na::convert::<na::SVector<Float, DIM>, na::SVector<f64, DIM>>(param.eigenvalues)
-                .as_view(),
-            distance as f64,
-        ));
-
+    let X = X(param.eigenvalues.as_view(), distance);
     /* TODO optimize */
     //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X_T)) * B_inv;
     let mut result = B_inv * cotangent_vector;
     result = result * B;
-    result.component_mul_assign(&X_T);
+    result.component_mul_assign(&X);
     result = B * result;
     result = result * B_inv;
 
@@ -98,7 +92,7 @@ fn d_transition_mcgibbon_pande<const DIM: usize>(
 
 pub fn d_param<const DIM: usize>(
     cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
-    param: &ParamPrecomp<DIM>,
+    param: &ParamPrecomp<Float, DIM>,
 ) -> (na::SMatrix<Float, DIM, DIM>, na::SVector<Float, DIM>) {
     let sqrt_pi = param.sqrt_pi.clone_owned();
     let sqrt_pi_recip = param.sqrt_pi_recip.clone_owned();
@@ -208,7 +202,7 @@ fn d_log_transition_child_input_vjp<const DIM: usize>(
 pub fn d_child_input_param<const DIM: usize>(
     cotangent_vector: na::SVectorView<Float, DIM>,
     distance: Float,
-    param: &ParamPrecomp<DIM>,
+    param: &ParamPrecomp<Float, DIM>,
     log_p: na::SVectorView<Float, DIM>,
     forward: &LogTransitionForwardData<DIM>,
     compute_grad_log_p: bool,
@@ -222,7 +216,7 @@ pub fn d_child_input_param<const DIM: usize>(
     let transition = forward.step_2;
     let grad_transition = d_map_ln_vjp(grad_log_transition.as_view(), transition.as_view());
 
-    let grad_rate = d_transition_mcgibbon_pande(grad_transition.as_view(), distance, param);
+    let grad_rate = d_expm(grad_transition.as_view(), distance, param);
 
     (grad_rate, grad_log_p)
 }

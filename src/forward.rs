@@ -29,14 +29,14 @@ pub struct LogTransitionForwardData<const DIM: usize> {
     pub log_transition: na::SMatrix<Float, DIM, DIM>,
 }
 
-pub struct ParamPrecomp<const DIM: usize> {
-    pub symmetric_matrix: na::SMatrix<Float, DIM, DIM>,
-    pub sqrt_pi: na::SVector<Float, DIM>,
-    pub sqrt_pi_recip: na::SVector<Float, DIM>,
-    pub eigenvectors: na::SMatrix<Float, DIM, DIM>,
-    pub eigenvalues: na::SVector<Float, DIM>,
-    pub V_pi: na::SMatrix<Float, DIM, DIM>,
-    pub V_pi_inv: na::SMatrix<Float, DIM, DIM>,
+pub struct ParamPrecomp<F, const DIM: usize> {
+    pub symmetric_matrix: na::SMatrix<F, DIM, DIM>,
+    pub sqrt_pi: na::SVector<F, DIM>,
+    pub sqrt_pi_recip: na::SVector<F, DIM>,
+    pub eigenvectors: na::SMatrix<F, DIM, DIM>,
+    pub eigenvalues: na::SVector<F, DIM>,
+    pub V_pi: na::SMatrix<F, DIM, DIM>,
+    pub V_pi_inv: na::SMatrix<F, DIM, DIM>,
 }
 
 /// In-place multiplication by a diagonal matrix on the left
@@ -68,7 +68,7 @@ pub fn times_diag_assign<I, F, const N: usize>(
 pub fn compute_param_data<const DIM: usize>(
     S: na::SMatrixView<Float, DIM, DIM>,
     sqrt_pi: na::SVectorView<Float, DIM>,
-) -> Option<ParamPrecomp<DIM>> {
+) -> Option<ParamPrecomp<Float, DIM>> {
     let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV as Float)));
 
     let mut S_symmetric = S.clone_owned();
@@ -117,7 +117,7 @@ pub fn compute_param_data<const DIM: usize>(
 }
 
 fn log_transition_precompute_param<const DIM: usize>(
-    param: &ParamPrecomp<DIM>,
+    param: &ParamPrecomp<Float, DIM>,
     distance: Float,
 ) -> LogTransitionForwardData<DIM> {
     let mut step_2 = param.V_pi.clone_owned();
@@ -137,7 +137,7 @@ fn log_transition_precompute_param<const DIM: usize>(
 }
 
 pub fn forward_data_precompute_param<const DIM: usize>(
-    param: &ParamPrecomp<DIM>,
+    param: &ParamPrecomp<Float, DIM>,
     distances: &[Float],
 ) -> ForwardData<DIM> {
     let num_nodes = distances.len();

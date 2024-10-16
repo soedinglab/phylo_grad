@@ -58,7 +58,7 @@ fn d_rate_column_param<const DIM: usize>(
     log_p: &[na::SVector<Float, DIM>],
     distances: &[Float],
     forward_data: &ForwardData<DIM>,
-    param: &ParamPrecomp<DIM>,
+    param: &ParamPrecomp<Float, DIM>,
     num_leaves: usize,
 ) -> na::SMatrix<Float, DIM, DIM> {
     /* Notice that child_input values are always added, so the log_p input for children is always the same.
