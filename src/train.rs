@@ -1,5 +1,4 @@
 use logsumexp::LogSumExp;
-use na::{Const, DefaultAllocator};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::backward::*;
