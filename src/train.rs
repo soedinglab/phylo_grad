@@ -1,4 +1,3 @@
-use logsumexp::LogSumExp;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::backward::*;
