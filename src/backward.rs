@@ -177,7 +177,7 @@ fn d_broadcast_vjp<const DIM: usize>(
 fn d_log_transition_child_input_vjp<const DIM: usize>(
     cotangent_vector: na::SVectorView<Float, DIM>,
     log_p: na::SVectorView<Float, DIM>,
-    forward: &LogTransitionForwardData<DIM>,
+    forward: &LogTransitionForwardData<Float, DIM>,
     compute_grad_log_p: bool,
 ) -> (
     na::SMatrix<Float, DIM, DIM>,
@@ -208,7 +208,7 @@ pub fn d_child_input_param<const DIM: usize>(
     distance: Float,
     param: &ParamPrecomp<Float, DIM>,
     log_p: na::SVectorView<Float, DIM>,
-    forward: &LogTransitionForwardData<DIM>,
+    forward: &LogTransitionForwardData<Float, DIM>,
     compute_grad_log_p: bool,
 ) -> (
     na::SMatrix<Float, DIM, DIM>,

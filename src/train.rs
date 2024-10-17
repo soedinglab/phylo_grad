@@ -10,7 +10,7 @@ fn forward_column<const DIM: usize, Entry, D>(
     column_iter: impl Iterator<Item = Entry>,
     distribution: &D,
     tree: &[TreeNode],
-    forward_data: &ForwardData<DIM>,
+    forward_data: &ForwardData<Float, DIM>,
 ) -> Vec<na::SVector<Float, DIM>>
 where
     Entry: EntryTrait,
@@ -57,7 +57,7 @@ fn d_rate_column_param<const DIM: usize>(
     tree: &[TreeNode],
     log_p: &[na::SVector<Float, DIM>],
     distances: &[Float],
-    forward_data: &ForwardData<DIM>,
+    forward_data: &ForwardData<Float, DIM>,
     param: &ParamPrecomp<Float, DIM>,
     num_leaves: usize,
 ) -> na::SMatrix<Float, DIM, DIM> {

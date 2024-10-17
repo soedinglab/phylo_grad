@@ -11,11 +11,11 @@ impl FelsensteinError {
 
 /* TODO ForwardDataParam */
 
-pub struct ForwardData<const DIM: usize> {
-    pub log_transition: Vec<LogTransitionForwardData<DIM>>,
+pub struct ForwardData<F, const DIM: usize> {
+    pub log_transition: Vec<LogTransitionForwardData<F, DIM>>,
 }
 
-impl<const DIM: usize> ForwardData<DIM> {
+impl<F, const DIM: usize> ForwardData<F, DIM> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             log_transition: Vec::with_capacity(capacity),
@@ -23,10 +23,10 @@ impl<const DIM: usize> ForwardData<DIM> {
     }
 }
 
-pub struct LogTransitionForwardData<const DIM: usize> {
-    pub step_1: Option<na::SMatrix<Float, DIM, DIM>>,
-    pub step_2: na::SMatrix<Float, DIM, DIM>,
-    pub log_transition: na::SMatrix<Float, DIM, DIM>,
+pub struct LogTransitionForwardData<F, const DIM: usize> {
+    pub step_1: Option<na::SMatrix<F, DIM, DIM>>,
+    pub step_2: na::SMatrix<F, DIM, DIM>,
+    pub log_transition: na::SMatrix<F, DIM, DIM>,
 }
 
 pub struct ParamPrecomp<F, const DIM: usize> {
@@ -119,7 +119,7 @@ pub fn compute_param_data<const DIM: usize>(
 fn log_transition_precompute_param<const DIM: usize>(
     param: &ParamPrecomp<Float, DIM>,
     distance: Float,
-) -> LogTransitionForwardData<DIM> {
+) -> LogTransitionForwardData<Float, DIM> {
     let mut step_2 = param.V_pi.clone_owned();
     times_diag_assign(
         step_2.as_view_mut(),
@@ -139,9 +139,9 @@ fn log_transition_precompute_param<const DIM: usize>(
 pub fn forward_data_precompute_param<const DIM: usize>(
     param: &ParamPrecomp<Float, DIM>,
     distances: &[Float],
-) -> ForwardData<DIM> {
+) -> ForwardData<Float, DIM> {
     let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
+    let mut forward_data = ForwardData::<Float, DIM>::with_capacity(num_nodes);
 
     forward_data.log_transition.extend(
         distances
@@ -154,7 +154,7 @@ pub fn forward_data_precompute_param<const DIM: usize>(
 fn log_transition_precompute<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distance: Float,
-) -> LogTransitionForwardData<DIM>
+) -> LogTransitionForwardData<Float, DIM>
 where
     na::Const<DIM>: Exponentiable,
 {
@@ -172,12 +172,12 @@ where
 pub fn forward_data_precompute<const DIM: usize>(
     rate_matrix: na::SMatrixView<Float, DIM, DIM>,
     distances: &[Float],
-) -> ForwardData<DIM>
+) -> ForwardData<Float, DIM>
 where
     Const<DIM>: Exponentiable,
 {
     let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
+    let mut forward_data = ForwardData::<Float, DIM>::with_capacity(num_nodes);
 
     forward_data.log_transition.extend(
         distances
@@ -190,7 +190,7 @@ where
 fn child_input<const DIM: usize>(
     child_id: usize, //only used in forward_data
     log_p: na::SVectorView<Float, DIM>,
-    forward_data: &ForwardData<DIM>,
+    forward_data: &ForwardData<Float, DIM>,
 ) -> na::SVector<Float, DIM> {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(a, b) ) */
     let log_transition = forward_data.log_transition[child_id].log_transition;
@@ -209,7 +209,7 @@ pub fn forward_node<const DIM: usize>(
     id: usize,
     tree: &[TreeNode],
     log_p: &[na::SVector<Float, DIM>],
-    forward_data: &ForwardData<DIM>,
+    forward_data: &ForwardData<Float, DIM>,
 ) -> Result<na::SVector<Float, DIM>, FelsensteinError> {
     let node = &tree[id];
 
@@ -238,7 +238,7 @@ pub fn forward_root<const DIM: usize>(
     id: usize,
     tree: &[TreeNode],
     log_p: &[na::SVector<Float, DIM>],
-    forward_data: &ForwardData<DIM>,
+    forward_data: &ForwardData<Float, DIM>,
 ) -> na::SVector<Float, DIM> {
     let root = &tree[id];
 
