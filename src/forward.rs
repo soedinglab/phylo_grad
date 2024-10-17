@@ -151,42 +151,6 @@ pub fn forward_data_precompute_param<const DIM: usize>(
     forward_data
 }
 
-fn log_transition_precompute<const DIM: usize>(
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    distance: Float,
-) -> LogTransitionForwardData<Float, DIM>
-where
-    na::Const<DIM>: Exponentiable,
-{
-    let step_1 = rate_matrix * distance;
-    let step_2 = step_1.exp();
-    let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG as Float)));
-
-    LogTransitionForwardData {
-        step_1: Some(step_1),
-        step_2,
-        log_transition,
-    }
-}
-
-pub fn forward_data_precompute<const DIM: usize>(
-    rate_matrix: na::SMatrixView<Float, DIM, DIM>,
-    distances: &[Float],
-) -> ForwardData<Float, DIM>
-where
-    Const<DIM>: Exponentiable,
-{
-    let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<Float, DIM>::with_capacity(num_nodes);
-
-    forward_data.log_transition.extend(
-        distances
-            .iter()
-            .map(|dist| log_transition_precompute(rate_matrix, *dist)),
-    );
-    forward_data
-}
-
 fn child_input<const DIM: usize>(
     child_id: usize, //only used in forward_data
     log_p: na::SVectorView<Float, DIM>,
