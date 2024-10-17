@@ -1,5 +1,6 @@
-use std::{collections::HashMap, convert::TryFrom};
+use std::{collections::HashMap, convert::TryFrom, path::Iter};
 
+use logsumexp::LogSumExp;
 use na::{allocator::Allocator, Const, DimAdd, DimMin, DimName, ToTypenum};
 
 pub type Float = f64;
@@ -19,9 +20,19 @@ where
         + nalgebra::SimdPartialOrd
         + Into<f64>
 {
+
+    fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self;
 }
-impl FloatTrait for f32 {}
-impl FloatTrait for f64 {}
+impl FloatTrait for f32 {
+    fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self {
+        LogSumExp::ln_sum_exp(iter)
+    }
+}
+impl FloatTrait for f64 {
+    fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self {
+        LogSumExp::ln_sum_exp(iter)
+    }
+}
 
 pub trait EntryTrait: Sized + Copy {
     const TOTAL: usize;

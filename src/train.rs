@@ -31,12 +31,12 @@ where
     log_p
 }
 
-fn process_likelihood<const DIM: usize>(
-    log_p_root: na::SVectorView<Float, DIM>,
-    log_p_prior: na::SVectorView<Float, DIM>,
-) -> (Float, na::SVector<Float, DIM>) {
+fn process_likelihood<F : FloatTrait, const DIM: usize>(
+    log_p_root: na::SVectorView<F, DIM>,
+    log_p_prior: na::SVectorView<F, DIM>,
+) -> (F, na::SVector<F, DIM>) {
     let lse_arg = log_p_root + log_p_prior;
-    let log_likelihood_column = lse_arg.iter().ln_sum_exp();
+    let log_likelihood_column = F::logsumexp(lse_arg.iter());
     let grad_log_p_outgoing = softmax(lse_arg.as_view());
     (log_likelihood_column, grad_log_p_outgoing)
 }
