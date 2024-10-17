@@ -217,7 +217,7 @@ pub fn d_child_input_param<const DIM: usize>(
     let (grad_log_transition, grad_log_p) =
         d_log_transition_child_input_vjp(cotangent_vector, log_p, forward, compute_grad_log_p);
 
-    let transition = forward.step_2;
+    let transition = forward.matrix_exp;
     let grad_transition = d_ln_vjp(grad_log_transition.as_view(), transition.as_view());
 
     let grad_rate = d_expm_vjp(grad_transition.as_view(), distance, param);

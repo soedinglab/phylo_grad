@@ -23,8 +23,7 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
 }
 
 pub struct LogTransitionForwardData<F, const DIM: usize> {
-    pub step_1: Option<na::SMatrix<F, DIM, DIM>>,
-    pub step_2: na::SMatrix<F, DIM, DIM>,
+    pub matrix_exp: na::SMatrix<F, DIM, DIM>,
     pub log_transition: na::SMatrix<F, DIM, DIM>,
 }
 
@@ -64,11 +63,11 @@ pub fn times_diag_assign<I, F, const N: usize>(
     }
 }
 
-pub fn compute_param_data<const DIM: usize>(
-    S: na::SMatrixView<Float, DIM, DIM>,
-    sqrt_pi: na::SVectorView<Float, DIM>,
-) -> Option<ParamPrecomp<Float, DIM>> {
-    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(x.max(EPS_DIV as Float)));
+pub fn compute_param_data<F : FloatTrait, const DIM: usize>(
+    S: na::SMatrixView<F, DIM, DIM>,
+    sqrt_pi: na::SVectorView<F, DIM>,
+) -> Option<ParamPrecomp<F, DIM>> {
+    let sqrt_pi_recip = sqrt_pi.map(|x| x.max(F::EPS_DIV).recip());
 
     let mut S_symmetric = S.clone_owned();
     for i in 0..DIM {
@@ -85,7 +84,7 @@ pub fn compute_param_data<const DIM: usize>(
 
     for i in 0..DIM {
         let row = rate_matrix.row(i).clone_owned();
-        S_symmetric[(i, i)] = -(row.as_slice()[..i].iter().sum::<Float>()
+        S_symmetric[(i, i)] = -(row.as_slice()[..i].iter().sum::<F>()
             + row.as_slice()[i + 1..].iter().sum::<Float>());
         rate_matrix[(i, i)] = S_symmetric[(i, i)];
     }
@@ -119,18 +118,17 @@ fn log_transition_precompute_param<F : FloatTrait, const DIM: usize>(
     param: &ParamPrecomp<F, DIM>,
     distance: F,
 ) -> LogTransitionForwardData<F, DIM> {
-    let mut step_2 = param.V_pi.clone_owned();
+    let mut matrix_exp = param.V_pi.clone_owned();
     times_diag_assign(
-        step_2.as_view_mut(),
+        matrix_exp.as_view_mut(),
         param.eigenvalues.iter().map(|lam| (*lam * distance).exp()),
     );
-    step_2 *= param.V_pi_inv;
+    matrix_exp *= param.V_pi_inv;
 
-    let log_transition = step_2.map(|x| x.max(F::EPS_LOG).ln());
+    let log_transition = matrix_exp.map(|x| x.max(F::EPS_LOG).ln());
 
     LogTransitionForwardData {
-        step_1: None,
-        step_2,
+        matrix_exp,
         log_transition,
     }
 }

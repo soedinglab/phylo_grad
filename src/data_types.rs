@@ -7,8 +7,6 @@ pub type Float = f64;
 //pub type ColumnId = usize;
 //pub type Id = usize;
 
-pub const EPS_DIV: f64 = 1e-10;
-pub const EPS_LOG: f64 = 1e-100;
 
 pub trait FloatTrait
 where
@@ -21,6 +19,7 @@ where
         + Into<f64>
 {
     const EPS_LOG : Self;
+    const EPS_DIV: Self;
     fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self;
     fn from_f64(f: f64) -> Self;
 }
@@ -32,6 +31,7 @@ impl FloatTrait for f32 {
         f as f32
     }
     const EPS_LOG : Self = 1e-15;
+    const EPS_DIV: Self = 1e-10;
 }
 impl FloatTrait for f64 {
     fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self {
@@ -41,6 +41,7 @@ impl FloatTrait for f64 {
         f
     }
     const EPS_LOG : Self = 1e-100;
+    const EPS_DIV: Self = 1e-10;
 }
 
 pub trait EntryTrait: Sized + Copy {
