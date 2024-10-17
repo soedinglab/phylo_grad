@@ -2,6 +2,7 @@ use std::{collections::HashMap, convert::TryFrom, path::Iter};
 
 use logsumexp::LogSumExp;
 use na::{allocator::Allocator, Const, DimAdd, DimMin, DimName, ToTypenum};
+use num_traits::AsPrimitive;
 
 pub type Float = f64;
 //pub type ColumnId = usize;
@@ -20,18 +21,27 @@ where
         + nalgebra::SimdPartialOrd
         + Into<f64>
 {
-
+    const EPS_LOG : Self;
     fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self;
+    fn from_f64(f: f64) -> Self;
 }
 impl FloatTrait for f32 {
     fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self {
         LogSumExp::ln_sum_exp(iter)
     }
+    fn from_f64(f: f64) -> Self {
+        f as f32
+    }
+    const EPS_LOG : Self = 1e-15;
 }
 impl FloatTrait for f64 {
     fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self {
         LogSumExp::ln_sum_exp(iter)
     }
+    fn from_f64(f: f64) -> Self {
+        f
+    }
+    const EPS_LOG : Self = 1e-100;
 }
 
 pub trait EntryTrait: Sized + Copy {

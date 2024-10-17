@@ -116,18 +116,18 @@ pub fn compute_param_data<const DIM: usize>(
     })
 }
 
-fn log_transition_precompute_param<const DIM: usize>(
-    param: &ParamPrecomp<Float, DIM>,
-    distance: Float,
-) -> LogTransitionForwardData<Float, DIM> {
+fn log_transition_precompute_param<F : FloatTrait, const DIM: usize>(
+    param: &ParamPrecomp<F, DIM>,
+    distance: F,
+) -> LogTransitionForwardData<F, DIM> {
     let mut step_2 = param.V_pi.clone_owned();
     times_diag_assign(
         step_2.as_view_mut(),
-        param.eigenvalues.iter().map(|lam| (lam * distance).exp()),
+        param.eigenvalues.iter().map(|lam| (*lam * distance).exp()),
     );
     step_2 *= param.V_pi_inv;
 
-    let log_transition = step_2.map(|x| Float::ln(x.max(EPS_LOG as Float)));
+    let log_transition = step_2.map(|x| x.max(F::EPS_LOG).ln());
 
     LogTransitionForwardData {
         step_1: None,
