@@ -2,7 +2,6 @@ use crate::data_types::*;
 use crate::tree::*;
 use logsumexp::LogSumExp;
 
-use na::Const;
 use nalgebra_lapack::SymmetricEigen;
 
 impl FelsensteinError {

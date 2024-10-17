@@ -1,8 +1,7 @@
-use std::{collections::HashMap, convert::TryFrom, path::Iter};
+use std::{collections::HashMap, convert::TryFrom};
 
 use logsumexp::LogSumExp;
 use na::{allocator::Allocator, Const, DimAdd, DimMin, DimName, ToTypenum};
-use num_traits::AsPrimitive;
 
 pub type Float = f64;
 //pub type ColumnId = usize;
