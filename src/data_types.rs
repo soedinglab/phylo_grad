@@ -1,7 +1,6 @@
 use std::{collections::HashMap, convert::TryFrom, iter::Sum};
 
 use logsumexp::LogSumExp;
-use na::{allocator::Allocator, Const, DimAdd, DimMin, DimName, ToTypenum};
 
 pub type Float = f64;
 //pub type ColumnId = usize;
@@ -280,66 +279,4 @@ impl FelsensteinError {
     pub fn invalid_residue(s: &str) -> Self {
         Self::DeserializationError(format!("Invalid residue:{}", s))
     }*/
-}
-
-pub type TwoTimesConst<const N: usize> = TwoTimes<Const<N>>;
-pub type TwoTimes<N> = <N as DimAdd<N>>::Output;
-type Squared<N> = <N as na::DimMul<N>>::Output;
-pub trait Exponentiable: ToTypenum + DimName + DimMin<Self, Output = Self> {}
-impl<T: ToTypenum + DimName + DimMin<Self, Output = Self>> Exponentiable for T {}
-
-pub trait Doubleable
-where
-    Self: ToTypenum + DimAdd<Self>,
-{
-}
-impl<T> Doubleable for T where T: ToTypenum + DimAdd<T> {}
-
-trait Squareable
-where
-    Self: na::DimMul<Self>,
-    <Self as na::DimMul<Self>>::Output: DimName,
-{
-}
-impl<T> Squareable for T
-where
-    T: na::DimMul<T>,
-    <T as na::DimMul<T>>::Output: DimName,
-{
-}
-
-pub trait ViableAllocator<T, const N: usize>
-where
-    Self: Allocator<TwoTimesConst<N>, TwoTimesConst<N>>
-        + Allocator<TwoTimesConst<N>>
-        + Allocator<Const<N>, Const<N>, Buffer<Float> = na::ArrayStorage<Float, N, N>>
-        + Allocator<TwoTimesConst<N>>,
-    Const<N>: Doubleable,
-{
-}
-impl<A, T, const N: usize> ViableAllocator<T, N> for A
-where
-    A: Allocator<TwoTimesConst<N>, TwoTimesConst<N>>
-        + Allocator<TwoTimesConst<N>>
-        + Allocator<Const<N>, Const<N>, Buffer<Float> = na::ArrayStorage<Float, N, N>>
-        + Allocator<TwoTimesConst<N>>,
-    Const<N>: Doubleable,
-{
-}
-
-trait SquareableAllocator<N, F>
-where
-    N: DimName + Squareable,
-    Squared<N>: DimName,
-    F: FloatTrait,
-    Self: Allocator<N> + Allocator<Squared<N>>,
-{
-}
-impl<A, N, F> SquareableAllocator<N, F> for A
-where
-    N: DimName + Squareable,
-    Squared<N>: DimName,
-    F: FloatTrait,
-    A: Allocator<N> + Allocator<Squared<N>>,
-{
 }

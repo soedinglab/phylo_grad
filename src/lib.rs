@@ -1,4 +1,4 @@
-#![allow(dead_code, non_snake_case, clippy::needless_range_loop)]
+#![allow(non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
 
 use numpy::ndarray::{Array, ArrayView1, ArrayView2, Axis};
@@ -59,29 +59,6 @@ where
         })
     }
 
-    fn infer_param<'a, const DIM: usize, D>(
-        &self,
-        index_pairs: &[(usize, usize)],
-        /* TODO as_deref() */
-        deltas: &[na::SMatrix<Float, DIM, DIM>],
-        sqrt_pi: &[na::SVector<Float, DIM>],
-        distributions: &'a [D],
-    ) -> InferenceResultParam<Float, DIM>
-    where
-        D: std::marker::Sync,
-        (&'a D, &'a D): Distribution<ResiduePair<R>, Float, Value = na::SVector<Float, DIM>>,
-    {
-        train_parallel_param(
-            index_pairs,
-            self.residue_sequences_2d.as_view(),
-            deltas,
-            sqrt_pi,
-            &(self.tree),
-            &(self.distances),
-            distributions,
-        )
-    }
-
     fn infer_param_unpaired<const DIM: usize, D>(
         &self,
         idx: &[usize],
@@ -96,27 +73,6 @@ where
             idx,
             self.residue_sequences_2d.as_view(),
             deltas,
-            sqrt_pi,
-            &(self.tree),
-            &(self.distances),
-            distributions,
-        )
-    }
-
-    fn infer_param_unpaired_common_rate<const DIM: usize, D>(
-        &self,
-        idx: &[usize],
-        delta: na::SMatrixView<Float, DIM, DIM>,
-        sqrt_pi: na::SVectorView<Float, DIM>,
-        distributions: &[D],
-    ) -> InferenceResultParamCommonRate<Float, DIM>
-    where
-        D: Distribution<R, Float, Value = na::SVector<Float, DIM>>,
-    {
-        train_parallel_param_unpaired_common_rate(
-            idx,
-            self.residue_sequences_2d.as_view(),
-            delta,
             sqrt_pi,
             &(self.tree),
             &(self.distances),
