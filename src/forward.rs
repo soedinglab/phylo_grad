@@ -219,7 +219,7 @@ pub fn forward_root<F: FloatTrait, const DIM: usize>(
     let mut result = child_input(log_p[root.parent].as_view(), &forward_data.log_transition[root.parent]);
     for opt_child in [root.left, root.right] {
         if let Some(child) = opt_child {
-            let child_input = child_input(log_p[child].as_view(), &forward_data.log_transition[root.parent]);
+            let child_input = child_input(log_p[child].as_view(), &forward_data.log_transition[child]);
             result += child_input;
         }
     }
