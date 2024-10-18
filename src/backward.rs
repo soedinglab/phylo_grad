@@ -93,10 +93,10 @@ fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
 }
 
 /// Backward pass for rho(W) = 1/sqrt_pi @ S @ sqrt_pi
-pub fn d_param<const DIM: usize>(
-    cotangent_vector: na::SMatrixView<Float, DIM, DIM>,
-    param: &ParamPrecomp<Float, DIM>,
-) -> (na::SMatrix<Float, DIM, DIM>, na::SVector<Float, DIM>) {
+pub fn d_param<F : FloatTrait, const DIM: usize>(
+    cotangent_vector: na::SMatrixView<F, DIM, DIM>,
+    param: &ParamPrecomp<F, DIM>,
+) -> (na::SMatrix<F, DIM, DIM>, na::SVector<F, DIM>) {
     let sqrt_pi = param.sqrt_pi.clone_owned();
     let sqrt_pi_recip = param.sqrt_pi_recip.clone_owned();
     let symmetric = param.symmetric_matrix.clone_owned();
@@ -117,7 +117,7 @@ pub fn d_param<const DIM: usize>(
             grad_S[i, j] + grad_S[j, i] - grad_S[i, i] * pi_j / pi_i - grad_S[j, j] * pi_i / pi_j if i < j
     */
 
-    let mut grad_delta = na::SMatrix::<Float, DIM, DIM>::zeros();
+    let mut grad_delta = na::SMatrix::<F, DIM, DIM>::zeros();
     for j in 0..DIM {
         for i in 0..j {
             grad_delta[(i, j)] = grad_symmetric[(i, j)] + grad_symmetric[(j, i)]
@@ -134,7 +134,7 @@ pub fn d_param<const DIM: usize>(
                -sqrt_pi[i]*sqrt_pi_recip[j] * (w_ji - w_jj))
         )
     */
-    let mut grad_sqrt_pi = na::SVector::<Float, DIM>::zeros();
+    let mut grad_sqrt_pi = na::SVector::<F, DIM>::zeros();
     for j in 0..DIM {
         for i in 0..DIM {
             if i != j {
