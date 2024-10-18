@@ -1,6 +1,5 @@
 use crate::data_types::*;
 use crate::tree::*;
-use logsumexp::LogSumExp;
 
 use nalgebra_lapack::SymmetricEigen;
 
