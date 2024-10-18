@@ -65,7 +65,7 @@ pub fn times_diag_assign<I, F, const N: usize>(
 /// Precomputes things out of S and sqrt_pi
 /// Returns None if the eigenvalues are too large or the diagonalization failed, this can happen with extreme values
 pub fn compute_param_data<
-    F: FloatTrait + nalgebra_lapack::SymmetricEigenScalar,
+    F: FloatTrait,
     const DIM: usize,
 >(
     S: na::SMatrixView<F, DIM, DIM>,

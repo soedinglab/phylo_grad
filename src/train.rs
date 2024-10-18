@@ -5,32 +5,25 @@ use crate::data_types::*;
 use crate::forward::*;
 use crate::tree::*;
 
-fn forward_column<const DIM: usize, Entry, D>(
-    column_iter: impl Iterator<Item = Entry>,
-    distribution: &D,
+fn forward_column<F: FloatTrait, const DIM: usize>(
+    mut leaf_log_p: Vec<na::SVector<F, DIM>>,
     tree: &[TreeNode],
-    forward_data: &ForwardData<Float, DIM>,
-) -> Vec<na::SVector<Float, DIM>>
-where
-    Entry: EntryTrait,
-    D: Distribution<Entry, Float, Value = na::SVector<Float, DIM>>,
-{
+    forward_data: &ForwardData<F, DIM>,
+) -> Vec<na::SVector<F, DIM>> {
     let num_nodes = tree.len();
-    let mut log_p = Vec::<na::SVector<Float, DIM>>::with_capacity(num_nodes);
-    log_p.extend(column_iter.map(|x| distribution.log_p(x)));
-    let num_leaves = log_p.len();
+    let num_leaves = leaf_log_p.len();
 
     /* TODO remove copy */
     for i in num_leaves..(num_nodes - 1) {
-        let log_p_new = forward_node(i, tree, &log_p, forward_data).unwrap();
-        log_p.push(log_p_new);
+        let log_p_new = forward_node(i, tree, &leaf_log_p, forward_data).unwrap();
+        leaf_log_p.push(log_p_new);
     }
-    let log_p_root = forward_root(num_nodes - 1, tree, &log_p, forward_data);
-    log_p.push(log_p_root);
-    log_p
+    let log_p_root = forward_root(num_nodes - 1, tree, &leaf_log_p, forward_data);
+    leaf_log_p.push(log_p_root);
+    leaf_log_p
 }
 
-fn process_likelihood<F : FloatTrait, const DIM: usize>(
+fn process_likelihood<F: FloatTrait, const DIM: usize>(
     log_p_root: na::SVectorView<F, DIM>,
     log_p_prior: na::SVectorView<F, DIM>,
 ) -> (F, na::SVector<F, DIM>) {
@@ -45,21 +38,21 @@ pub struct InferenceResult<F, const DIM: usize> {
     pub grad_log_prior_total: Vec<na::SVector<F, DIM>>,
 }
 
-fn d_rate_column_param<const DIM: usize>(
-    grad_log_p_root: na::SVectorView<Float, DIM>,
+fn d_rate_column_param<F : FloatTrait, const DIM: usize>(
+    grad_log_p_root: na::SVectorView<F, DIM>,
     tree: &[TreeNode],
-    log_p: &[na::SVector<Float, DIM>],
-    distances: &[Float],
-    forward_data: &ForwardData<Float, DIM>,
-    param: &ParamPrecomp<Float, DIM>,
+    log_p: &[na::SVector<F, DIM>],
+    distances: &[F],
+    forward_data: &ForwardData<F, DIM>,
+    param: &ParamPrecomp<F, DIM>,
     num_leaves: usize,
-) -> na::SMatrix<Float, DIM, DIM> {
+) -> na::SMatrix<F, DIM, DIM> {
     /* Notice that child_input values are always added, so the log_p input for children is always the same.
     We will therefore store their common grad_log_p in the parent node's BackwardData. */
     /* TODO: it is possible to free grad_log_p's for the previous tree level. */
     let num_nodes = tree.len();
-    let mut backward_data = Vec::<BackwardData<DIM>>::with_capacity(num_nodes - num_leaves);
-    let mut grad_rate_column = na::SMatrix::<Float, DIM, DIM>::from_element(0.0 as Float);
+    let mut backward_data = Vec::<BackwardData<F, DIM>>::with_capacity(num_nodes - num_leaves);
+    let mut grad_rate_column = na::SMatrix::<F, DIM, DIM>::zeros();
     /* root.backward */
     backward_data.push(BackwardData {
         grad_log_p: grad_log_p_root.clone_owned(),
@@ -113,40 +106,35 @@ struct TrainColumnParamResult<F, const DIM: usize> {
     grad_rate: na::SMatrix<F, DIM, DIM>,
 }
 
-fn train_column_param<'a, const DIM: usize, Entry, I, D>(
-    column_iter: I,
-    delta: na::SMatrixView<Float, DIM, DIM>,
-    sqrt_pi: na::SVectorView<Float, DIM>,
+fn train_column_param<F : FloatTrait, const DIM: usize>(
+    leaf_log_p: Vec<na::SVector<F, DIM>>,
+    S: na::SMatrixView<F, DIM, DIM>,
+    sqrt_pi: na::SVectorView<F, DIM>,
     tree: &[TreeNode],
-    distances: &[Float],
-    distribution: &'a D,
-) -> TrainColumnParamResult<Float, DIM>
-where
-    Entry: EntryTrait,
-    I: ExactSizeIterator<Item = Entry>,
-    D: Distribution<Entry, Float, Value = na::SVector<Float, DIM>>,
+    distances: &[F]
+) -> TrainColumnParamResult<F, DIM>
 {
-    let num_leaves = column_iter.len();
-
-    let param = match compute_param_data(delta.as_view(), sqrt_pi.as_view()) {
+    let num_leaves = leaf_log_p.len();
+    // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
+    let param = match compute_param_data(S, sqrt_pi) {
         Some(param) => param,
         None => {
-            return TrainColumnParamResult::<Float, DIM> {
-                log_likelihood: Float::NEG_INFINITY,
-                grad_delta: na::SMatrix::<Float, DIM, DIM>::zeros(),
-                grad_sqrt_pi: na::SVector::<Float, DIM>::zeros(),
-                grad_rate: na::SMatrix::<Float, DIM, DIM>::zeros(),
+            return TrainColumnParamResult::<F, DIM> {
+                log_likelihood: <F as num_traits::Float>::neg_infinity(),
+                grad_delta: na::SMatrix::<F, DIM, DIM>::zeros(),
+                grad_sqrt_pi: na::SVector::<F, DIM>::zeros(),
+                grad_rate: na::SMatrix::<F, DIM, DIM>::zeros(),
             }
         }
     };
 
     let forward_data = forward_data_precompute_param(&param, distances);
 
-    let log_p = forward_column(column_iter, distribution, tree, &forward_data);
+    let log_p = forward_column(leaf_log_p, tree, &forward_data);
     let log_p_root = log_p.last().unwrap();
 
-    let log_p_prior = sqrt_pi.map(Float::ln) * (2.0 as Float);
-    let (log_likelihood, grad_log_p_likelihood): (Float, na::SVector<Float, DIM>) =
+    let log_p_prior = sqrt_pi.map(num_traits::Float::ln) * <F as FloatTrait>::from_f64(2.0);
+    let (log_likelihood, grad_log_p_likelihood): (F, na::SVector<F, DIM>) =
         process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
     let grad_log_prior = grad_log_p_likelihood;
     let grad_log_p_root = grad_log_p_likelihood;
@@ -163,10 +151,10 @@ where
 
     let (grad_delta, mut grad_sqrt_pi) = d_param(grad_rate.as_view(), &param);
 
-    let mut grad_sqrt_pi_likelihood = param.sqrt_pi_recip * (2.0 as Float);
+    let mut grad_sqrt_pi_likelihood : na::SMatrix<F, DIM, 1>= param.sqrt_pi_recip * <F as FloatTrait>::from_f64(2.0);
     grad_sqrt_pi_likelihood.component_mul_assign(&grad_log_prior);
     grad_sqrt_pi += grad_sqrt_pi_likelihood;
-    TrainColumnParamResult::<Float, DIM> {
+    TrainColumnParamResult::<F, DIM> {
         log_likelihood,
         grad_delta,
         grad_sqrt_pi,
@@ -181,63 +169,42 @@ pub struct InferenceResultParam<F, const DIM: usize> {
     pub grad_rate_total: Vec<na::SMatrix<F, DIM, DIM>>,
 }
 
-pub fn train_parallel_param_unpaired<const DIM: usize, Residue, D>(
-    idx: &[usize],
-    residue_sequences_2d: na::DMatrixView<Residue>,
-    deltas: &[na::SMatrix<Float, DIM, DIM>],
-    sqrt_pi: &[na::SVector<Float, DIM>],
+pub fn train_parallel_param_unpaired<F : FloatTrait, const DIM: usize>(
+    leaf_log_p: &[Vec<na::SVector<F, DIM>>],
+    S: &[na::SMatrix<F, DIM, DIM>],
+    sqrt_pi: &[na::SVector<F, DIM>],
     tree: &[TreeNode],
-    distances: &[Float],
-    distributions: &[D],
-) -> InferenceResultParam<Float, DIM>
-where
-    Residue: ResidueTrait,
-    D: Distribution<Residue, Float, Value = na::SVector<Float, DIM>>,
+    distances: &[F]
+) -> InferenceResultParam<F, DIM>
 {
-    let log_likelihood_total: Vec<Float>;
-    let grad_delta_total: Vec<na::SMatrix<Float, DIM, DIM>>;
-    let grad_sqrt_pi_total: Vec<na::SVector<Float, DIM>>;
-    let grad_rate_total: Vec<na::SMatrix<Float, DIM, DIM>>;
-    (
-        log_likelihood_total,
-        (grad_delta_total, (grad_sqrt_pi_total, grad_rate_total)),
-    ) = (idx, deltas, sqrt_pi)
+    let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
-        .map(|(&column_id, delta, sqrt_pi)| {
-            let column = residue_sequences_2d.column(column_id);
-            let column_iter = column.iter().copied();
-
-            let distribution = &distributions[column_id];
-
-            let result_column = train_column_param(
-                column_iter,
-                delta.as_view(),
+        .map(|(leaf_log_p, S, sqrt_pi)| {
+            train_column_param(
+                leaf_log_p.clone(),
+                S.as_view(),
                 sqrt_pi.as_view(),
                 tree,
                 distances,
-                distribution,
-            );
-
-            (
-                result_column.log_likelihood,
-                (
-                    result_column.grad_delta,
-                    (result_column.grad_sqrt_pi, result_column.grad_rate),
-                ),
             )
-        })
-        .unzip();
-    InferenceResultParam {
+        }).collect::<Vec<_>>();
+
+    let mut log_likelihood_total = vec![];
+    let mut grad_delta_total = vec![];
+    let mut grad_sqrt_pi_total = vec![];
+    let mut grad_rate_total = vec![];
+
+    for col_result in col_results {
+        log_likelihood_total.push(col_result.log_likelihood);
+        grad_delta_total.push(col_result.grad_delta);
+        grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
+        grad_rate_total.push(col_result.grad_rate);
+    }
+
+    InferenceResultParam{
         log_likelihood_total,
         grad_delta_total,
         grad_sqrt_pi_total,
         grad_rate_total,
     }
-}
-
-pub struct InferenceResultParamCommonRate<F, const DIM: usize> {
-    pub log_likelihood_total: Vec<F>,
-    pub grad_delta: na::SMatrix<F, DIM, DIM>,
-    pub grad_sqrt_pi: na::SVector<F, DIM>,
-    pub grad_rate: na::SMatrix<F, DIM, DIM>,
 }
