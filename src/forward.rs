@@ -181,17 +181,14 @@ pub fn forward_node<F: FloatTrait, const DIM: usize>(
     let node = &tree[id];
 
     let mut opt_running_sum: Option<na::SVector<F, DIM>> = None;
-    for opt_child in [node.left, node.right] {
-        if let Some(child) = opt_child {
-            let child_input =
-                child_input(log_p[child].as_view(), &forward_data.log_transition[child]);
-            match opt_running_sum {
-                Some(ref mut result) => {
-                    *result += child_input;
-                }
-                None => {
-                    opt_running_sum = Some(child_input);
-                }
+    for child in [node.left, node.right].into_iter().flatten() {
+        let child_input = child_input(log_p[child].as_view(), &forward_data.log_transition[child]);
+        match opt_running_sum {
+            Some(ref mut result) => {
+                *result += child_input;
+            }
+            None => {
+                opt_running_sum = Some(child_input);
             }
         }
     }

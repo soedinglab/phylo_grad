@@ -26,9 +26,9 @@ fn d_ln_vjp<F : FloatTrait, const DIM: usize>(
 fn exprel(x: f64) -> f64 {
     const THRESHOLD: f64 = 2e-3;
     /* LOG_F64_MAX = f64::MAX.log() */
-    const LOG_F64_MAX: f64 = 7.0978271289338397e+02;
+    const LOG_F64_MAX: f64 = 7.09782712893384e+02;
     /* LOG_F64_MIN = ? */
-    const LOG_F64_MIN: f64 = -7.0839641853226408e+02;
+    const LOG_F64_MIN: f64 = -7.083964185322641e+02;
     if x < LOG_F64_MIN {
         -1.0 / x
     } else if x < -THRESHOLD {
@@ -84,10 +84,10 @@ fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     /* TODO optimize */
     //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X_T)) * B_inv;
     let mut result = B_inv * cotangent_vector;
-    result = result * B;
+    result *= B;
     result.component_mul_assign(&X);
     result = B * result;
-    result = result * B_inv;
+    result *= B_inv;
 
     result
 }
