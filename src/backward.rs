@@ -9,10 +9,9 @@ pub fn softmax<F: FloatTrait, const N: usize>(x: na::SVectorView<F, N>) -> na::S
     let x_max = x.max();
 
     let mut result = x.add_scalar(-x_max);
-    result = result.map(|x| x.exp());
+    result = result.map(num_traits::Float::exp);
 
-    let scale = result.sum().recip();
-    result *= scale;
+    result /= result.sum();
     result
 }
 
@@ -47,7 +46,7 @@ fn X<F: FloatTrait, const DIM: usize>(
     eigenvalues: na::SVectorView<F, DIM>,
     distance: F,
 ) -> na::SMatrix<F, DIM, DIM> {
-    let diag = (eigenvalues * distance).map(|x| x.exp()) * distance;
+    let diag = (eigenvalues * distance).map(num_traits::Float::exp) * distance;
 
     let mut result = na::SMatrix::<F, DIM, DIM>::from_fn(|i, j| {
         if i == j {

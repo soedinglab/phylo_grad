@@ -110,9 +110,8 @@ dependencies = [
  "itertools",
  "lapack",
  "logsumexp",
- "nalgebra",
+ "nalgebra 0.33.1",
  "nalgebra-lapack",
- "netlib-src",
  "num-traits",
  "numpy",
  "pyo3",
@@ -239,38 +238,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ea4908d4f23254adda3daa60ffef0f1ac7b8c3e9a864cf3cc154b251908a2ef"
 dependencies = [
  "approx",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "simba 0.8.1",
+ "typenum",
+]
+
+[[package]]
+name = "nalgebra"
+version = "0.33.1"
+source = "git+https://github.com/benjamin-lieser/nalgebra?branch=sym_eigen_bounds#cce50f76485e26d72883d8d0af466a01e98c8ee6"
+dependencies = [
+ "approx",
  "matrixmultiply",
  "nalgebra-macros",
  "num-complex",
  "num-rational",
  "num-traits",
- "simba",
+ "simba 0.9.0",
  "typenum",
 ]
 
 [[package]]
 name = "nalgebra-lapack"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5a624592c6df3fc0a459312dac2621316730fdb9a7a44178b7a4bd0353b1bb7"
+version = "0.25.0"
+source = "git+https://github.com/benjamin-lieser/nalgebra?branch=sym_eigen_bounds#cce50f76485e26d72883d8d0af466a01e98c8ee6"
 dependencies = [
  "lapack",
  "lapack-src",
- "nalgebra",
+ "nalgebra 0.33.1",
  "num-complex",
  "num-traits",
- "simba",
+ "simba 0.9.0",
 ]
 
 [[package]]
 name = "nalgebra-macros"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91761aed67d03ad966ef783ae962ef9bbaca728d2dd7ceb7939ec110fffad998"
+version = "0.2.2"
+source = "git+https://github.com/benjamin-lieser/nalgebra?branch=sym_eigen_bounds#cce50f76485e26d72883d8d0af466a01e98c8ee6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn",
 ]
 
 [[package]]
@@ -340,7 +350,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec170733ca37175f5d75a5bea5911d6ff45d2cd52849ce98b685394e4f2f37f4"
 dependencies = [
  "libc",
- "nalgebra",
+ "nalgebra 0.32.5",
  "ndarray",
  "num-complex",
  "num-integer",
@@ -446,7 +456,7 @@ dependencies = [
  "proc-macro2",
  "pyo3-macros-backend",
  "quote",
- "syn 2.0.60",
+ "syn",
 ]
 
 [[package]]
@@ -459,7 +469,7 @@ dependencies = [
  "proc-macro2",
  "pyo3-build-config",
  "quote",
- "syn 2.0.60",
+ "syn",
 ]
 
 [[package]]
@@ -550,7 +560,7 @@ checksum = "11bd257a6541e141e42ca6d24ae26f7714887b47e89aa739099104c7e4d3b7fc"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.60",
+ "syn",
 ]
 
 [[package]]
@@ -558,6 +568,18 @@ name = "simba"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "061507c94fc6ab4ba1c9a0305018408e312e17c041eb63bef8aa726fa33aceae"
+dependencies = [
+ "approx",
+ "num-complex",
+ "num-traits",
+ "paste",
+]
+
+[[package]]
+name = "simba"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3a386a501cd104797982c15ae17aafe8b9261315b5d07e3ec803f2ea26be0fa"
 dependencies = [
  "approx",
  "num-complex",
@@ -571,17 +593,6 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
-
-[[package]]
-name = "syn"
-version = "1.0.109"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
-dependencies = [
- "proc-macro2",
- "quote",
- "unicode-ident",
-]
 
 [[package]]
 name = "syn"

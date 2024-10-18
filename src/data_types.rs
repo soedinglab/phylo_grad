@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::TryFrom};
+use std::{collections::HashMap, convert::TryFrom, iter::Sum};
 
 use logsumexp::LogSumExp;
 use na::{allocator::Allocator, Const, DimAdd, DimMin, DimName, ToTypenum};
@@ -12,14 +12,16 @@ pub trait FloatTrait
 where
     Self: num_traits::Float
         + std::ops::AddAssign
+        + std::ops::SubAssign
         + std::ops::MulAssign
         + na::Scalar
         + std::marker::Sync
-        + nalgebra::SimdPartialOrd
         + Into<f64>
+        + Sum
+        + na::RealField
 {
     const EPS_LOG : Self;
-    const EPS_DIV: Self;
+    const EPS_DIV: Self; // Minimum value for sqrt_pi
     fn logsumexp<'a, I : Iterator<Item = &'a Self>>(iter: I) -> Self;
     fn from_f64(f: f64) -> Self;
 }
@@ -379,31 +381,6 @@ where
     }
 }
 
-impl<F, R, DLeft, DRight, Dim> Distribution<ResiduePair<R>, F> for (&DLeft, &DRight)
-where
-    F: FloatTrait,
-    R: ResidueTrait,
-    DLeft: Distribution<R, F, Value = na::OVector<F, Dim>>,
-    DRight: Distribution<R, F, Value = na::OVector<F, Dim>>,
-    Dim: DimName + Squareable,
-    Squared<Dim>: DimName,
-    na::DefaultAllocator: SquareableAllocator<Dim, F>,
-{
-    type Value = na::OVector<F, Squared<Dim>>;
-    fn log_p(&self, entry: ResiduePair<R>) -> Self::Value {
-        let mut result = na::OVector::<F, Squared<Dim>>::zeros();
-        let (left, right) = (entry.0, entry.1);
-        let log_p_left = self.0.log_p(left);
-        let log_p_right = self.1.log_p(right);
-        for a in 0..Dim::dim() {
-            for b in 0..Dim::dim() {
-                result[Dim::dim() * a + b] = log_p_left[a] + log_p_right[b];
-            }
-        }
-        result
-    }
-}
-
 #[derive(Debug)]
 pub enum FelsensteinError {
     LogicError(&'static str),
@@ -458,19 +435,19 @@ where
 
 pub trait ViableAllocator<T, const N: usize>
 where
-    Self: Allocator<T, TwoTimesConst<N>, TwoTimesConst<N>>
-        + Allocator<(usize, usize), TwoTimesConst<N>>
-        + Allocator<T, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
-        + Allocator<T, TwoTimesConst<N>>,
+    Self: Allocator<TwoTimesConst<N>, TwoTimesConst<N>>
+        + Allocator<TwoTimesConst<N>>
+        + Allocator<Const<N>, Const<N>, Buffer<Float> = na::ArrayStorage<Float, N, N>>
+        + Allocator<TwoTimesConst<N>>,
     Const<N>: Doubleable,
 {
 }
 impl<A, T, const N: usize> ViableAllocator<T, N> for A
 where
-    A: Allocator<T, TwoTimesConst<N>, TwoTimesConst<N>>
-        + Allocator<(usize, usize), TwoTimesConst<N>>
-        + Allocator<T, Const<N>, Const<N>, Buffer = na::ArrayStorage<Float, N, N>>
-        + Allocator<T, TwoTimesConst<N>>,
+    A: Allocator<TwoTimesConst<N>, TwoTimesConst<N>>
+        + Allocator<TwoTimesConst<N>>
+        + Allocator<Const<N>, Const<N>, Buffer<Float> = na::ArrayStorage<Float, N, N>>
+        + Allocator<TwoTimesConst<N>>,
     Const<N>: Doubleable,
 {
 }
@@ -480,7 +457,7 @@ where
     N: DimName + Squareable,
     Squared<N>: DimName,
     F: FloatTrait,
-    Self: Allocator<F, N> + Allocator<F, Squared<N>>,
+    Self: Allocator<N> + Allocator<Squared<N>>,
 {
 }
 impl<A, N, F> SquareableAllocator<N, F> for A
@@ -488,6 +465,6 @@ where
     N: DimName + Squareable,
     Squared<N>: DimName,
     F: FloatTrait,
-    A: Allocator<F, N> + Allocator<F, Squared<N>>,
+    A: Allocator<N> + Allocator<Squared<N>>,
 {
 }

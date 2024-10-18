@@ -63,11 +63,16 @@ pub fn times_diag_assign<I, F, const N: usize>(
     }
 }
 
-pub fn compute_param_data<F : FloatTrait, const DIM: usize>(
+/// Precomputes things out of S and sqrt_pi
+/// Returns None if the eigenvalues are too large or the diagonalization failed, this can happen with extreme values
+pub fn compute_param_data<F : FloatTrait + nalgebra_lapack::SymmetricEigenScalar, const DIM: usize>(
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
 ) -> Option<ParamPrecomp<F, DIM>> {
-    let sqrt_pi_recip = sqrt_pi.map(|x| x.max(F::EPS_DIV).recip());
+
+    use num_traits::Float;
+
+    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, F::EPS_DIV)));
 
     let mut S_symmetric = S.clone_owned();
     for i in 0..DIM {
@@ -83,17 +88,14 @@ pub fn compute_param_data<F : FloatTrait, const DIM: usize>(
     times_diag_assign(rate_matrix.as_view_mut(), sqrt_pi.iter().copied());
 
     for i in 0..DIM {
-        let row = rate_matrix.row(i).clone_owned();
-        S_symmetric[(i, i)] = -(row.as_slice()[..i].iter().sum::<F>()
-            + row.as_slice()[i + 1..].iter().sum::<Float>());
-        rate_matrix[(i, i)] = S_symmetric[(i, i)];
+        S_symmetric[(i, i)] = -rate_matrix.row(i).sum() + rate_matrix[(i, i)];
     }
 
     let SymmetricEigen{eigenvalues, eigenvectors} = nalgebra_lapack::SymmetricEigen::try_new(S_symmetric)?;
 
     // Prevent numerical instability
-    let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<Float>();
-    if norm_eigenvals > 1e5 {
+    let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<F>();
+    if norm_eigenvals > <F as FloatTrait>::from_f64(1e5) {
         return None;
     }
 
@@ -118,14 +120,17 @@ fn log_transition_precompute_param<F : FloatTrait, const DIM: usize>(
     param: &ParamPrecomp<F, DIM>,
     distance: F,
 ) -> LogTransitionForwardData<F, DIM> {
+
+    use num_traits::Float;
+
     let mut matrix_exp = param.V_pi.clone_owned();
     times_diag_assign(
         matrix_exp.as_view_mut(),
-        param.eigenvalues.iter().map(|lam| (*lam * distance).exp()),
+        param.eigenvalues.iter().map(|lam| Float::exp(*lam * distance)),
     );
     matrix_exp *= param.V_pi_inv;
 
-    let log_transition = matrix_exp.map(|x| x.max(F::EPS_LOG).ln());
+    let log_transition = matrix_exp.map(|x| Float::ln(Float::max(x, F::EPS_LOG)));
 
     LogTransitionForwardData {
         matrix_exp,
