@@ -157,10 +157,7 @@ fn vec_leaf_p_from_python<'py, F: FloatTrait, const DIM: usize>(
     vec
 }
 
-impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResultParam<F, DIM>
-where
-    F: numpy::Element + na::Scalar + Copy,
-{
+impl<F: FloatTrait, const DIM: usize> IntoPy<PyObject> for InferenceResultParam<F, DIM> {
     fn into_py<'py>(self, py: Python<'_>) -> PyObject {
         let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
         let grad_delta_total_py = vec_2d_into_python(self.grad_delta_total, py);
