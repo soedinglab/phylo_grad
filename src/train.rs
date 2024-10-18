@@ -38,7 +38,7 @@ pub struct InferenceResult<F, const DIM: usize> {
     pub grad_log_prior_total: Vec<na::SVector<F, DIM>>,
 }
 
-fn d_rate_column_param<F : FloatTrait, const DIM: usize>(
+fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
     grad_log_p_root: na::SVectorView<F, DIM>,
     tree: &[TreeNode],
     log_p: &[na::SVector<F, DIM>],
@@ -106,14 +106,13 @@ struct TrainColumnParamResult<F, const DIM: usize> {
     grad_rate: na::SMatrix<F, DIM, DIM>,
 }
 
-fn train_column_param<F : FloatTrait, const DIM: usize>(
+fn train_column_param<F: FloatTrait, const DIM: usize>(
     leaf_log_p: Vec<na::SVector<F, DIM>>,
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
     tree: &[TreeNode],
-    distances: &[F]
-) -> TrainColumnParamResult<F, DIM>
-{
+    distances: &[F],
+) -> TrainColumnParamResult<F, DIM> {
     let num_leaves = leaf_log_p.len();
     // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
     let param = match compute_param_data(S, sqrt_pi) {
@@ -151,7 +150,8 @@ fn train_column_param<F : FloatTrait, const DIM: usize>(
 
     let (grad_delta, mut grad_sqrt_pi) = d_param(grad_rate.as_view(), &param);
 
-    let mut grad_sqrt_pi_likelihood : na::SMatrix<F, DIM, 1>= param.sqrt_pi_recip * <F as FloatTrait>::from_f64(2.0);
+    let mut grad_sqrt_pi_likelihood: na::SMatrix<F, DIM, 1> =
+        param.sqrt_pi_recip * <F as FloatTrait>::from_f64(2.0);
     grad_sqrt_pi_likelihood.component_mul_assign(&grad_log_prior);
     grad_sqrt_pi += grad_sqrt_pi_likelihood;
     TrainColumnParamResult::<F, DIM> {
@@ -166,17 +166,15 @@ pub struct InferenceResultParam<F, const DIM: usize> {
     pub log_likelihood_total: Vec<F>,
     pub grad_delta_total: Vec<na::SMatrix<F, DIM, DIM>>,
     pub grad_sqrt_pi_total: Vec<na::SVector<F, DIM>>,
-    pub grad_rate_total: Vec<na::SMatrix<F, DIM, DIM>>,
 }
 
-pub fn train_parallel_param_unpaired<F : FloatTrait, const DIM: usize>(
+pub fn train_parallel_param_unpaired<F: FloatTrait, const DIM: usize>(
     leaf_log_p: &[Vec<na::SVector<F, DIM>>],
     S: &[na::SMatrix<F, DIM, DIM>],
     sqrt_pi: &[na::SVector<F, DIM>],
     tree: &[TreeNode],
-    distances: &[F]
-) -> InferenceResultParam<F, DIM>
-{
+    distances: &[F],
+) -> InferenceResultParam<F, DIM> {
     let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
         .map(|(leaf_log_p, S, sqrt_pi)| {
@@ -187,24 +185,22 @@ pub fn train_parallel_param_unpaired<F : FloatTrait, const DIM: usize>(
                 tree,
                 distances,
             )
-        }).collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
 
     let mut log_likelihood_total = vec![];
     let mut grad_delta_total = vec![];
     let mut grad_sqrt_pi_total = vec![];
-    let mut grad_rate_total = vec![];
 
     for col_result in col_results {
         log_likelihood_total.push(col_result.log_likelihood);
         grad_delta_total.push(col_result.grad_delta);
         grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
-        grad_rate_total.push(col_result.grad_rate);
     }
 
-    InferenceResultParam{
+    InferenceResultParam {
         log_likelihood_total,
         grad_delta_total,
         grad_sqrt_pi_total,
-        grad_rate_total,
     }
 }

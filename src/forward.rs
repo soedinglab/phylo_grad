@@ -30,7 +30,6 @@ pub struct ParamPrecomp<F, const DIM: usize> {
     pub symmetric_matrix: na::SMatrix<F, DIM, DIM>,
     pub sqrt_pi: na::SVector<F, DIM>,
     pub sqrt_pi_recip: na::SVector<F, DIM>,
-    pub eigenvectors: na::SMatrix<F, DIM, DIM>,
     pub eigenvalues: na::SVector<F, DIM>,
     pub V_pi: na::SMatrix<F, DIM, DIM>,
     pub V_pi_inv: na::SMatrix<F, DIM, DIM>,
@@ -64,10 +63,7 @@ pub fn times_diag_assign<I, F, const N: usize>(
 
 /// Precomputes things out of S and sqrt_pi
 /// Returns None if the eigenvalues are too large or the diagonalization failed, this can happen with extreme values
-pub fn compute_param_data<
-    F: FloatTrait,
-    const DIM: usize,
->(
+pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
 ) -> Option<ParamPrecomp<F, DIM>> {
@@ -103,7 +99,7 @@ pub fn compute_param_data<
         return None;
     }
 
-    let mut V_pi = eigenvectors.clone_owned();
+    let mut V_pi = eigenvectors;
     diag_times_assign(V_pi.as_view_mut(), sqrt_pi_recip.iter().copied());
 
     let mut V_pi_inv = eigenvectors.transpose();
@@ -113,7 +109,6 @@ pub fn compute_param_data<
         symmetric_matrix: S_symmetric,
         sqrt_pi: sqrt_pi.clone_owned(),
         sqrt_pi_recip,
-        eigenvectors,
         eigenvalues,
         V_pi,
         V_pi_inv,
@@ -215,10 +210,14 @@ pub fn forward_root<F: FloatTrait, const DIM: usize>(
 ) -> na::SVector<F, DIM> {
     let root = &tree[id];
 
-    let mut result = child_input(log_p[root.parent].as_view(), &forward_data.log_transition[root.parent]);
+    let mut result = child_input(
+        log_p[root.parent].as_view(),
+        &forward_data.log_transition[root.parent],
+    );
     for opt_child in [root.left, root.right] {
         if let Some(child) = opt_child {
-            let child_input = child_input(log_p[child].as_view(), &forward_data.log_transition[child]);
+            let child_input =
+                child_input(log_p[child].as_view(), &forward_data.log_transition[child]);
             result += child_input;
         }
     }

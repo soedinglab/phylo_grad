@@ -2,9 +2,7 @@
 extern crate nalgebra as na;
 
 use numpy::ndarray::{Array, ArrayView1, ArrayView2, Axis};
-use numpy::{
-    IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
-};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
 use pyo3::{
     exceptions::PyValueError, pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy,
     PyObject, PyRef, PyResult, Python,
@@ -27,16 +25,12 @@ use crate::preprocessing::*;
 use crate::train::*;
 use crate::tree::*;
 
-struct FTreeBackend<F, R> {
+struct FTreeBackend<F> {
     tree: Vec<TreeNodeId<usize>>,
     distances: Vec<F>,
-    residue_sequences_2d: na::DMatrix<R>,
 }
 
-impl<R> FTreeBackend<Float, R>
-where
-    R: ResidueTrait,
-{
+impl FTreeBackend<Float> {
     fn try_from_file(data_path: &str, distance_threshold: Float) -> Result<Self, Box<dyn Error>> {
         let mut record_reader = read_raw_csv(data_path, 1)?;
         let raw_tree = deserialize_raw_tree(&mut record_reader)?;
@@ -50,13 +44,7 @@ where
             .iter_mut()
             .for_each(|d| *d = distance_threshold.max(*d));
 
-        let residue_sequences_2d = try_residue_sequences_from_strings(&sequences_raw)?;
-
-        Ok(Self {
-            tree,
-            distances,
-            residue_sequences_2d,
-        })
+        Ok(Self { tree, distances })
     }
 
     fn infer_param_unpaired<const DIM: usize>(
@@ -64,24 +52,9 @@ where
         leaf_log_p: &[Vec<na::SVector<Float, DIM>>],
         S: &[na::SMatrix<Float, DIM, DIM>],
         sqrt_pi: &[na::SVector<Float, DIM>],
-    ) -> InferenceResultParam<Float, DIM>
-    {
-        train_parallel_param_unpaired(
-            leaf_log_p,
-            S,
-            sqrt_pi,
-            &(self.tree),
-            &(self.distances)
-        )
+    ) -> InferenceResultParam<Float, DIM> {
+        train_parallel_param_unpaired(leaf_log_p, S, sqrt_pi, &(self.tree), &(self.distances))
     }
-}
-
-fn vec_0d_from_python<'py, T>(py_array1: PyReadonlyArray1<'py, T>) -> Vec<T>
-where
-    T: numpy::Element,
-{
-    let ndarray = py_array1.as_array();
-    ndarray.to_vec()
 }
 
 fn vec_0d_into_python<'py, T>(vec: Vec<T>, py: Python<'py>) -> Bound<PyArray1<T>>
@@ -109,18 +82,6 @@ where
     let ndarray = py_array2.as_array();
     let vec: Vec<na::SVector<T, N>> = ndarray.axis_iter(Axis(0)).map(na_1d_from_python).collect();
     vec
-}
-
-fn na_1d_into_python<'py, T, const N: usize>(
-    vector: na::SVector<T, N>,
-    py: Python<'py>,
-) -> Bound<'py, PyArray1<T>>
-where
-    T: numpy::Element + na::Scalar + Copy,
-{
-    Array::<T, _>::from_shape_vec(N, vector.iter().copied().collect::<Vec<T>>())
-        .unwrap()
-        .into_pyarray_bound(py)
 }
 
 fn vec_1d_into_python<'py, T, const N: usize>(
@@ -161,21 +122,6 @@ where
     vec
 }
 
-fn na_2d_into_python<'py, T, const R: usize, const C: usize>(
-    matrix: na::SMatrix<T, R, C>,
-    py: Python<'py>,
-) -> Bound<'py, PyArray2<T>>
-where
-    T: numpy::Element + na::Scalar + Copy,
-{
-    Array::<T, _>::from_shape_vec(
-        (R, C),
-        matrix.transpose().into_iter().copied().collect::<Vec<T>>(),
-    )
-    .unwrap()
-    .into_pyarray_bound(py)
-}
-
 fn vec_2d_into_python<'py, T, const R: usize, const C: usize>(
     vec: Vec<na::SMatrix<T, R, C>>,
     py: Python<'py>,
@@ -193,44 +139,23 @@ where
     .into_pyarray_bound(py)
 }
 
-fn to_vec_DIM<F : FloatTrait, const DIM : usize>(py_array2: ArrayView2<'_, F>) -> Vec<na::SVector<F, DIM>> {
+fn to_vec_DIM<F: FloatTrait, const DIM: usize>(
+    py_array2: ArrayView2<'_, F>,
+) -> Vec<na::SVector<F, DIM>> {
     py_array2
         .axis_iter(Axis(0))
         .map(|py_array1| na_1d_from_python::<F, DIM>(py_array1))
         .collect()
 }
-fn vec_leaf_p_from_python<'py, F : FloatTrait, const DIM : usize>(
+fn vec_leaf_p_from_python<'py, F: FloatTrait, const DIM: usize>(
     py_array3: PyReadonlyArray3<'py, F>,
-) -> Vec<Vec<na::SVector<F, DIM>>>
-{
-
+) -> Vec<Vec<na::SVector<F, DIM>>> {
     let ndarray = py_array3.as_array();
     let vec: Vec<Vec<na::SVector<F, DIM>>> = ndarray
         .axis_iter(Axis(0))
         .map(|nodes_axis| to_vec_DIM(nodes_axis))
         .collect();
     vec
-}
-
-impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResult<F, DIM>
-where
-    F: numpy::Element + na::Scalar + Copy,
-{
-    fn into_py(self, py: Python<'_>) -> PyObject {
-        let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
-        let grad_rate_total_py = vec_2d_into_python(self.grad_rate_total, py);
-        let grad_log_prior_total_py = vec_1d_into_python(self.grad_log_prior_total, py);
-
-        let result: HashMap<String, PyObject> = [
-            ("log_likelihood".to_string(), log_likelihood_total_py.into()),
-            ("grad_rate".to_string(), grad_rate_total_py.into()),
-            ("grad_log_prior".to_string(), grad_log_prior_total_py.into()),
-        ]
-        .into_iter()
-        .collect();
-
-        result.into_py(py)
-    }
 }
 
 impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResultParam<F, DIM>
@@ -241,13 +166,11 @@ where
         let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
         let grad_delta_total_py = vec_2d_into_python(self.grad_delta_total, py);
         let grad_sqrt_pi_total_py = vec_1d_into_python(self.grad_sqrt_pi_total, py);
-        let grad_rate_total_py = vec_2d_into_python(self.grad_rate_total, py);
 
         let result: HashMap<String, PyObject> = [
             ("log_likelihood".to_string(), log_likelihood_total_py.into()),
             ("grad_delta".to_string(), grad_delta_total_py.into()),
             ("grad_sqrt_pi".to_string(), grad_sqrt_pi_total_py.into()),
-            ("grad_rate".to_string(), grad_rate_total_py.into()),
         ]
         .into_iter()
         .collect();
@@ -258,7 +181,7 @@ where
 
 #[pyclass]
 struct FTree {
-    backend: FTreeBackend<Float, Residue>,
+    backend: FTreeBackend<Float>,
 }
 
 #[pymethods]
@@ -279,7 +202,7 @@ impl FTree {
     fn infer_param_unpaired<'py>(
         self_: PyRef<'py, Self>,
         leaf_log_p: PyReadonlyArray3<'py, Float>,
-        s : PyReadonlyArray3<'py, Float>,
+        s: PyReadonlyArray3<'py, Float>,
         sqrt_pi: PyReadonlyArray2<'py, Float>,
     ) -> PyResult<PyObject> {
         let backend = &self_.backend;
@@ -292,7 +215,6 @@ impl FTree {
         let result = backend.infer_param_unpaired(&leaf_log_p_vec, &s_vec, &sqrt_pi_vec);
 
         Ok(result.into_py(py))
-        
     }
 }
 
