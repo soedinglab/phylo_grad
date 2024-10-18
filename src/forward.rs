@@ -65,11 +65,13 @@ pub fn times_diag_assign<I, F, const N: usize>(
 
 /// Precomputes things out of S and sqrt_pi
 /// Returns None if the eigenvalues are too large or the diagonalization failed, this can happen with extreme values
-pub fn compute_param_data<F : FloatTrait + nalgebra_lapack::SymmetricEigenScalar, const DIM: usize>(
+pub fn compute_param_data<
+    F: FloatTrait + nalgebra_lapack::SymmetricEigenScalar,
+    const DIM: usize,
+>(
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
 ) -> Option<ParamPrecomp<F, DIM>> {
-
     use num_traits::Float;
 
     let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, F::EPS_DIV)));
@@ -91,7 +93,10 @@ pub fn compute_param_data<F : FloatTrait + nalgebra_lapack::SymmetricEigenScalar
         S_symmetric[(i, i)] = -rate_matrix.row(i).sum() + rate_matrix[(i, i)];
     }
 
-    let SymmetricEigen{eigenvalues, eigenvectors} = nalgebra_lapack::SymmetricEigen::try_new(S_symmetric)?;
+    let SymmetricEigen {
+        eigenvalues,
+        eigenvectors,
+    } = nalgebra_lapack::SymmetricEigen::try_new(S_symmetric)?;
 
     // Prevent numerical instability
     let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<F>();
@@ -116,17 +121,19 @@ pub fn compute_param_data<F : FloatTrait + nalgebra_lapack::SymmetricEigenScalar
     })
 }
 
-fn log_transition_precompute_param<F : FloatTrait, const DIM: usize>(
+fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
     param: &ParamPrecomp<F, DIM>,
     distance: F,
 ) -> LogTransitionForwardData<F, DIM> {
-
     use num_traits::Float;
 
     let mut matrix_exp = param.V_pi.clone_owned();
     times_diag_assign(
         matrix_exp.as_view_mut(),
-        param.eigenvalues.iter().map(|lam| Float::exp(*lam * distance)),
+        param
+            .eigenvalues
+            .iter()
+            .map(|lam| Float::exp(*lam * distance)),
     );
     matrix_exp *= param.V_pi_inv;
 
@@ -138,12 +145,12 @@ fn log_transition_precompute_param<F : FloatTrait, const DIM: usize>(
     }
 }
 
-pub fn forward_data_precompute_param<const DIM: usize>(
-    param: &ParamPrecomp<Float, DIM>,
-    distances: &[Float],
-) -> ForwardData<Float, DIM> {
+pub fn forward_data_precompute_param<F: FloatTrait, const DIM: usize>(
+    param: &ParamPrecomp<F, DIM>,
+    distances: &[F],
+) -> ForwardData<F, DIM> {
     let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<Float, DIM>::with_capacity(num_nodes);
+    let mut forward_data = ForwardData::<F, DIM>::with_capacity(num_nodes);
 
     forward_data.log_transition.extend(
         distances
@@ -153,36 +160,37 @@ pub fn forward_data_precompute_param<const DIM: usize>(
     forward_data
 }
 
-fn child_input<const DIM: usize>(
-    child_id: usize, //only used in forward_data
-    log_p: na::SVectorView<Float, DIM>,
-    forward_data: &ForwardData<Float, DIM>,
-) -> na::SVector<Float, DIM> {
+/// Computes p(subtree | parent = a) for all a by taking log_p : p(subtree | child = b) for all b
+fn child_input<F: FloatTrait, const DIM: usize>(
+    log_p: na::SVectorView<F, DIM>,
+    log_transition: &LogTransitionForwardData<F, DIM>,
+) -> na::SVector<F, DIM> {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(a, b) ) */
-    let log_transition = forward_data.log_transition[child_id].log_transition;
+    let log_transition = log_transition.log_transition;
 
-    let mut result = na::SVector::<Float, DIM>::zeros();
+    let mut result = na::SVector::<F, DIM>::zeros();
     for a in 0..DIM {
         let row_a = log_transition.row(a).transpose();
-        result[a] = (log_p + row_a).iter().ln_sum_exp();
+        result[a] = F::logsumexp((log_p + row_a).iter());
     }
     result
 }
 
 /// forward_node expects that the node tree[id] is non-terminal!
 /// To initialize a leaf node, call Entry::to_log_p().
-pub fn forward_node<const DIM: usize>(
+pub fn forward_node<F: FloatTrait, const DIM: usize>(
     id: usize,
     tree: &[TreeNode],
-    log_p: &[na::SVector<Float, DIM>],
-    forward_data: &ForwardData<Float, DIM>,
-) -> Result<na::SVector<Float, DIM>, FelsensteinError> {
+    log_p: &[na::SVector<F, DIM>],
+    forward_data: &ForwardData<F, DIM>,
+) -> Result<na::SVector<F, DIM>, FelsensteinError> {
     let node = &tree[id];
 
-    let mut opt_running_sum: Option<na::SVector<Float, DIM>> = None;
+    let mut opt_running_sum: Option<na::SVector<F, DIM>> = None;
     for opt_child in [node.left, node.right] {
         if let Some(child) = opt_child {
-            let child_input = child_input(child, log_p[child].as_view(), forward_data);
+            let child_input =
+                child_input(log_p[child].as_view(), &forward_data.log_transition[child]);
             match opt_running_sum {
                 Some(ref mut result) => {
                     *result += child_input;
@@ -200,18 +208,18 @@ pub fn forward_node<const DIM: usize>(
     }
 }
 
-pub fn forward_root<const DIM: usize>(
+pub fn forward_root<F: FloatTrait, const DIM: usize>(
     id: usize,
     tree: &[TreeNode],
-    log_p: &[na::SVector<Float, DIM>],
-    forward_data: &ForwardData<Float, DIM>,
-) -> na::SVector<Float, DIM> {
+    log_p: &[na::SVector<F, DIM>],
+    forward_data: &ForwardData<F, DIM>,
+) -> na::SVector<F, DIM> {
     let root = &tree[id];
 
-    let mut result = child_input(root.parent, log_p[root.parent].as_view(), forward_data);
+    let mut result = child_input(log_p[root.parent].as_view(), &forward_data.log_transition[root.parent]);
     for opt_child in [root.left, root.right] {
         if let Some(child) = opt_child {
-            let child_input = child_input(child, log_p[child].as_view(), forward_data);
+            let child_input = child_input(log_p[child].as_view(), &forward_data.log_transition[root.parent]);
             result += child_input;
         }
     }
