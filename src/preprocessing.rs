@@ -15,12 +15,18 @@ impl FelsensteinError {
 ///     Sort range(id) with `|id| height(node[id])` as key
 ///     Remap indices
 ///     Add children indices and create Vec<TreeNode>
-pub fn preprocess_weak(
-    raw_tree: &[RawInputRecord],
-) -> Result<(Vec<TreeNode>, Vec<Float>, Vec<String>), Box<dyn Error>> {
+pub fn preprocess_weak<F: FloatTrait>(
+    parents: Vec<i32>,
+    distances: Vec<F>,
+) -> Result<(Vec<TreeNode>, Vec<F>), Box<dyn Error>> {
     /* TODO linear algorithm via swap-remove and dynamic old_to_new index*/
 
-    let num_nodes = raw_tree.len();
+    assert!(
+        parents.len() == distances.len(),
+        "The number of parents and distances must be equal",
+    );
+
+    let num_nodes = parents.len();
 
     let root_id = {
         let mut depth: usize = 0;

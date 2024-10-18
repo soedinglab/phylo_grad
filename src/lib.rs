@@ -25,35 +25,24 @@ use crate::preprocessing::*;
 use crate::train::*;
 use crate::tree::*;
 
-struct FTreeBackend<F> {
+struct FTreeBackend<F, const DIM: usize> {
     tree: Vec<TreeNodeId<usize>>,
     distances: Vec<F>,
+    leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
 }
 
-impl FTreeBackend<Float> {
-    fn try_from_file(data_path: &str, distance_threshold: Float) -> Result<Self, Box<dyn Error>> {
-        let mut record_reader = read_raw_csv(data_path, 1)?;
-        let raw_tree = deserialize_raw_tree(&mut record_reader)?;
+enum FTreeBackendSingle {
+    K4(FTreeBackend<f32, 4>),
+    K5(FTreeBackend<f64, 5>),
+    K16(FTreeBackend<f64, 16>),
+    K20(FTreeBackend<f64, 20>),
+}
 
-        let tree;
-        let mut distances;
-        (tree, distances, _) = preprocess_weak(&raw_tree)?;
-
-        distances
-            .iter_mut()
-            .for_each(|d| *d = distance_threshold.max(*d));
-
-        Ok(Self { tree, distances })
-    }
-
-    fn infer_param_unpaired<const DIM: usize>(
-        &self,
-        leaf_log_p: &[Vec<na::SVector<Float, DIM>>],
-        S: &[na::SMatrix<Float, DIM, DIM>],
-        sqrt_pi: &[na::SVector<Float, DIM>],
-    ) -> InferenceResultParam<Float, DIM> {
-        train_parallel_param_unpaired(leaf_log_p, S, sqrt_pi, &(self.tree), &(self.distances))
-    }
+enum FTreeBackendDouble {
+    K4(FTreeBackend<f64, 4>),
+    K5(FTreeBackend<f64, 5>),
+    K16(FTreeBackend<f64, 16>),
+    K20(FTreeBackend<f64, 20>),
 }
 
 fn vec_0d_into_python<'py, T>(vec: Vec<T>, py: Python<'py>) -> Bound<PyArray1<T>>
@@ -175,15 +164,28 @@ impl<F: FloatTrait, const DIM: usize> IntoPy<PyObject> for InferenceResultParam<
     }
 }
 
+fn array2tree<F: FloatTrait>(tree: PyReadonlyArray2<'_, F>) -> (Vec<i32>, Vec<F>) {
+    let tree = tree.as_array();
+    assert!(tree.shape()[1] == 2);
+    let distances = tree.column(1).to_vec();
+    let parents = tree.column(0).map(|x| x.to_i32().expect("Tree parent ids should be integers fitting into i32")).to_vec();
+    
+    (parents, distances)
+}
+
 #[pyclass]
-struct FTree {
-    backend: FTreeBackend<Float>,
+struct FTreeSingle {
+    backend: FTreeBackendSingle,
 }
 
 #[pymethods]
-impl FTree {
+impl FTreeSingle {
     #[new]
-    fn py_new(data_path: &str, distance_threshold: Float) -> PyResult<Self> {
+    fn py_new(
+        tree: PyReadonlyArray2<'_, f32>,
+        leaf_log_p: PyReadonlyArray3<'_, f32>,
+        distance_threshold: f32,
+    ) -> PyResult<Self> {
         let result = FTreeBackend::try_from_file(data_path, distance_threshold);
         match result {
             Ok(backend) => Ok(Self { backend }),
