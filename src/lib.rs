@@ -285,8 +285,6 @@ impl FTree {
         let backend = &self_.backend;
         let py = self_.py();
 
-        let result_py: PyObject;
-
         let s_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(s);
         let sqrt_pi_vec: Vec<na::SVector<Float, 4>> = vec_1d_from_python(sqrt_pi);
         let leaf_log_p_vec: Vec<Vec<na::SVector<Float, 4>>> = vec_leaf_p_from_python(leaf_log_p);
