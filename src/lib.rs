@@ -186,14 +186,7 @@ impl FTreeSingle {
         leaf_log_p: PyReadonlyArray3<'_, f32>,
         distance_threshold: f32,
     ) -> PyResult<Self> {
-        let result = FTreeBackend::try_from_file(data_path, distance_threshold);
-        match result {
-            Ok(backend) => Ok(Self { backend }),
-            Err(error) => Err(PyValueError::new_err(format!(
-                "Failed to create FTree: {}",
-                error
-            ))),
-        }
+        todo!()
     }
 
     #[pyo3(signature=(leaf_log_p, s, sqrt_pi))]
@@ -210,7 +203,7 @@ impl FTreeSingle {
         let sqrt_pi_vec: Vec<na::SVector<Float, 4>> = vec_1d_from_python(sqrt_pi);
         let leaf_log_p_vec: Vec<Vec<na::SVector<Float, 4>>> = vec_leaf_p_from_python(leaf_log_p);
 
-        let result = backend.infer_param_unpaired(&leaf_log_p_vec, &s_vec, &sqrt_pi_vec);
+        let result = train_parallel_param_unpaired(&leaf_log_p_vec, &s_vec, &sqrt_pi_vec, backend.tree, &backend.distances);
 
         Ok(result.into_py(py))
     }

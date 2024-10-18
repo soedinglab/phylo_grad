@@ -55,7 +55,7 @@ fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
     /* node.backward for non-terminal nodes */
     for id in (num_leaves..num_nodes - 1).rev() {
         let parent_id = tree[id].parent;
-        let parent_backward_id = num_nodes - parent_id - 1;
+        let parent_backward_id = num_nodes - parent_id as usize - 1;
         let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
         let log_p_input = log_p[id].as_view();
         let distance_current = distances[id];
@@ -75,8 +75,8 @@ fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
     }
     /* For leaves, we only compute grad_rate */
     for id in (0..num_leaves).rev() {
-        let parent_id = &tree[id].parent;
-        let parent_backward_id = num_nodes - parent_id - 1;
+        let parent_id = tree[id].parent;
+        let parent_backward_id = num_nodes - parent_id as usize - 1;
         let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
         let log_p_input = log_p[id].as_view();
         let distance_current = distances[id];

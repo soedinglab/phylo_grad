@@ -17,131 +17,41 @@ impl FelsensteinError {
 ///     Add children indices and create Vec<TreeNode>
 pub fn preprocess_weak<F: FloatTrait>(
     parents: Vec<i32>,
-    distances: Vec<F>,
-) -> Result<(Vec<TreeNode>, Vec<F>), Box<dyn Error>> {
-    /* TODO linear algorithm via swap-remove and dynamic old_to_new index*/
-
-    assert!(
-        parents.len() == distances.len(),
-        "The number of parents and distances must be equal",
-    );
-
+    num_leaves: u32,
+) -> Result<(Vec<TreeNode>, Vec<u32>), Box<dyn Error>> {
     let num_nodes = parents.len();
 
-    let root_id = {
-        let mut depth: usize = 0;
-        let mut id: usize = 0;
-        while raw_tree[id].parent >= 0 {
-            id = raw_tree[id].parent as usize;
-            depth += 1;
-            if depth > num_nodes {
-                return Err(Box::new(FelsensteinError::CYCLES));
-            }
-        }
-        id
-    };
+    let mut height = vec![0_u32; num_nodes];
 
-    /* Initialization: initialize children counters with 0, then go once through the vector, incrementing the child counter for the parent of the current node.
-    Iteration:
-        Find all nodes with counter = 0
-        Decrement the counters of their parents
-        Pop the chosen nodes from the tree and add them to the resulting sequence. (*)
-    For now, popping the children in the (*) step is replaced by setting children counter for the chosen nodes to -100.
-    */
-
-    /* Initialization */
-    let mut num_children: Vec<i32> = vec![0_i32; num_nodes];
-
-    for node in raw_tree.iter() {
-        if node.parent >= 0 {
-            num_children[node.parent as usize] += 1;
+    // Assign min height to each node. Worst case complexity: O(n^2), but more like N*log(N)
+    for i in 0..num_leaves {
+        let mut node = i as usize;
+        let mut h = 0;
+        while parents[node] >= 0 {
+            h += 1;
+            node = parents[node] as usize;
+            height[node] = height[node].min(h);
         }
     }
 
-    let num_leaves = num_children.iter().filter(|num| **num == 0).count();
+    let mut indices = (0..num_nodes as u32).collect::<Vec<u32>>();
+    indices.sort_by_key(|&id| height[id as usize]);
 
-    /* Step */
-    let mut ordered_ids = Vec::<usize>::with_capacity(num_nodes);
-    while num_children[root_id] > 0 {
-        let leaves: Vec<usize> = (0..num_nodes)
-            .filter(|node_id| num_children[*node_id] == 0)
-            .collect();
-        for node_id in leaves.iter() {
-            let parent_id = raw_tree[*node_id].parent as usize;
-            num_children[parent_id] -= 1;
-            num_children[*node_id] = -100;
-        }
-        ordered_ids.extend(leaves);
-    }
-    ordered_ids.push(root_id);
-
-    /* Index map */
-    let mut new_from_old = vec![1_000_000_usize; num_nodes];
-    for (new_id, old_id) in ordered_ids.iter().enumerate() {
-        new_from_old[*old_id] = new_id;
-    }
-
-    /* Children ids */
-
-    let mut left = vec![None as Option<usize>; num_nodes];
-    let mut right = vec![None as Option<usize>; num_nodes];
-    let mut children_of_root = Vec::<usize>::with_capacity(3);
-    /* Want: "left[new_id] = new_from_old[raw_tree[old_from_new[new_id]].left]",
-    that is raw_tree[old_from_new[left[new_id]]].parent = old_from_new[new_id]
-    */
-    for (old_id, node) in raw_tree.iter().enumerate() {
-        if node.parent == -1 {
-            continue;
-        }
-        if node.parent as usize == root_id {
-            children_of_root.push(new_from_old[old_id]);
-            continue;
-        }
-        let new_id = new_from_old[old_id];
-        let parent_old_id = node.parent as usize;
-        let parent_new_id = new_from_old[parent_old_id];
-        if left[parent_new_id].is_none() {
-            left[parent_new_id] = Some(new_id);
-        } else if right[parent_new_id].is_none() {
-            right[parent_new_id] = Some(new_id);
+    let mut new_parents = vec![TreeNode{parent : 0, left : None, right: None}; num_nodes];
+    let mut childs: Vec<Vec<u32>> = vec![vec![]; num_nodes];
+    let mut root_id = 0;
+    for (new_id, &old_id) in indices.iter().enumerate() {
+        if parents[old_id as usize] < 0 {
+            root_id = new_id;
         } else {
-            dbg!(parent_old_id);
-            dbg!(parent_new_id);
-            return Err(Box::new(FelsensteinError::TOO_MANY_CHILDREN));
+            let parent_id = parents[old_id as usize] as u32;
+            new_parents[new_id].parent = parent_id;
+            childs[parent_id as usize].push(new_id as u32);
         }
     }
 
-    /* Remapping */
+    
 
-    let mut tree = Vec::<TreeNode>::with_capacity(num_nodes);
-    let mut distances = Vec::<Float>::with_capacity(num_nodes);
-    let mut sequences = Vec::<String>::with_capacity(num_leaves);
+    todo!()
 
-    /* TODO deserialize sequences into a separate vector to avoid copy */
-    for old_id in ordered_ids[0..num_leaves].iter() {
-        let seq = raw_tree[*old_id].sequence.as_deref();
-        sequences.push(String::from(seq.unwrap()));
-    }
-
-    for (new_id, old_id) in ordered_ids[..num_nodes - 1].iter().enumerate() {
-        let distance = raw_tree[*old_id].distance.unwrap();
-        distances.push(distance);
-
-        let parent_old_id = raw_tree[*old_id].parent as usize;
-        let parent_new_id = new_from_old[parent_old_id];
-        tree.push(TreeNode {
-            parent: parent_new_id,
-            left: left[new_id],
-            right: right[new_id],
-        });
-    }
-    /* root */
-    distances.push(Float::NEG_INFINITY);
-    tree.push(TreeNodeId {
-        parent: children_of_root[0],
-        left: children_of_root.get(1).copied(),
-        right: children_of_root.get(2).copied(),
-    });
-
-    Ok((tree, distances, sequences))
 }
