@@ -37,8 +37,7 @@ impl FTreeBackend<Float> {
 
         let tree;
         let mut distances;
-        let sequences_raw;
-        (tree, distances, sequences_raw) = preprocess_weak(&raw_tree)?;
+        (tree, distances, _) = preprocess_weak(&raw_tree)?;
 
         distances
             .iter_mut()

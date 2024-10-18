@@ -1,5 +1,3 @@
-use itertools::process_results;
-
 use std::error::Error;
 
 use crate::data_types::*;
@@ -7,44 +5,9 @@ use crate::io::*;
 use crate::tree::*;
 
 impl FelsensteinError {
-    const SEQ_LENGTH: Self =
-        Self::DeserializationError("Tree leaves contain sequences of different lengths");
     const TOO_MANY_CHILDREN: Self =
         Self::DeserializationError("Incorrect format: a non-root node has more than two children");
     const CYCLES: Self = Self::DeserializationError("There are cycles in the input data");
-}
-
-pub fn try_residue_sequences_from_strings<Residue>(
-    sequences_raw: &[String],
-) -> Result<na::DMatrix<Residue>, FelsensteinError>
-where
-    Residue: ResidueTrait,
-{
-    let num_leaves = sequences_raw.len();
-
-    let seq_length = sequences_raw[0].len();
-
-    let sequences_flat = process_results(
-        sequences_raw.iter().map(|s| {
-            if s.len() == seq_length {
-                Ok(s)
-            } else {
-                Err(FelsensteinError::SEQ_LENGTH)
-            }
-        }),
-        |iter| {
-            iter.flat_map(|s| Residue::try_deserialize_string_iter(s))
-                .collect::<Result<Vec<Residue>, FelsensteinError>>()
-        },
-    )??;
-
-    let sequences_2d = na::DMatrix::from_vec_storage(na::VecStorage::new(
-        na::Dyn(seq_length),
-        na::Dyn(num_leaves),
-        sequences_flat,
-    ))
-    .transpose();
-    Ok(sequences_2d)
 }
 
 /// Weak preprocessing: without level batching.

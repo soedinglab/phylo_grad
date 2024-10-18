@@ -62,12 +62,3 @@ impl std::fmt::Display for FelsensteinError {
     }
 }
 impl std::error::Error for FelsensteinError {}
-
-impl FelsensteinError {
-    pub const INVALID_CHAR: Self =
-        Self::DeserializationError("Invalid character in residue sequence");
-    /*
-    pub fn invalid_residue(s: &str) -> Self {
-        Self::DeserializationError(format!("Invalid residue:{}", s))
-    }*/
-}

@@ -32,11 +32,6 @@ fn process_likelihood<F: FloatTrait, const DIM: usize>(
     let grad_log_p_outgoing = softmax(lse_arg.as_view());
     (log_likelihood_column, grad_log_p_outgoing)
 }
-pub struct InferenceResult<F, const DIM: usize> {
-    pub log_likelihood_total: Vec<F>,
-    pub grad_rate_total: Vec<na::SMatrix<F, DIM, DIM>>,
-    pub grad_log_prior_total: Vec<na::SVector<F, DIM>>,
-}
 
 fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
     grad_log_p_root: na::SVectorView<F, DIM>,
@@ -103,7 +98,6 @@ struct TrainColumnParamResult<F, const DIM: usize> {
     log_likelihood: F,
     grad_delta: na::SMatrix<F, DIM, DIM>,
     grad_sqrt_pi: na::SVector<F, DIM>,
-    grad_rate: na::SMatrix<F, DIM, DIM>,
 }
 
 fn train_column_param<F: FloatTrait, const DIM: usize>(
@@ -122,7 +116,6 @@ fn train_column_param<F: FloatTrait, const DIM: usize>(
                 log_likelihood: <F as num_traits::Float>::neg_infinity(),
                 grad_delta: na::SMatrix::<F, DIM, DIM>::zeros(),
                 grad_sqrt_pi: na::SVector::<F, DIM>::zeros(),
-                grad_rate: na::SMatrix::<F, DIM, DIM>::zeros(),
             }
         }
     };
@@ -158,7 +151,6 @@ fn train_column_param<F: FloatTrait, const DIM: usize>(
         log_likelihood,
         grad_delta,
         grad_sqrt_pi,
-        grad_rate,
     }
 }
 
