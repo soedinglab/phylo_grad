@@ -59,24 +59,19 @@ where
         })
     }
 
-    fn infer_param_unpaired<const DIM: usize, D>(
+    fn infer_param_unpaired<const DIM: usize>(
         &self,
-        idx: &[usize],
-        deltas: &[na::SMatrix<Float, DIM, DIM>],
+        leaf_log_p: &[Vec<na::SVector<Float, DIM>>],
+        S: &[na::SMatrix<Float, DIM, DIM>],
         sqrt_pi: &[na::SVector<Float, DIM>],
-        distributions: &[D],
     ) -> InferenceResultParam<Float, DIM>
-    where
-        D: Distribution<R, Float, Value = na::SVector<Float, DIM>>,
     {
         train_parallel_param_unpaired(
-            idx,
-            self.residue_sequences_2d.as_view(),
-            deltas,
+            leaf_log_p,
+            S,
             sqrt_pi,
             &(self.tree),
-            &(self.distances),
-            distributions,
+            &(self.distances)
         )
     }
 }
@@ -198,6 +193,25 @@ where
     .into_pyarray_bound(py)
 }
 
+fn to_vec_DIM<F : FloatTrait, const DIM : usize>(py_array2: ArrayView2<'_, F>) -> Vec<na::SVector<F, DIM>> {
+    py_array2
+        .axis_iter(Axis(0))
+        .map(|py_array1| na_1d_from_python::<F, DIM>(py_array1))
+        .collect()
+}
+fn vec_leaf_p_from_python<'py, F : FloatTrait, const DIM : usize>(
+    py_array3: PyReadonlyArray3<'py, F>,
+) -> Vec<Vec<na::SVector<F, DIM>>>
+{
+
+    let ndarray = py_array3.as_array();
+    let vec: Vec<Vec<na::SVector<F, DIM>>> = ndarray
+        .axis_iter(Axis(0))
+        .map(|nodes_axis| to_vec_DIM(nodes_axis))
+        .collect();
+    vec
+}
+
 impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResult<F, DIM>
 where
     F: numpy::Element + na::Scalar + Copy,
@@ -242,29 +256,6 @@ where
     }
 }
 
-impl<F, const DIM: usize> IntoPy<PyObject> for InferenceResultParamCommonRate<F, DIM>
-where
-    F: numpy::Element + na::Scalar + Copy,
-{
-    fn into_py<'py>(self, py: Python<'_>) -> PyObject {
-        let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
-        let grad_delta_py = na_2d_into_python(self.grad_delta, py);
-        let grad_sqrt_pi_py = na_1d_into_python(self.grad_sqrt_pi, py);
-        let grad_rate_py = na_2d_into_python(self.grad_rate, py);
-
-        let result: HashMap<String, PyObject> = [
-            ("log_likelihood".to_string(), log_likelihood_total_py.into()),
-            ("grad_delta".to_string(), grad_delta_py.into()),
-            ("grad_sqrt_pi".to_string(), grad_sqrt_pi_py.into()),
-            ("grad_rate".to_string(), grad_rate_py.into()),
-        ]
-        .into_iter()
-        .collect();
-
-        result.into_py(py)
-    }
-}
-
 #[pyclass]
 struct FTree {
     backend: FTreeBackend<Float, Residue>,
@@ -284,59 +275,26 @@ impl FTree {
         }
     }
 
-    #[pyo3(signature=(idx, deltas, sqrt_pi, gaps = false, p_none = None))]
+    #[pyo3(signature=(leaf_log_p, s, sqrt_pi))]
     fn infer_param_unpaired<'py>(
         self_: PyRef<'py, Self>,
-        idx: PyReadonlyArray1<'py, usize>,
-        deltas: PyReadonlyArray3<'py, Float>,
+        leaf_log_p: PyReadonlyArray3<'py, Float>,
+        s : PyReadonlyArray3<'py, Float>,
         sqrt_pi: PyReadonlyArray2<'py, Float>,
-        gaps: bool,
-        p_none: Option<PyReadonlyArray2<'py, Float>>,
     ) -> PyResult<PyObject> {
         let backend = &self_.backend;
         let py = self_.py();
 
-        let idx_vec: Vec<usize> = vec_0d_from_python(idx);
-
-        let (_, seq_length) = backend.residue_sequences_2d.shape();
-
         let result_py: PyObject;
-        if !gaps {
-            let distributions: Vec<DistNoGaps<4>> = match p_none {
-                Some(pyarr2) => pyarr2
-                    .as_array()
-                    .axis_iter(Axis(0))
-                    .map(|slice| na::SVector::<Float, 4>::from_iterator(slice.iter().copied()))
-                    .map(|p_none| DistNoGaps {
-                        p_none: Some(p_none),
-                    })
-                    .collect(),
-                None => vec![DistNoGaps { p_none: None }; seq_length],
-            };
 
-            if distributions.len() != seq_length {
-                return Err(PyValueError::new_err(
-                    "p_none should have shape (4, seq_length)",
-                ));
-            }
+        let s_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(s);
+        let sqrt_pi_vec: Vec<na::SVector<Float, 4>> = vec_1d_from_python(sqrt_pi);
+        let leaf_log_p_vec: Vec<Vec<na::SVector<Float, 4>>> = vec_leaf_p_from_python(leaf_log_p);
 
-            let deltas_vec: Vec<na::SMatrix<Float, 4, 4>> = vec_2d_from_python(deltas);
-            let sqrt_pi_vec: Vec<na::SVector<Float, 4>> = vec_1d_from_python(sqrt_pi);
+        let result = backend.infer_param_unpaired(&leaf_log_p_vec, &s_vec, &sqrt_pi_vec);
 
-            let result: InferenceResultParam<Float, 4> =
-                backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
-            result_py = result.into_py(py);
-        } else {
-            let distributions = vec![DistGaps {}; seq_length];
-
-            let deltas_vec: Vec<na::SMatrix<Float, 5, 5>> = vec_2d_from_python(deltas);
-            let sqrt_pi_vec: Vec<na::SVector<Float, 5>> = vec_1d_from_python(sqrt_pi);
-
-            let result: InferenceResultParam<Float, 5> =
-                backend.infer_param_unpaired(&idx_vec, &deltas_vec, &sqrt_pi_vec, &distributions);
-            result_py = result.into_py(py);
-        }
-        Ok(result_py)
+        Ok(result.into_py(py))
+        
     }
 }
 

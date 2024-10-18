@@ -19,6 +19,7 @@ where
         + Sum
         + na::RealField
         + nalgebra_lapack::SymmetricEigenScalar
+        + numpy::Element
 {
     const EPS_LOG : Self;
     const EPS_DIV: Self; // Minimum value for sqrt_pi
