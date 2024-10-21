@@ -35,7 +35,7 @@ impl<F: FloatTrait, const DIM : usize> FTreeBackend<F, DIM> {
         let leaf_log_p = leaf_log_p.as_array();
         let leaf_log_p_shape = leaf_log_p.shape(); // [L num_leaves, DIM]
         assert!(DIM == leaf_log_p_shape[2]);
-        let tree = topological_preprocess::<F>(parents, leaf_log_p_shape[1] as u32).expect("Tree topology is invalid");
+        let (tree, distances) = topological_preprocess::<F>(parents, distances, leaf_log_p_shape[1] as u32).expect("Tree topology is invalid");
         let leaf_log_p = vec_leaf_p_from_python(leaf_log_p);
 
         dbg!(leaf_log_p.len());

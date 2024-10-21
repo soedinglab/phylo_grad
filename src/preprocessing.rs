@@ -17,8 +17,9 @@ pub enum TreeError {
 ///     Add children indices and create Vec<TreeNode>
 pub fn topological_preprocess<F: FloatTrait>(
     parents: Vec<i32>,
+    dist: Vec<F>,
     num_leaves: u32,
-) -> Result<Vec<TreeNode>, TreeError> {
+) -> Result<(Vec<TreeNode>, Vec<F>), TreeError> {
     let num_nodes = parents.len();
 
     let mut height = vec![0u32; num_nodes];
@@ -63,6 +64,11 @@ pub fn topological_preprocess<F: FloatTrait>(
         .map(|&x| new_parents[x as usize])
         .collect::<Vec<i32>>();
 
+    let new_dist = indices
+        .iter()
+        .map(|&x| dist[x as usize])
+        .collect::<Vec<F>>();
+    
     drop(parents);
 
     let mut tree_nodes = vec![
@@ -110,5 +116,5 @@ pub fn topological_preprocess<F: FloatTrait>(
         }
     }
 
-    Ok(tree_nodes)
+    Ok((tree_nodes, new_dist))
 }
