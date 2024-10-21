@@ -2,10 +2,6 @@ use std::iter::Sum;
 
 use logsumexp::LogSumExp;
 
-pub type Float = f64;
-//pub type ColumnId = usize;
-//pub type Id = usize;
-
 pub trait FloatTrait
 where
     Self: num_traits::Float
@@ -45,20 +41,3 @@ impl FloatTrait for f64 {
     const EPS_LOG: Self = 1e-100;
     const EPS_DIV: Self = 1e-10;
 }
-
-#[derive(Debug)]
-pub enum FelsensteinError {
-    LogicError(&'static str),
-    DeserializationError(&'static str),
-}
-
-impl std::fmt::Display for FelsensteinError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = match self {
-            Self::LogicError(str) => str,
-            Self::DeserializationError(str) => str,
-        };
-        write!(f, "{}", str)
-    }
-}
-impl std::error::Error for FelsensteinError {}

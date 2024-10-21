@@ -15,7 +15,7 @@ fn forward_column<F: FloatTrait, const DIM: usize>(
 
     /* TODO remove copy */
     for i in num_leaves..(num_nodes - 1) {
-        let log_p_new = forward_node(i, tree, &leaf_log_p, forward_data).unwrap();
+        let log_p_new = forward_node(i, tree, &leaf_log_p, forward_data);
         leaf_log_p.push(log_p_new);
     }
     let log_p_root = forward_root(num_nodes - 1, tree, &leaf_log_p, forward_data);

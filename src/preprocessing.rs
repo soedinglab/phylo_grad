@@ -1,13 +1,13 @@
-use std::error::Error;
+use std::collections::HashMap;
+use std::u32;
 
 use crate::data_types::*;
-use crate::io::*;
 use crate::tree::*;
 
-impl FelsensteinError {
-    const TOO_MANY_CHILDREN: Self =
-        Self::DeserializationError("Incorrect format: a non-root node has more than two children");
-    const CYCLES: Self = Self::DeserializationError("There are cycles in the input data");
+#[derive(Debug)]
+pub enum TreeError {
+    NotBinary,
+    RootNotThreeChildren,
 }
 
 /// Weak preprocessing: without level batching.
@@ -15,13 +15,13 @@ impl FelsensteinError {
 ///     Sort range(id) with `|id| height(node[id])` as key
 ///     Remap indices
 ///     Add children indices and create Vec<TreeNode>
-pub fn preprocess_weak<F: FloatTrait>(
+pub fn topological_preprocess<F: FloatTrait>(
     parents: Vec<i32>,
     num_leaves: u32,
-) -> Result<(Vec<TreeNode>, Vec<u32>), Box<dyn Error>> {
+) -> Result<Vec<TreeNode>, TreeError> {
     let num_nodes = parents.len();
 
-    let mut height = vec![0_u32; num_nodes];
+    let mut height = vec![0u32; num_nodes];
 
     // Assign min height to each node. Worst case complexity: O(n^2), but more like N*log(N)
     for i in 0..num_leaves {
@@ -30,28 +30,85 @@ pub fn preprocess_weak<F: FloatTrait>(
         while parents[node] >= 0 {
             h += 1;
             node = parents[node] as usize;
-            height[node] = height[node].min(h);
+            height[node] = height[node].max(h);
         }
     }
 
-    let mut indices = (0..num_nodes as u32).collect::<Vec<u32>>();
+    // Sort the internal nodes by height, make sure the sort is stable in the leaf nodes
+    let mut indices = (num_leaves..num_nodes as u32).collect::<Vec<u32>>();
     indices.sort_by_key(|&id| height[id as usize]);
+    let indices = (0..num_leaves)
+        .chain(indices.into_iter())
+        .collect::<Vec<u32>>();
+    let rev_mapping = indices
+        .iter()
+        .enumerate()
+        .map(|(i, &x)| (x as u32, i as u32))
+        .collect::<HashMap<u32, u32>>();
 
-    let mut new_parents = vec![TreeNode{parent : 0, left : None, right: None}; num_nodes];
+    // Change parents ids
+    let new_parents = parents
+        .iter()
+        .map(|&x| {
+            if x == -1 {
+                -1
+            } else {
+                rev_mapping[&(x as u32)] as i32
+            }
+        })
+        .collect::<Vec<i32>>();
+    // Permute parents
+    let new_parents = indices
+        .iter()
+        .map(|&x| new_parents[x as usize])
+        .collect::<Vec<i32>>();
+
+    drop(parents);
+
+    let mut tree_nodes = vec![
+        TreeNode {
+            parent: 0,
+            left: None,
+            right: None
+        };
+        num_nodes
+    ];
     let mut childs: Vec<Vec<u32>> = vec![vec![]; num_nodes];
+
     let mut root_id = 0;
-    for (new_id, &old_id) in indices.iter().enumerate() {
-        if parents[old_id as usize] < 0 {
-            root_id = new_id;
+    for i in 0..num_nodes {
+        if new_parents[i] < 0 {
+            root_id = i;
         } else {
-            let parent_id = parents[old_id as usize] as u32;
-            new_parents[new_id].parent = parent_id;
-            childs[parent_id as usize].push(new_id as u32);
+            let parent = new_parents[i];
+            tree_nodes[i].parent = parent as u32;
+            childs[parent as usize].push(i as u32);
         }
     }
 
-    
+    assert!(root_id == num_nodes - 1);
 
-    todo!()
+    for (idx, children) in childs.into_iter().enumerate() {
+        if idx == root_id {
+            if children.len() == 3 {
+                tree_nodes[idx].left = Some(children[0]);
+                tree_nodes[idx].right = Some(children[1]);
+                // We store the third child in the parent field
+                tree_nodes[idx].parent = children[2];
+            } else {
+                return Err(TreeError::RootNotThreeChildren);
+            }
+        } else {
+            if children.len() == 2 {
+                tree_nodes[idx].left = Some(children[0]);
+                tree_nodes[idx].right = Some(children[1]);
+            } else if children.len() == 0 {
+                // Leaf node
+            } else {
+                return Err(TreeError::NotBinary);
+            }
+        }
+    }
 
+    Ok(tree_nodes)
 }

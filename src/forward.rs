@@ -3,12 +3,6 @@ use crate::tree::*;
 
 use nalgebra_lapack::SymmetricEigen;
 
-impl FelsensteinError {
-    pub const LEAF: Self = Self::LogicError("forward_node called on a leaf");
-}
-
-/* TODO ForwardDataParam */
-
 pub struct ForwardData<F, const DIM: usize> {
     pub log_transition: Vec<LogTransitionForwardData<F, DIM>>,
 }
@@ -177,7 +171,7 @@ pub fn forward_node<F: FloatTrait, const DIM: usize>(
     tree: &[TreeNode],
     log_p: &[na::SVector<F, DIM>],
     forward_data: &ForwardData<F, DIM>,
-) -> Result<na::SVector<F, DIM>, FelsensteinError> {
+) -> na::SVector<F, DIM> {
     let node = &tree[id];
 
     let mut opt_running_sum: Option<na::SVector<F, DIM>> = None;
@@ -194,8 +188,8 @@ pub fn forward_node<F: FloatTrait, const DIM: usize>(
     }
 
     match opt_running_sum {
-        Some(result) => Ok(result),
-        None => Err(FelsensteinError::LEAF),
+        Some(result) => result,
+        None => panic!("Non-terminal node without children"),
     }
 }
 
@@ -208,6 +202,7 @@ pub fn forward_root<F: FloatTrait, const DIM: usize>(
     let root = &tree[id];
 
     let mut result = child_input(
+        //root uses the parent field to store the third child
         log_p[root.parent as usize].as_view(),
         &forward_data.log_transition[root.parent as usize],
     );
