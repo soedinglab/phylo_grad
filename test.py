@@ -27,10 +27,11 @@ def test_liklelihood():
     sqrt_pi = torch.sqrt(torch.nn.functional.softmax(torch.randn(119,4, dtype=torch.float64), dim = 1))
     torch_logP = torch_tree.log_likelihood(S, sqrt_pi)
     
-    rust_tree = felsenstein_rs.FTree('tree.tree', 1e-4)
     llp = leaf_log_p(tree)
+    np_tree = np.array([(par, dist) for (par, dist, _) in tree], dtype=np.float64)
+    rust_tree = felsenstein_rs.FTreeDouble(4, np_tree, llp, 1e-4)
     print(llp.shape)
-    result = rust_tree.infer_param_unpaired(llp, S.numpy(), sqrt_pi.numpy())
+    result = rust_tree.infer_param_unpaired(S.numpy(), sqrt_pi.numpy())
     
     print(result['log_likelihood'])
     print(torch_logP)
@@ -45,9 +46,10 @@ def test_grads():
     sqrt_pi = torch.sqrt(torch.nn.functional.softmax(torch.randn(119,4, dtype=torch.float64), dim = 1))
     torch_S_grad, torch_sqrt_pi_grad = felsenstein.gradients(torch_tree, S, sqrt_pi)
     
-    rust_tree = felsenstein_rs.FTree('tree.tree', 1e-4)
     llp = leaf_log_p(tree)
-    result = rust_tree.infer_param_unpaired(llp, S.detach().numpy(), sqrt_pi.detach().numpy())
+    np_tree = np.array([(par, dist) for (par, dist, _) in tree], dtype=np.float64)
+    rust_tree = felsenstein_rs.FTreeDouble(4, np_tree, llp, 1e-4)
+    result = rust_tree.infer_param_unpaired(S.detach().numpy(), sqrt_pi.detach().numpy())
     
     print(torch_sqrt_pi_grad)
     print(result['grad_sqrt_pi'])
