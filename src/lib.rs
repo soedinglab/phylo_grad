@@ -2,7 +2,7 @@
 extern crate nalgebra as na;
 
 use num_traits::Float;
-use numpy::ndarray::{Array, Array2, Array3, ArrayView1, ArrayView2, ArrayView3, Axis};
+use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
 use pyo3::{
     exceptions::PyValueError, pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy,
