@@ -6,3 +6,8 @@ rule fasta:
     input: "data/{dataset}/alignment.sto"
     output: "data/{dataset}/alignment.fasta"
     shell: "esl-reformat afa {input} > {output}"
+
+rule phylo:
+    input: "data/{dataset}/alignment.fasta"
+    output: "data/{dataset}/tree.nwk"
+    shell: "./FastTreeDbl {input} > {output}"
