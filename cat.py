@@ -7,7 +7,7 @@ def rate_matrix(shared, energies):
     """
     dtype = shared.dtype
     S = torch.zeros((20,20), dtype=dtype)
-    S[torch.triu_indices(20, 1)] = shared
+    S[*torch.triu_indices(20,20, offset= 1)] = shared
     
     sqrt_pi = torch.sqrt(torch.nn.functional.softmax(energies, dim=1))
     
