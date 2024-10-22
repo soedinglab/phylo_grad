@@ -35,7 +35,7 @@ else:
     
 optimizer = torch.optim.Adam([shared, energies], lr=0.01)
 
-for i in range(100):
+for i in range(5):
     optimizer.zero_grad()
     S, sqrt_pi = cat.rate_matrix(shared, energies)
     if rust:
