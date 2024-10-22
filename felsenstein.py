@@ -1,15 +1,6 @@
 import torch
 import numpy as np
 
-def g(x : torch.Tensor) -> torch.Tensor:
-    # Because pytorch does not correctly handle unmasked Nan in backprob we have to make sure to never create one
-    mask = torch.abs(x) < 1e-6
-    x1 = torch.where(mask, x, 0.0) # Used for the small values, 0 will give 1 and not Nan
-    x2 = torch.where(mask, 1.0, x) # Used for the big values, the small values will be set to 1 so they don't get Nan
-    
-    # Near 0 we use g(x) = 1 / (1 - x)
-    return torch.where(mask, 1 / (1 - x1), 2 * x2 / (1 - torch.exp(-2 * x2)))
-
 class FelsensteinNode:
     def __init__(self, time):
         self.children = []
@@ -26,7 +17,7 @@ class FelsensteinNode:
         rate = self.time * matrices
         mexp = torch.matrix_exp(rate)
         
-        self.log_transitions = torch.log(mexp)
+        self.log_transitions = torch.log(torch.max(mexp, torch.tensor(1e-20, dtype=mexp.dtype)))
         
         if len(self.children) > 0: # Inner node
             self.precomp = torch.zeros([1,1], dtype=matrices.dtype) # this will be broadcasted to [L,S]

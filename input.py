@@ -45,13 +45,13 @@ def seq_to_embedding(seq: str | None) -> torch.Tensor | None:
 def amino_to_embedding(seq: str | None) -> torch.Tensor | None:
     if seq is None:
         return None
-    onehot = torch.fill((len(seq), 20), -float('inf'))
+    onehot = torch.full((len(seq), 20), -float('inf'), dtype=torch.float64)
     for i, c in enumerate(seq):
         amino = amino_mapping[c]
         if amino < 20:
-            onehot[i,c] = 0
+            onehot[i,amino] = 0
         else:
-            onehot[i] = torch.zeros(20)
+            onehot[i] = torch.zeros(20, dtype=torch.float64)
             
     return onehot
         
