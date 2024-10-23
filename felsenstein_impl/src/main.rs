@@ -1,8 +1,7 @@
 use rand::{distributions::uniform::SampleUniform, prelude::Distribution, seq::SliceRandom};
 extern crate nalgebra as na;
-mod data_types;
 
-use crate::data_types::*;
+use felsenstein_impl::data_types::*;
 
 pub fn gen_tree_top(num_leaf: u32) -> Vec<i32> {
     let mut parents = vec![-2;num_leaf as usize];

@@ -2,7 +2,7 @@
 extern crate nalgebra as na;
 
 mod backward;
-mod data_types;
+pub mod data_types;
 mod forward;
 mod preprocessing;
 mod train;
