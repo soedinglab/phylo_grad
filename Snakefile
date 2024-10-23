@@ -16,4 +16,5 @@ rule time:
     input: "data/{dataset}/alignment.fasta",
            "data/{dataset}/tree.nwk"
     output: "data/{dataset}/time.txt"
+    threads: 16
     shell: "time python optimize.py {input} rust >> {output} && time python optimize.py {input} pytorch >> {output}"
