@@ -1,6 +1,9 @@
 [workspace]
-
+resolver = "2"
 members = [
     "felsenstein_impl",
     "felsenstein_rs"
 ]
+
+[profile.release]
+lto = true
