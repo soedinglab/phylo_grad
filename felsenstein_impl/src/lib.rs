@@ -23,7 +23,7 @@ use crate::preprocessing::*;
 use crate::train::*;
 use crate::tree::*;
 
-struct FTreeBackend<F, const DIM: usize> {
+pub struct FTreeBackend<F, const DIM: usize> {
     tree: Vec<TreeNodeId<u32>>,
     distances: Vec<F>,
     leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
@@ -35,17 +35,19 @@ impl<F: FloatTrait, const DIM : usize> FTreeBackend<F, DIM> {
         let leaf_log_p = leaf_log_p.as_array();
         let leaf_log_p_shape = leaf_log_p.shape(); // [L num_leaves, DIM]
         assert!(DIM == leaf_log_p_shape[2]);
-        let (tree, distances) = topological_preprocess::<F>(parents, distances, leaf_log_p_shape[1] as u32).expect("Tree topology is invalid");
         let leaf_log_p = vec_leaf_p_from_python(leaf_log_p);
 
-        dbg!(leaf_log_p.len());
-        dbg!(leaf_log_p[0].len());
+        Self::new_rust(parents, distances, leaf_log_p)        
+    }
+
+    pub fn new_rust(parents : Vec<i32>, distances : Vec<F>, leaf_log_p : Vec<Vec<na::SVector<F, DIM>>>) -> Self {
+        let (tree, distances) = topological_preprocess::<F>(parents, distances, leaf_log_p.len() as u32).expect("Tree topology is invalid");
 
         FTreeBackend {
             tree,
             distances,
             leaf_log_p,
-        }        
+        }
     }
 
     pub fn infer(&self, s: PyReadonlyArray3<'_, F>, sqrt_pi: PyReadonlyArray2<'_, F>) -> InferenceResultParam<F, DIM> {
