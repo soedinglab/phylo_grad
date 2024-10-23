@@ -8,6 +8,8 @@ mod preprocessing;
 mod train;
 mod tree;
 
+pub use train::InferenceResultParam;
+
 use crate::data_types::*;
 use crate::preprocessing::*;
 use crate::train::*;

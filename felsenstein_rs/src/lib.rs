@@ -1,6 +1,7 @@
 #![allow(non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
 
+use felsenstein_impl::data_types::FloatTrait;
 use num_traits::Float;
 use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
@@ -11,51 +12,30 @@ use pyo3::{
 
 use std::collections::HashMap;
 
-mod backward;
-mod data_types;
-mod forward;
-mod preprocessing;
-mod train;
-mod tree;
+use felsenstein_impl::{FTreeBackend, InferenceResultParam};
 
-use crate::data_types::*;
-use crate::preprocessing::*;
-use crate::train::*;
-use crate::tree::*;
+pub fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
+    tree: PyReadonlyArray2<'_, F>,
+    leaf_log_p: PyReadonlyArray3<'_, F>,
+    distance_threshold: F,
+) -> FTreeBackend<F, DIM> {
+    let (parents, distances) = array2tree(tree, distance_threshold);
+    let leaf_log_p = leaf_log_p.as_array();
+    let leaf_log_p_shape = leaf_log_p.shape(); // [L num_leaves, DIM]
+    assert!(DIM == leaf_log_p_shape[2]);
+    let leaf_log_p = vec_leaf_p_from_python(leaf_log_p);
 
-pub struct FTreeBackend<F, const DIM: usize> {
-    tree: Vec<TreeNodeId<u32>>,
-    distances: Vec<F>,
-    leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
+    FTreeBackend::new(parents, distances, leaf_log_p)
 }
 
-impl<F: FloatTrait, const DIM : usize> FTreeBackend<F, DIM> {
-    pub fn new(tree: PyReadonlyArray2<'_, F>, leaf_log_p: PyReadonlyArray3<'_, F>, distance_threshold : F) -> Self {
-        let (parents, distances) = array2tree(tree, distance_threshold);
-        let leaf_log_p = leaf_log_p.as_array();
-        let leaf_log_p_shape = leaf_log_p.shape(); // [L num_leaves, DIM]
-        assert!(DIM == leaf_log_p_shape[2]);
-        let leaf_log_p = vec_leaf_p_from_python(leaf_log_p);
-
-        Self::new_rust(parents, distances, leaf_log_p)        
-    }
-
-    pub fn new_rust(parents : Vec<i32>, distances : Vec<F>, leaf_log_p : Vec<Vec<na::SVector<F, DIM>>>) -> Self {
-        let (tree, distances) = topological_preprocess::<F>(parents, distances, leaf_log_p.len() as u32).expect("Tree topology is invalid");
-
-        FTreeBackend {
-            tree,
-            distances,
-            leaf_log_p,
-        }
-    }
-
-    pub fn infer(&self, s: PyReadonlyArray3<'_, F>, sqrt_pi: PyReadonlyArray2<'_, F>) -> InferenceResultParam<F, DIM> {
-        let s_vec: Vec<na::SMatrix<F, DIM, DIM>> = vec_2d_from_python(s);
-        let sqrt_pi_vec: Vec<na::SVector<F, DIM>> = vec_1d_from_python(sqrt_pi);
-
-        train_parallel_param_unpaired(&self.leaf_log_p, &s_vec, &sqrt_pi_vec, &self.tree, &self.distances)
-    }
+pub fn backend_infer_py<F: FloatTrait + numpy::Element, const DIM: usize>(
+    backend: &FTreeBackend<F, DIM>,
+    s: PyReadonlyArray3<'_, F>,
+    sqrt_pi: PyReadonlyArray2<'_, F>,
+) -> InferenceResultParam<F, DIM> {
+    let s = vec_2d_from_python(s);
+    let sqrt_pi = vec_1d_from_python(sqrt_pi);
+    backend.infer(s, sqrt_pi)
 }
 
 enum FTreeBackendSingle {
@@ -154,7 +134,7 @@ where
     .into_pyarray_bound(py)
 }
 
-fn to_vec_DIM<F: FloatTrait, const DIM: usize>(
+fn to_vec_DIM<F: FloatTrait + numpy::Element, const DIM: usize>(
     py_array2: ArrayView2<'_, F>,
 ) -> Vec<na::SVector<F, DIM>> {
     py_array2
@@ -163,7 +143,7 @@ fn to_vec_DIM<F: FloatTrait, const DIM: usize>(
         .collect()
 }
 
-fn vec_leaf_p_from_python<'py, F: FloatTrait, const DIM: usize>(
+fn vec_leaf_p_from_python<'py, F: FloatTrait + numpy::Element, const DIM: usize>(
     py_array3: ArrayView3<F>,
 ) -> Vec<Vec<na::SVector<F, DIM>>> {
     let ndarray = py_array3;
@@ -174,30 +154,40 @@ fn vec_leaf_p_from_python<'py, F: FloatTrait, const DIM: usize>(
     vec
 }
 
-impl<F: FloatTrait, const DIM: usize> IntoPy<PyObject> for InferenceResultParam<F, DIM> {
-    fn into_py<'py>(self, py: Python<'_>) -> PyObject {
-        let log_likelihood_total_py = vec_0d_into_python(self.log_likelihood_total, py);
-        let grad_delta_total_py = vec_2d_into_python(self.grad_delta_total, py);
-        let grad_sqrt_pi_total_py = vec_1d_into_python(self.grad_sqrt_pi_total, py);
+fn inference_into_py<'py, F : FloatTrait + numpy::Element, const DIM : usize>(result : InferenceResultParam<F, DIM>, py: Python<'_>) -> PyObject {
+    let log_likelihood_total_py = vec_0d_into_python(result.log_likelihood_total, py);
+    let grad_delta_total_py = vec_2d_into_python(result.grad_delta_total, py);
+    let grad_sqrt_pi_total_py = vec_1d_into_python(result.grad_sqrt_pi_total, py);
 
-        let result: HashMap<String, PyObject> = [
-            ("log_likelihood".to_string(), log_likelihood_total_py.into()),
-            ("grad_delta".to_string(), grad_delta_total_py.into()),
-            ("grad_sqrt_pi".to_string(), grad_sqrt_pi_total_py.into()),
-        ]
-        .into_iter()
-        .collect();
+    let result: HashMap<String, PyObject> = [
+        ("log_likelihood".to_string(), log_likelihood_total_py.into()),
+        ("grad_delta".to_string(), grad_delta_total_py.into()),
+        ("grad_sqrt_pi".to_string(), grad_sqrt_pi_total_py.into()),
+    ]
+    .into_iter()
+    .collect();
 
-        result.into_py(py)
-    }
+    result.into_py(py)
 }
 
-fn array2tree<F: FloatTrait>(tree: PyReadonlyArray2<'_, F>, distance_threshold : F) -> (Vec<i32>, Vec<F>) {
+fn array2tree<F: FloatTrait + numpy::Element>(
+    tree: PyReadonlyArray2<'_, F>,
+    distance_threshold: F,
+) -> (Vec<i32>, Vec<F>) {
     let tree = tree.as_array();
     assert!(tree.shape()[1] == 2);
-    let distances = tree.column(1).map(|x| Float::max(*x, distance_threshold)).to_vec();
-    let parents = tree.column(0).map(|x| x.to_i32().expect("Tree parent ids should be integers fitting into i32")).to_vec();
-    
+    let distances = tree
+        .column(1)
+        .map(|x| Float::max(*x, distance_threshold))
+        .to_vec();
+    let parents = tree
+        .column(0)
+        .map(|x| {
+            x.to_i32()
+                .expect("Tree parent ids should be integers fitting into i32")
+        })
+        .to_vec();
+
     (parents, distances)
 }
 
@@ -210,26 +200,42 @@ struct FTreeDouble {
 impl FTreeDouble {
     #[new]
     fn py_new(
-        k : u32,
+        k: u32,
         tree: PyReadonlyArray2<'_, f64>,
         leaf_log_p: PyReadonlyArray3<'_, f64>,
         distance_threshold: f64,
     ) -> PyResult<Self> {
         if k == 4 {
             Ok(FTreeDouble {
-                backend: FTreeBackendDouble::K4(FTreeBackend::new(tree, leaf_log_p, distance_threshold)),
+                backend: FTreeBackendDouble::K4(backend_from_py(
+                    tree,
+                    leaf_log_p,
+                    distance_threshold,
+                )),
             })
         } else if k == 5 {
             Ok(FTreeDouble {
-                backend: FTreeBackendDouble::K5(FTreeBackend::new(tree, leaf_log_p, distance_threshold)),
+                backend: FTreeBackendDouble::K5(backend_from_py(
+                    tree,
+                    leaf_log_p,
+                    distance_threshold,
+                )),
             })
         } else if k == 16 {
             Ok(FTreeDouble {
-                backend: FTreeBackendDouble::K16(FTreeBackend::new(tree, leaf_log_p, distance_threshold)),
+                backend: FTreeBackendDouble::K16(backend_from_py(
+                    tree,
+                    leaf_log_p,
+                    distance_threshold,
+                )),
             })
         } else if k == 20 {
             Ok(FTreeDouble {
-                backend: FTreeBackendDouble::K20(FTreeBackend::new(tree, leaf_log_p, distance_threshold)),
+                backend: FTreeBackendDouble::K20(backend_from_py(
+                    tree,
+                    leaf_log_p,
+                    distance_threshold,
+                )),
             })
         } else {
             Err(PyValueError::new_err("unsupported k value"))
@@ -246,10 +252,10 @@ impl FTreeDouble {
         let py = self_.py();
 
         match backend {
-            FTreeBackendDouble::K4(backend) => Ok(backend.infer(s, sqrt_pi).into_py(py)),
-            FTreeBackendDouble::K5(backend) => Ok(backend.infer(s, sqrt_pi).into_py(py)),
-            FTreeBackendDouble::K16(backend) => Ok(backend.infer(s, sqrt_pi).into_py(py)),
-            FTreeBackendDouble::K20(backend) => Ok(backend.infer(s, sqrt_pi).into_py(py)),
+            FTreeBackendDouble::K4(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
+            FTreeBackendDouble::K5(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
+            FTreeBackendDouble::K16(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
+            FTreeBackendDouble::K20(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
         }
     }
 }
@@ -262,26 +268,42 @@ struct FTreeSingle {
 impl FTreeSingle {
     #[new]
     fn py_new(
-        k : u32,
+        k: u32,
         tree: PyReadonlyArray2<'_, f32>,
         leaf_log_p: PyReadonlyArray3<'_, f32>,
         distance_threshold: f32,
     ) -> PyResult<Self> {
         if k == 4 {
             Ok(FTreeSingle {
-                backend: FTreeBackendSingle::K4(FTreeBackend::new(tree, leaf_log_p, distance_threshold)),
+                backend: FTreeBackendSingle::K4(backend_from_py(
+                    tree,
+                    leaf_log_p,
+                    distance_threshold,
+                )),
             })
         } else if k == 5 {
             Ok(FTreeSingle {
-                backend: FTreeBackendSingle::K5(FTreeBackend::new(tree, leaf_log_p, distance_threshold)),
+                backend: FTreeBackendSingle::K5(backend_from_py(
+                    tree,
+                    leaf_log_p,
+                    distance_threshold,
+                )),
             })
         } else if k == 16 {
             Ok(FTreeSingle {
-                backend: FTreeBackendSingle::K16(FTreeBackend::new(tree, leaf_log_p, distance_threshold)),
+                backend: FTreeBackendSingle::K16(backend_from_py(
+                    tree,
+                    leaf_log_p,
+                    distance_threshold,
+                )),
             })
         } else if k == 20 {
             Ok(FTreeSingle {
-                backend: FTreeBackendSingle::K20(FTreeBackend::new(tree, leaf_log_p, distance_threshold)),
+                backend: FTreeBackendSingle::K20(backend_from_py(
+                    tree,
+                    leaf_log_p,
+                    distance_threshold,
+                )),
             })
         } else {
             Err(PyValueError::new_err("unsupported k value"))
@@ -298,10 +320,10 @@ impl FTreeSingle {
         let py = self_.py();
 
         match backend {
-            FTreeBackendSingle::K4(backend) => Ok(backend.infer(s, sqrt_pi).into_py(py)),
-            FTreeBackendSingle::K5(backend) => Ok(backend.infer(s, sqrt_pi).into_py(py)),
-            FTreeBackendSingle::K16(backend) => Ok(backend.infer(s, sqrt_pi).into_py(py)),
-            FTreeBackendSingle::K20(backend) => Ok(backend.infer(s, sqrt_pi).into_py(py)),
+            FTreeBackendSingle::K4(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
+            FTreeBackendSingle::K5(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
+            FTreeBackendSingle::K16(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
+            FTreeBackendSingle::K20(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
         }
     }
 }

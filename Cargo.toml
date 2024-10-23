@@ -2,4 +2,5 @@
 
 members = [
     "felsenstein_impl",
+    "felsenstein_rs"
 ]
