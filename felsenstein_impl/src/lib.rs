@@ -1,7 +1,7 @@
 #![allow(non_snake_case, clippy::needless_range_loop)]
 extern crate nalgebra as na;
 
-mod backward;
+pub mod backward;
 pub mod data_types;
 mod forward;
 mod preprocessing;

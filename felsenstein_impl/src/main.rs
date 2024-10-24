@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use rand::{distributions::uniform::SampleUniform, prelude::Distribution, seq::SliceRandom};
 extern crate nalgebra as na;
 
@@ -43,11 +45,37 @@ pub fn gen_dist<F : FloatTrait + SampleUniform>(num_nodes : u32) -> Vec<F> {
 }
 
 use f64 as Float;
+const DIM : usize = 20;
 
 pub fn main() {
-    let parents = gen_tree_top(10);
+    let num_leaf = 10;
+    let L = 300;
+
+
+    let parents = gen_tree_top(num_leaf);
     let dist = gen_dist::<Float>(parents.len() as u32);
 
+    let leaf_log_p : Vec<Vec<na::SVector<Float, DIM>>> = (0..L).map(|_| {
+        (0..num_leaf).map(|_| {
+            let init = na::SVector::<Float, DIM>::from_iterator((0..DIM).map(|_| rand::random()));
+            let dist = felsenstein_impl::backward::softmax(init.as_view());
+            dist.map(Float::ln)
+        }).collect()
+    }).collect();
 
+    let backend = felsenstein_impl::FTreeBackend::new(parents, dist, leaf_log_p);
+    
+    let s : Vec<_> = (0..L).map(|_| {
+        na::SMatrix::<Float, DIM, DIM>::from_iterator((0..DIM*DIM).map(|_| rand::random::<Float>().exp()))
+    }).collect();
 
+    let sqrt_pi : Vec<_> = (0..L).map(|_| {
+        let init = na::SVector::<Float, DIM>::from_iterator((0..DIM).map(|_| rand::random()));
+        let dist = felsenstein_impl::backward::softmax(init.as_view());
+        dist.map(Float::sqrt)
+    }).collect();
+
+    let result = backend.infer(s, sqrt_pi);
+
+    std::hint::black_box(result);
 }

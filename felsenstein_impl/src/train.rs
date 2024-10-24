@@ -154,6 +154,7 @@ fn train_column_param<F: FloatTrait, const DIM: usize>(
     }
 }
 
+#[derive(Debug)]
 pub struct InferenceResultParam<F, const DIM: usize> {
     pub log_likelihood_total: Vec<F>,
     pub grad_delta_total: Vec<na::SMatrix<F, DIM, DIM>>,
