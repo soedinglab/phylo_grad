@@ -23,7 +23,7 @@ pub struct FTreeBackend<F, const DIM: usize> {
 
 impl<F: FloatTrait, const DIM : usize> FTreeBackend<F, DIM> {
     pub fn new(parents : Vec<i32>, distances : Vec<F>, leaf_log_p : Vec<Vec<na::SVector<F, DIM>>>) -> Self {
-        let (tree, distances) = topological_preprocess::<F>(parents, distances, leaf_log_p.len() as u32).expect("Tree topology is invalid");
+        let (tree, distances) = topological_preprocess::<F>(parents, distances, leaf_log_p[0].len() as u32).expect("Tree topology is invalid");
 
         FTreeBackend {
             tree,
