@@ -29,7 +29,7 @@ fn process_likelihood<F: FloatTrait, const DIM: usize>(
 ) -> (F, na::SVector<F, DIM>) {
     let lse_arg = log_p_root + log_p_prior;
     let log_likelihood_column = F::logsumexp(lse_arg.iter());
-    let grad_log_p_outgoing = softmax(lse_arg.as_view());
+    let grad_log_p_outgoing = softmax(&lse_arg);
     (log_likelihood_column, grad_log_p_outgoing)
 }
 

@@ -5,17 +5,19 @@ pub struct BackwardData<F, const DIM: usize> {
     pub grad_log_p: na::SVector<F, DIM>,
 }
 
-pub fn softmax<F: FloatTrait, const N: usize>(x: na::SVectorView<F, N>) -> na::SVector<F, N> {
+pub fn softmax<F: FloatTrait, const N: usize>(x: &na::SVector<F, N>) -> na::SVector<F, N> {
     let x_max = x.max();
 
     let mut result = x.add_scalar(-x_max);
-    result = result.map(num_traits::Float::exp);
 
+    unsafe {
+        F::vec_exp(std::mem::transmute::<_, &mut [F;N]>(&mut result.data.0));
+    }
     result /= result.sum();
     result
 }
 
-fn d_ln_vjp<F : FloatTrait, const DIM: usize>(
+fn d_ln_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: na::SMatrixView<F, DIM, DIM>,
     argument: na::SMatrixView<F, DIM, DIM>,
 ) -> na::SMatrix<F, DIM, DIM> {
@@ -93,7 +95,7 @@ fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
 }
 
 /// Backward pass for rho(W) = 1/sqrt_pi @ S @ sqrt_pi
-pub fn d_param<F : FloatTrait, const DIM: usize>(
+pub fn d_param<F: FloatTrait, const DIM: usize>(
     cotangent_vector: na::SMatrixView<F, DIM, DIM>,
     param: &ParamPrecomp<F, DIM>,
 ) -> (na::SMatrix<F, DIM, DIM>, na::SVector<F, DIM>) {
@@ -153,7 +155,7 @@ pub fn d_param<F : FloatTrait, const DIM: usize>(
     (grad_delta, grad_sqrt_pi)
 }
 
-fn child_input_forward_data<F : FloatTrait, const DIM: usize>(
+fn child_input_forward_data<F: FloatTrait, const DIM: usize>(
     log_p: na::SVectorView<F, DIM>,
     /* TODO get by value */
     log_transition: na::SMatrixView<F, DIM, DIM>,
@@ -166,28 +168,25 @@ fn child_input_forward_data<F : FloatTrait, const DIM: usize>(
     result
 }
 
-fn d_broadcast_vjp<F : FloatTrait, const DIM: usize>(
+fn d_broadcast_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: na::SMatrixView<F, DIM, DIM>,
 ) -> na::SVector<F, DIM> {
     /* sum(cotangent_vector, dim=1) */
     na::SVector::<F, DIM>::from_iterator(cotangent_vector.column_iter().map(|col| col.sum()))
 }
 
-fn d_log_transition_child_input_vjp<F : FloatTrait, const DIM: usize>(
+fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: na::SVectorView<F, DIM>,
     log_p: na::SVectorView<F, DIM>,
     forward: &LogTransitionForwardData<F, DIM>,
     compute_grad_log_p: bool,
-) -> (
-    na::SMatrix<F, DIM, DIM>,
-    Option<na::SVector<F, DIM>>,
-) {
-    let log_transition = forward.log_transition;
+) -> (na::SMatrix<F, DIM, DIM>, Option<na::SVector<F, DIM>>) {
+    let log_transition = forward.log_transition_T;
     let mut forward_1 = child_input_forward_data(log_p, log_transition.as_view());
 
     /* d_lse */
     for mut row in forward_1.row_iter_mut() {
-        row.copy_from(&softmax(row.transpose().as_view()).transpose());
+        row.copy_from(&softmax(&row.transpose()).transpose());
     }
     diag_times_assign(forward_1.as_view_mut(), cotangent_vector.iter().copied());
 
@@ -202,17 +201,14 @@ fn d_log_transition_child_input_vjp<F : FloatTrait, const DIM: usize>(
     (grad_log_transition, grad_log_p)
 }
 
-pub fn d_child_input_param<F : FloatTrait, const DIM: usize>(
+pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
     cotangent_vector: na::SVectorView<F, DIM>,
     distance: F,
     param: &ParamPrecomp<F, DIM>,
     log_p: na::SVectorView<F, DIM>,
     forward: &LogTransitionForwardData<F, DIM>,
     compute_grad_log_p: bool,
-) -> (
-    na::SMatrix<F, DIM, DIM>,
-    Option<na::SVector<F, DIM>>,
-) {
+) -> (na::SMatrix<F, DIM, DIM>, Option<na::SVector<F, DIM>>) {
     let (grad_log_transition, grad_log_p) =
         d_log_transition_child_input_vjp(cotangent_vector, log_p, forward, compute_grad_log_p);
 

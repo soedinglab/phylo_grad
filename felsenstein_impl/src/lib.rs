@@ -1,4 +1,5 @@
 #![allow(non_snake_case, clippy::needless_range_loop)]
+#![feature(portable_simd)]
 extern crate nalgebra as na;
 
 pub mod backward;

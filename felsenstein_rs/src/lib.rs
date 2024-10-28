@@ -1,4 +1,6 @@
 #![allow(non_snake_case, clippy::needless_range_loop)]
+
+
 extern crate nalgebra as na;
 
 use felsenstein_impl::data_types::FloatTrait;

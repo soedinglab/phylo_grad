@@ -17,7 +17,7 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
 
 pub struct LogTransitionForwardData<F, const DIM: usize> {
     pub matrix_exp: na::SMatrix<F, DIM, DIM>,
-    pub log_transition: na::SMatrix<F, DIM, DIM>,
+    pub log_transition_T: na::SMatrix<F, DIM, DIM>,
 }
 
 pub struct ParamPrecomp<F, const DIM: usize> {
@@ -129,7 +129,7 @@ fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
 
     LogTransitionForwardData {
         matrix_exp,
-        log_transition,
+        log_transition_T: log_transition.transpose(),
     }
 }
 
@@ -154,12 +154,11 @@ fn child_input<F: FloatTrait, const DIM: usize>(
     log_transition: &LogTransitionForwardData<F, DIM>,
 ) -> na::SVector<F, DIM> {
     /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(a, b) ) */
-    let log_transition = log_transition.log_transition;
-
     let mut result = na::SVector::<F, DIM>::zeros();
     for a in 0..DIM {
-        let row_a = log_transition.row(a).transpose();
-        result[a] = F::logsumexp((log_p + row_a).iter());
+        let row_a = log_transition.log_transition_T.column(a);
+        let tmp = log_p + row_a;
+        unsafe { result[a] = F::vec_logsumexp(std::mem::transmute::<_, &[F; DIM]>(&tmp.data.0)) }
     }
     result
 }
@@ -176,7 +175,10 @@ pub fn forward_node<F: FloatTrait, const DIM: usize>(
 
     let mut opt_running_sum: Option<na::SVector<F, DIM>> = None;
     for child in [node.left, node.right].into_iter().flatten() {
-        let child_input = child_input(log_p[child as usize].as_view(), &forward_data.log_transition[child as usize]);
+        let child_input = child_input(
+            log_p[child as usize].as_view(),
+            &forward_data.log_transition[child as usize],
+        );
         match opt_running_sum {
             Some(ref mut result) => {
                 *result += child_input;
@@ -208,8 +210,10 @@ pub fn forward_root<F: FloatTrait, const DIM: usize>(
     );
     for opt_child in [root.left, root.right] {
         if let Some(child) = opt_child {
-            let child_input =
-                child_input(log_p[child as usize].as_view(), &forward_data.log_transition[child as usize]);
+            let child_input = child_input(
+                log_p[child as usize].as_view(),
+                &forward_data.log_transition[child as usize],
+            );
             result += child_input;
         }
     }

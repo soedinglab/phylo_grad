@@ -8,7 +8,9 @@ logsumexp = "0.1.0" #Compare with the logaddexp crate
 nalgebra = {git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen_bounds"}
 nalgebra-lapack = { git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen_bounds"}
 lapack = "0.19.0"
-num-traits = "0.2.19"
+num-traits = {version="0.2.19", default-features=false, features = ["libm"]}
 rayon = "1.10.0"
 rand = "0.8"
 itertools = "0.13.0"
+libm = "0.2.10"
+sleef = "0.3.2"

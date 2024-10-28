@@ -1,6 +1,10 @@
+
+
 use std::iter::Sum;
 
 use logsumexp::LogSumExp;
+
+use std::simd;
 
 pub trait FloatTrait
 where
@@ -19,6 +23,9 @@ where
     const EPS_DIV: Self; // Minimum value for sqrt_pi
     fn logsumexp<'a, I: Iterator<Item = &'a Self>>(iter: I) -> Self;
     fn from_f64(f: f64) -> Self;
+    fn libm_exp(self) -> Self;
+    fn vec_exp<const N : usize>(x : &mut [Self;N]);
+    fn vec_logsumexp<const N : usize>(x : &[Self;N]) -> Self;
 }
 impl FloatTrait for f32 {
     fn logsumexp<'a, I: Iterator<Item = &'a Self>>(iter: I) -> Self {
@@ -29,6 +36,15 @@ impl FloatTrait for f32 {
     }
     const EPS_LOG: Self = 1e-15;
     const EPS_DIV: Self = 1e-10;
+    fn libm_exp(self) -> Self {
+        libm::expf(self)
+    }
+    fn vec_exp<const N : usize>(_x : &mut [Self;N]) {
+        panic!("Not implemented");
+    }
+    fn vec_logsumexp<const N : usize>(_x : &[Self;N]) -> Self {
+        panic!("Not implemented");
+    }
 }
 impl FloatTrait for f64 {
     fn logsumexp<'a, I: Iterator<Item = &'a Self>>(iter: I) -> Self {
@@ -39,4 +55,37 @@ impl FloatTrait for f64 {
     }
     const EPS_LOG: Self = 1e-100;
     const EPS_DIV: Self = 1e-10;
+    fn libm_exp(self) -> Self {
+        sleef::f64::exp_u10(self)
+    }
+    fn vec_exp<const N : usize>(x : &mut [Self;N]) {
+        let blocks = N / 4;
+
+        for i in 0..blocks {
+            let a = simd::f64x4::from_slice(&x[i*4..]);
+            let b = sleef::f64x::exp_u10(a);
+            simd::f64x4::copy_to_slice(b, &mut x[i*4..]);
+        }
+
+        for i in blocks*4..N {
+            x[i] = x[i].libm_exp();
+        }
+    }
+    fn vec_logsumexp<const N : usize>(x : &[Self;N]) -> Self {
+        let max = x.into_iter().reduce(|a,b| if a < b { b } else { a }).unwrap();
+        
+        let blocks = N / 4;
+        assert!(N % 4 == 0);
+        let mut sum = simd::f64x4::splat(0.0);
+        for i in 0..blocks {
+            let a = simd::f64x4::from_slice(&x[i*4..]);
+            let b = a - simd::f64x4::splat(*max);
+            let c = sleef::f64x::exp_u10(b);
+            sum += c;
+        }
+
+
+        return max + (sum[0] + sum[1] + sum[2] + sum[3]).ln();
+
+    }
 }
