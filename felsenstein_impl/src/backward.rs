@@ -19,7 +19,7 @@ pub fn softmax<F: FloatTrait, const N: usize>(x: &na::SVector<F, N>) -> na::SVec
 
 fn d_ln_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: &mut na::SMatrix<F, DIM, DIM>,
-    argument: na::SMatrixView<F, DIM, DIM>,
+    argument: &na::SMatrix<F, DIM, DIM>,
 ) {
     for i in 0..DIM {
         for j in 0..DIM {
@@ -216,15 +216,19 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
     compute_grad_log_p: bool,
     output: &mut na::SMatrix<F, DIM, DIM>,
 ) -> Option<na::SVector<F, DIM>> {
-    let grad_log_p =
-        d_log_transition_child_input_vjp(cotangent_vector, log_p, forward, compute_grad_log_p, output);
+    let grad_log_p = d_log_transition_child_input_vjp(
+        cotangent_vector,
+        log_p,
+        forward,
+        compute_grad_log_p,
+        output,
+    );
 
-    let transition = forward.matrix_exp;
-    d_ln_vjp(output, transition.as_view());
+    d_ln_vjp(output, &forward.matrix_exp);
 
     let grad_rate = d_expm_vjp(output.as_view(), distance, param);
 
     output.copy_from(&grad_rate);
-    
+
     grad_log_p
 }
