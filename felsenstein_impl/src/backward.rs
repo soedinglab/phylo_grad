@@ -187,7 +187,7 @@ fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
     compute_grad_log_p: bool,
     output: &mut na::SMatrix<F, DIM, DIM>,
 ) -> Option<na::SVector<F, DIM>> {
-    let log_transition = forward.log_transition_T;
+    let log_transition = forward.log_transition_T.transpose();
     child_input_forward_data(log_p, log_transition.as_view(), output);
 
     /* d_lse */
