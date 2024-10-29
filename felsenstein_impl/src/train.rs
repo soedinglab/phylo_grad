@@ -53,6 +53,7 @@ fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
         grad_log_p: grad_log_p_root.clone_owned(),
     });
     /* node.backward for non-terminal nodes */
+    let mut grad_rate = na::SMatrix::<F, DIM, DIM>::zeros();
     for id in (num_leaves..num_nodes - 1).rev() {
         let parent_id = tree[id].parent;
         let parent_backward_id = num_nodes - parent_id as usize - 1;
@@ -60,13 +61,14 @@ fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
         let log_p_input = log_p[id].as_view();
         let distance_current = distances[id];
         let fwd_data_current = &forward_data.log_transition[id];
-        let (grad_rate, grad_log_p) = d_child_input_param(
+        let grad_log_p = d_child_input_param(
             grad_log_p_input,
             distance_current,
             param,
             log_p_input,
             fwd_data_current,
             true,
+            &mut grad_rate,
         );
         grad_rate_column += grad_rate;
         backward_data.push(BackwardData {
@@ -81,13 +83,14 @@ fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
         let log_p_input = log_p[id].as_view();
         let distance_current = distances[id];
         let fwd_data_current = &forward_data.log_transition[id];
-        let (grad_rate, _) = d_child_input_param(
+        d_child_input_param(
             grad_log_p_input,
             distance_current,
             param,
             log_p_input,
             fwd_data_current,
             false,
+            &mut grad_rate,
         );
         grad_rate_column += grad_rate;
     }
