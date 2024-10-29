@@ -165,10 +165,10 @@ fn child_input_forward_data<F: FloatTrait, const DIM: usize>(
     log_transition: na::SMatrixView<F, DIM, DIM>,
     output: &mut na::SMatrix<F, DIM, DIM>,
 ) {
-    /* result = log_p[:, None] + log_transition */
+    /* result = log_p[None, :] + log_transition */
     for i in 0..DIM {
         for j in 0..DIM {
-            output[(i, j)] = log_p[i] + log_transition[(i, j)];
+            output[(i, j)] = log_p[j] + log_transition[(i, j)];
         }
     }
 }
