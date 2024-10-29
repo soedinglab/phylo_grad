@@ -1,6 +1,6 @@
 
 
-use std::iter::Sum;
+use std::{iter::Sum, simd::num::SimdFloat};
 
 use logsumexp::LogSumExp;
 
@@ -72,14 +72,23 @@ impl FloatTrait for f64 {
         }
     }
     fn vec_logsumexp<const N : usize>(x : &[Self;N]) -> Self {
-        let max = x.into_iter().reduce(|a,b| if a < b { b } else { a }).unwrap();
-        
         let blocks = N / 4;
+
+        //TODO handle other cases
         assert!(N % 4 == 0);
+
+        let mut max = simd::f64x4::splat(f64::NEG_INFINITY);
+        for i in 0..blocks {
+            let a = simd::f64x4::from_slice(&x[i*4..]);
+            max = max.simd_max(a);
+        }
+
+        let max = max[0].max(max[1].max(max[2].max(max[3])));
+
         let mut sum = simd::f64x4::splat(0.0);
         for i in 0..blocks {
             let a = simd::f64x4::from_slice(&x[i*4..]);
-            let b = a - simd::f64x4::splat(*max);
+            let b = a - simd::f64x4::splat(max);
             let c = sleef::f64x::exp_u10(b);
             sum += c;
         }

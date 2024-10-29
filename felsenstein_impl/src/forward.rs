@@ -147,7 +147,7 @@ pub fn forward_data_precompute_param<F: FloatTrait, const DIM: usize>(
     );
     forward_data
 }
-
+#[inline(never)]
 /// Computes p(subtree | parent = a) for all a by taking log_p : p(subtree | child = b) for all b
 fn child_input<F: FloatTrait, const DIM: usize>(
     log_p: na::SVectorView<F, DIM>,
