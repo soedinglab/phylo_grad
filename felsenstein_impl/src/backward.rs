@@ -161,14 +161,13 @@ pub fn d_param<F: FloatTrait, const DIM: usize>(
 
 fn child_input_forward_data<F: FloatTrait, const DIM: usize>(
     log_p: na::SVectorView<F, DIM>,
-    /* TODO get by value */
-    log_transition: na::SMatrixView<F, DIM, DIM>,
+    log_transition_T: &na::SMatrix<F, DIM, DIM>,
     output: &mut na::SMatrix<F, DIM, DIM>,
 ) {
     /* result = log_p[None, :] + log_transition */
     for i in 0..DIM {
         for j in 0..DIM {
-            output[(i, j)] = log_p[j] + log_transition[(i, j)];
+            output[(i, j)] = log_p[j] + log_transition_T[(j, i)];
         }
     }
 }
@@ -187,8 +186,7 @@ fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
     compute_grad_log_p: bool,
     output: &mut na::SMatrix<F, DIM, DIM>,
 ) -> Option<na::SVector<F, DIM>> {
-    let log_transition = forward.log_transition_T.transpose();
-    child_input_forward_data(log_p, log_transition.as_view(), output);
+    child_input_forward_data(log_p, &forward.log_transition_T, output);
 
     /* d_lse */
     for mut row in output.row_iter_mut() {
