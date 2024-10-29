@@ -54,7 +54,7 @@ enum FTreeBackendDouble {
     K20(FTreeBackend<f64, 20>),
 }
 
-fn vec_0d_into_python<'py, T>(vec: Vec<T>, py: Python<'py>) -> Bound<PyArray1<T>>
+fn vec_0d_into_python<T>(vec: Vec<T>, py: Python) -> Bound<PyArray1<T>>
 where
     T: numpy::Element,
 {
