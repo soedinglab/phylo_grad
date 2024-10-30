@@ -75,10 +75,10 @@ fn X<F: FloatTrait, const DIM: usize>(
 
 /// Backward pass for expm(distance * 1/sqrt_pi @ S @ sqrt_pi)
 fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
-    cotangent_vector: na::SMatrixView<F, DIM, DIM>,
+    cotangent_vector: &mut na::SMatrix<F, DIM, DIM>,
     distance: F,
     param: &ParamPrecomp<F, DIM>,
-) -> na::SMatrix<F, DIM, DIM> {
+) {
     /*
     B = V_pi_invT
     B_inv = V_pi_T
@@ -90,16 +90,16 @@ fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     let B = param.V_pi_inv.transpose();
     let B_inv = param.V_pi.transpose();
 
-    let X = X(param.eigenvalues.as_view(), distance);
+    let mut X = X(param.eigenvalues.as_view(), distance);
     /* TODO optimize */
-    //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X_T)) * B_inv;
-    let mut result = B_inv * cotangent_vector;
-    result *= B;
-    result.component_mul_assign(&X);
-    result = B * result;
-    result *= B_inv;
-
-    result
+    //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X)) * B_inv;
+    *cotangent_vector *= B;
+    *cotangent_vector = B_inv * *cotangent_vector;
+    
+    cotangent_vector.component_mul_assign(&X);
+    // Reusing X here
+    B.mul_to(cotangent_vector, &mut X);
+    X.mul_to(&B_inv, cotangent_vector);
 }
 
 /// Backward pass for rho(W) = 1/sqrt_pi @ S @ sqrt_pi
@@ -226,9 +226,7 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
 
     d_ln_vjp(output, &forward.matrix_exp);
 
-    let grad_rate = d_expm_vjp(output.as_view(), distance, param);
-
-    output.copy_from(&grad_rate);
+    d_expm_vjp(output, distance, param);
 
     grad_log_p
 }
