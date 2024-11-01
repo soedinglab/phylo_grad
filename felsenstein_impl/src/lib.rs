@@ -48,7 +48,7 @@ pub fn random_tree_top(num_leaf: u32) -> Vec<i32> {
     let mut rng = rand::thread_rng();
 
     while orphans.len() > 3 {
-        // This is inefficient, but it's not a bottleneck
+        // This is inefficient, but it's not a critical part of the pipeline
         orphans.shuffle(&mut rng);
         let parent_id = parents.len();
         parents.push(-2);
