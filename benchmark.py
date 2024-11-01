@@ -31,5 +31,8 @@ newick_files = files[0:len(files)//2]
 fasta_files = files[len(files)//2:]
 
 for fasta_file, newick_file in zip(fasta_files, newick_files):
-    print("Running optimization for:", fasta_file, newick_file)
+    print("Running rust optimization for:", fasta_file, newick_file)
     run_and_monitor(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --rust --f64')
+    print("Running pytorch optimization for:", fasta_file, newick_file)
+    run_and_monitor(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --pytorch --f64')
+    

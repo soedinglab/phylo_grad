@@ -28,7 +28,7 @@ rule random_fasta:
 
 def benchmark_input(wildcards):
     num_leafs = [10,20,30,100,500,1000]
-    L = [500,500,500,500,500,500]
+    L = [50,50,50,50,50,50]
 
     newick = [f"data/random/tree_{n}.nwk" for n in num_leafs]
     fasta = [f"data/random/alignment_{n}_{l}.fasta" for n,l in zip(num_leafs,L)]
@@ -38,11 +38,10 @@ def benchmark_input(wildcards):
 rule benchmark:
     input: files = benchmark_input, script = "benchmark.py"
     output: "data/random/time.txt"
-    threads: 16
+    threads: 32
     resources:
-        mem_mb = 100000,
-        runtime = 600
-    shell: "python benchmark.py {input.files} > {output}"
+        slurm_extra="--exclusive --mem=0"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {input.files} > {output}"
 
 rule time:
     input: "data/{dataset}/alignment.fasta",
