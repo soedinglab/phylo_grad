@@ -62,18 +62,21 @@ else:
     
 optimizer = torch.optim.Adam([shared, energies], lr=0.01)
 
-for i in range(50):
+for i in range(100):
     optimizer.zero_grad()
     S, sqrt_pi = cat.rate_matrix(shared, energies)
     if args.rust:
         result = tree.infer_param_unpaired(S.detach().numpy(), sqrt_pi.detach().numpy())
         S.backward(-torch.tensor(result['grad_delta'], dtype=dtype))
         sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi'], dtype=dtype))
-        print(result['log_likelihood'].sum())
+        #print(result['log_likelihood'].sum())
         
     else:
         log_p = tree.log_likelihood(S, sqrt_pi).sum()
         loss = -log_p
-        print(loss.item())
+        #print(loss.item())
         loss.backward()
     optimizer.step()
+
+import resource
+print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)

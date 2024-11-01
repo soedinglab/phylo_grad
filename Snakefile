@@ -13,13 +13,36 @@ rule phylo:
     shell: "./FastTreeDbl {input} > {output}"
 
 rule random_phylo:
-    output: "data/random/tree_{num_leafs}.nwk"
+    output: "data/random/root_tree_{num_leafs}.nwk"
     shell: "ngesh -L {wildcards.num_leafs} --seed 42 > {output}"
+
+rule unroot:
+    input: "data/random/root_tree_{num_leafs}.nwk"
+    output: "data/random/tree_{num_leafs}.nwk"
+    shell: "nw_reroot -d {input} > {output}"
 
 rule random_fasta:
     input: "data/random/tree_{num_leafs}.nwk"
     output: "data/random/alignment_{num_leafs}_{L}.fasta"
     shell: "python random_fasta.py {input[0]} {wildcards.L} {output[0]}"
+
+def benchmark_input(wildcards):
+    num_leafs = [10,20,30,100,500,1000]
+    L = [500,500,500,500,500,500]
+
+    newick = [f"data/random/tree_{n}.nwk" for n in num_leafs]
+    fasta = [f"data/random/alignment_{n}_{l}.fasta" for n,l in zip(num_leafs,L)]
+
+    return newick + fasta
+
+rule benchmark:
+    input: files = benchmark_input, script = "benchmark.py"
+    output: "data/random/time.txt"
+    threads: 16
+    resources:
+        mem_mb = 100000,
+        runtime = 600
+    shell: "python benchmark.py {input.files} > {output}"
 
 rule time:
     input: "data/{dataset}/alignment.fasta",
