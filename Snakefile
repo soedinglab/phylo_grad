@@ -14,7 +14,7 @@ rule phylo:
 
 rule random_phylo:
     output: "data/random/root_tree_{num_leafs}.nwk"
-    shell: "ngesh -L {wildcards.num_leafs} --seed 42 > {output}"
+    shell: "phylotree generate -t {wildcards.num_leafs} -b > {output}"
 
 rule unroot:
     input: "data/random/root_tree_{num_leafs}.nwk"
