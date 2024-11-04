@@ -33,8 +33,8 @@ impl FloatTrait for f32 {
     fn from_f64(f: f64) -> Self {
         f as f32
     }
-    const EPS_LOG: Self = 1e-15;
-    const EPS_DIV: Self = 1e-8;
+    const EPS_LOG: Self = 1e-20;
+    const EPS_DIV: Self = 1e-5;
     fn scalar_exp(self) -> Self {
         sleef::f32::exp_u10(self)
     }
@@ -56,27 +56,27 @@ impl FloatTrait for f32 {
 
         let mut max = simd::f32x8::splat(f32::NEG_INFINITY);
         for i in 0..blocks {
-            let a = simd::f32x8::from_slice(&x[i * 4..]);
+            let a = simd::f32x8::from_slice(&x[i * 8..]);
             max = max.simd_max(a);
         }
 
         if N % 8 != 0 {
             let last_elements =
-                simd::f32x8::load_or(&x[blocks * 4..], simd::f32x8::splat(f32::NEG_INFINITY));
+                simd::f32x8::load_or(&x[blocks * 8..], simd::f32x8::splat(f32::NEG_INFINITY));
             max = max.simd_max(last_elements);
         }
         let max = max.reduce_max();
 
         let mut sum = simd::f32x8::splat(0.0);
         for i in 0..blocks {
-            let a = simd::f32x8::from_slice(&x[i * 4..]);
+            let a = simd::f32x8::from_slice(&x[i * 8..]);
             let b = a - simd::f32x8::splat(max);
             let c = sleef::f32x::exp_u10(b);
             sum += c;
         }
         if N % 8 != 0 {
             let last_elements =
-                simd::f32x8::load_or(&x[blocks * 4..], simd::f32x8::splat(f32::NEG_INFINITY));
+                simd::f32x8::load_or(&x[blocks * 8..], simd::f32x8::splat(f32::NEG_INFINITY));
             sum += sleef::f32x::exp_u10(last_elements - simd::f32x8::splat(max));
         }
         return max + (sum.reduce_sum()).ln();
