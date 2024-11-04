@@ -158,12 +158,12 @@ fn vec_leaf_p_from_python<'py, F: FloatTrait + numpy::Element, const DIM: usize>
 
 fn inference_into_py<'py, F : FloatTrait + numpy::Element, const DIM : usize>(result : FelsensteinResult<F, DIM>, py: Python<'_>) -> PyObject {
     let log_likelihood_total_py = vec_0d_into_python(result.log_likelihood, py);
-    let grad_delta_total_py = vec_2d_into_python(result.grad_s, py);
+    let grad_s_total_py = vec_2d_into_python(result.grad_s, py);
     let grad_sqrt_pi_total_py = vec_1d_into_python(result.grad_sqrt_pi, py);
 
     let result: HashMap<String, PyObject> = [
         ("log_likelihood".to_string(), log_likelihood_total_py.into()),
-        ("grad_delta".to_string(), grad_delta_total_py.into()),
+        ("grad_s".to_string(), grad_s_total_py.into()),
         ("grad_sqrt_pi".to_string(), grad_sqrt_pi_total_py.into()),
     ]
     .into_iter()
