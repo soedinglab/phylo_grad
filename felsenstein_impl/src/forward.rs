@@ -125,7 +125,10 @@ fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
     );
     matrix_exp *= param.V_pi_inv;
 
-    let log_transition = matrix_exp.map(|x| Float::ln(Float::max(x, F::EPS_LOG)));
+    matrix_exp.apply(|x| *x = Float::max(*x, F::EPS_DIV));
+
+
+    let log_transition = matrix_exp.map(Float::ln);
 
     LogTransitionForwardData {
         matrix_exp,
