@@ -38,7 +38,7 @@ def benchmark_input(wildcards):
 rule benchmark:
     input: files = benchmark_input, script = "benchmark.py"
     output: "data/random/time_{num_t}.txt"
-    threads: {num_t}
+    threads: lambda w : int(w.num_t)
     resources:
         slurm_extra="--exclusive",
         mem_mb=800000,
