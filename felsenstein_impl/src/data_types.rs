@@ -88,9 +88,12 @@ impl FloatTrait for f64 {
             let a = simd::f64x4::from_slice(&x[i * 4..]);
             max = max.simd_max(a);
         }
-        let last_elements = simd::f64x4::load_or(&x[blocks * 4..], simd::f64x4::splat(f64::NEG_INFINITY));
-        max = max.simd_max(last_elements);
 
+        if N % 4 != 0 {
+            let last_elements =
+                simd::f64x4::load_or(&x[blocks * 4..], simd::f64x4::splat(f64::NEG_INFINITY));
+            max = max.simd_max(last_elements);
+        }
         let max = max.reduce_max();
 
         let mut sum = simd::f64x4::splat(0.0);
@@ -100,10 +103,11 @@ impl FloatTrait for f64 {
             let c = sleef::f64x::exp_u10(b);
             sum += c;
         }
-
-        let last_elements = simd::f64x4::load_or_default(&x[blocks * 4..]);
-        sum += sleef::f64x::exp_u10(last_elements - simd::f64x4::splat(max));
-
+        if N % 4 != 0 {
+            let last_elements =
+                simd::f64x4::load_or(&x[blocks * 4..], simd::f64x4::splat(f64::NEG_INFINITY));
+            sum += sleef::f64x::exp_u10(last_elements - simd::f64x4::splat(max));
+        }
         return max + (sum.reduce_sum()).ln();
     }
 }
