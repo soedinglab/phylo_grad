@@ -6,41 +6,33 @@ from Bio.Align import MultipleSeqAlignment
 import torch
 
 amino_mapping = {'A' : 0, 'R' : 1, 'N' : 2, 'D' : 3, 'C' : 4, 'Q' : 5, 'E' : 6, 'G' : 7, 'H' : 8, 'I' : 9, 'L' : 10, 'K' : 11, 'M' : 12, 'F' : 13, 'P' : 14, 'S' : 15, 'T' : 16, 'W' : 17, 'Y' : 18, 'V' : 19, '-' : 20, '.' : 20} 
-# Hard mapping from each possible character to a number between 0 and 4
-nuc_mapping = {'A': 0, 'C': 1, 'G': 2, 'T': 3, 'U': 3, '-': 4, '.': 4, 'R': 2,
-               'Y': 3, 'S': 2, 'W': 3, 'K': 3, 'M': 0, 'B': 3, 'D': 3, 'H': 3, 'V': 0, 'N': 4}
-# Soft mapping from each possible character to a distribution over 0 to 3
-soft_nuc_mapping = {'A': [1.0, 0.0, 0.0, 0.0],
-                    'C': [0.0, 1.0, 0.0, 0.0],
-                    'G': [0.0, 0.0, 1.0, 0.0],
-                    'T': [0.0, 0.0, 0.0, 1.0],
-                    'U': [0.0, 0.0, 0.0, 1.0],
-                    '-': [0.25, 0.25, 0.25, 0.25],
-                    '.': [0.25, 0.25, 0.25, 0.25],
-                    'R': [0.5, 0.0, 0.5, 0.0],
-                    'Y': [0.0, 0.5, 0.0,0.5],
-                    'S': [0.0, 0.5, 0.5, 0.0],
-                    'W': [0.5, 0.0, 0.0, 0.5],
-                    'K': [0.0, 0.0, 0.5, 0.5],
-                    'M': [0.5, 0.5, 0.0, 0.0],
-                    'B': [0.0, 1/3, 1/3, 1/3],
-                    'D': [1/3, 0.0, 1/3, 1/3],
-                    'H': [1/3, 1/3, 0.0, 1/3],
-                    'V': [1/3, 1/3, 1/3, 0.0],
-                    'N': [0.25, 0.25, 0.25, 0.25]}
-def read_tree_file_seq(tree: str):
-    with open(tree, 'r') as f:
-        L = int(f.readline())
-        reader = csv.reader(f)
-        return [(int(parent), None if dist == '' else float(dist), None if seq == '' else seq) for [parent, dist, seq] in reader], L
 
-def seq_to_embedding(seq: str | None) -> torch.Tensor | None:
-    if seq is None:
-        return None
-    onehot = torch.zeros((len(seq), 4))
-    for i, c in enumerate(seq):
-        onehot[i] = torch.log(torch.tensor(soft_nuc_mapping[c]))
-    return onehot
+def read_newick(newick_file: str):
+    """
+        Reads a newick file and returns a list of tuples with the parent id and branch length of each node.
+    """
+    
+    tree = Phylo.read(newick_file, "newick")
+    assert isinstance(tree, Phylo.BaseTree.Tree)
+    
+    num_leaf = len(tree.get_terminals())
+
+    nodes = tree.get_terminals() + tree.get_nonterminals()
+
+    node_ids = {node: id for id, node in enumerate(nodes)}
+    node_ids[None] = -1
+
+    def traverse(node, parent=None):
+        node.parent_id = node_ids[parent]
+        for child in node.clades:
+            traverse(child, node)
+
+    traverse(tree.root)
+
+    parent_list = [(node.parent_id, node.branch_length)
+                   for node in nodes]
+
+    return parent_list, num_leaf
 
 def amino_to_embedding(seq: str | None) -> torch.Tensor | None:
     if seq is None:
@@ -54,12 +46,6 @@ def amino_to_embedding(seq: str | None) -> torch.Tensor | None:
             onehot[i] = torch.zeros(20, dtype=torch.float64)
             
     return onehot
-        
-def read_tree_file(tree: str):
-    tree, L = read_tree_file_seq(tree)
-    tree = [(p, t, seq_to_embedding(seq)) for p, t, seq in tree]
-    return tree
-
     
 def read_newick_fasta(newick_file: str, fasta_file: str):
     alignment = AlignIO.read(fasta_file, "fasta")
