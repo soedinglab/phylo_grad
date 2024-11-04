@@ -20,6 +20,7 @@ pub struct LogTransitionForwardData<F, const DIM: usize> {
     pub log_transition_T: na::SMatrix<F, DIM, DIM>,
 }
 
+#[derive(Debug)]
 pub struct ParamPrecomp<F, const DIM: usize> {
     pub symmetric_matrix: na::SMatrix<F, DIM, DIM>,
     pub sqrt_pi: na::SVector<F, DIM>,

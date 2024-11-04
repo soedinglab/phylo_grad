@@ -233,6 +233,11 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
     if !(output == output) {
         println!("NaN in d_child_input_param 2");
     }
+
+    dbg!(&output);
+    dbg!(distance);
+    dbg!(param);
+
     d_expm_vjp(output, distance, param);
 
     if !(output == output) {
