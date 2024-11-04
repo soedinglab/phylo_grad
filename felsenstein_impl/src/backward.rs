@@ -95,7 +95,7 @@ fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X)) * B_inv;
     *cotangent_vector *= B;
     *cotangent_vector = B_inv * *cotangent_vector;
-    
+
     cotangent_vector.component_mul_assign(&X);
     // Reusing X here
     B.mul_to(cotangent_vector, &mut X);
@@ -234,13 +234,12 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
         println!("NaN in d_child_input_param 2");
     }
 
-    dbg!(&output);
-    dbg!(distance);
-    dbg!(param);
-
     d_expm_vjp(output, distance, param);
 
     if !(output == output) {
+        dbg!(&output);
+        dbg!(distance);
+        dbg!(param);
         println!("NaN in d_child_input_param 3");
     }
     grad_log_p
