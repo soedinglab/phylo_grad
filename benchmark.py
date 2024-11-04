@@ -20,9 +20,8 @@ def run_and_monitor(command):
     
     # Get memory info
     
-    print(f"Elapsed Time: {elapsed_time:.2f} seconds")
-    print(f"Output: {stdout.decode()}")
-    print(f"Errors: {stderr.decode()}")
+    print(f"Time: {elapsed_time:.2f}")
+    print(f"Mem: {stdout.decode()}")
         
 files = sys.argv[1:]
 assert(len(files) %2 == 0)
@@ -31,8 +30,9 @@ newick_files = files[0:len(files)//2]
 fasta_files = files[len(files)//2:]
 
 for fasta_file, newick_file in zip(fasta_files, newick_files):
-    print("Running rust optimization for:", fasta_file, newick_file)
+    print("--Dataset--: ", fasta_file, newick_file)
+    print("Rust:")
     run_and_monitor(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --rust --f64')
-    print("Running pytorch optimization for:", fasta_file, newick_file)
+    print("Pytorch:")
     run_and_monitor(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --pytorch --f64')
-    
+    print()
