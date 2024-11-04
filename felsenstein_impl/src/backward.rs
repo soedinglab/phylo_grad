@@ -1,3 +1,6 @@
+use na::distance_squared;
+use num_traits::Float;
+
 use crate::data_types::*;
 use crate::forward::*;
 
@@ -50,27 +53,16 @@ fn exprel(x: f64) -> f64 {
 
 fn X<F: FloatTrait, const DIM: usize>(
     eigenvalues: na::SVectorView<F, DIM>,
-    distance: F,
+    t: F,
 ) -> na::SMatrix<F, DIM, DIM> {
-    let mut tmp = eigenvalues * distance;
-    unsafe {
-        F::vec_exp::<DIM>(std::mem::transmute(&mut tmp.data.0));
-    }
-    let diag = tmp * distance;
-
-    let mut result = na::SMatrix::<F, DIM, DIM>::from_fn(|i, j| {
-        if i == j {
-            F::from(1.0).unwrap()
+    na::SMatrix::<F, DIM, DIM>::from_fn(|i, j| {
+        if FloatTrait::scalar_exp(eigenvalues[i] - eigenvalues[j]) < FloatTrait::from_f64(1e-10) {
+            t * FloatTrait::scalar_exp(eigenvalues[i] * t)
         } else {
-            F::from(exprel(
-                (distance * (eigenvalues[i] - eigenvalues[j])).into(),
-            ))
-            .unwrap()
+            FloatTrait::scalar_exp(eigenvalues[i] * t) * (num_traits::Float::exp_m1(t * (eigenvalues[i] - eigenvalues[j]))
+                / (eigenvalues[i] - eigenvalues[j]))
         }
-    });
-    times_diag_assign(result.as_view_mut(), diag.iter().copied());
-
-    result
+    })
 }
 
 /// Backward pass for expm(distance * 1/sqrt_pi @ S @ sqrt_pi)
