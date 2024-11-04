@@ -97,9 +97,9 @@ fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
     grad_rate_column
 }
 
-struct TrainColumnParamResult<F, const DIM: usize> {
+struct SingleSideResult<F, const DIM: usize> {
     log_likelihood: F,
-    grad_delta: na::SMatrix<F, DIM, DIM>,
+    grad_s: na::SMatrix<F, DIM, DIM>,
     grad_sqrt_pi: na::SVector<F, DIM>,
 }
 
@@ -109,15 +109,15 @@ fn train_column_param<F: FloatTrait, const DIM: usize>(
     sqrt_pi: na::SVectorView<F, DIM>,
     tree: &[TreeNode],
     distances: &[F],
-) -> TrainColumnParamResult<F, DIM> {
+) -> SingleSideResult<F, DIM> {
     let num_leaves = leaf_log_p.len();
     // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
     let param = match compute_param_data(S, sqrt_pi) {
         Some(param) => param,
         None => {
-            return TrainColumnParamResult::<F, DIM> {
+            return SingleSideResult::<F, DIM> {
                 log_likelihood: <F as num_traits::Float>::neg_infinity(),
-                grad_delta: na::SMatrix::<F, DIM, DIM>::zeros(),
+                grad_s: na::SMatrix::<F, DIM, DIM>::zeros(),
                 grad_sqrt_pi: na::SVector::<F, DIM>::zeros(),
             }
         }
@@ -144,15 +144,15 @@ fn train_column_param<F: FloatTrait, const DIM: usize>(
         num_leaves,
     );
 
-    let (grad_delta, mut grad_sqrt_pi) = d_param(grad_rate.as_view(), &param);
+    let (grad_s, mut grad_sqrt_pi) = d_param(grad_rate.as_view(), &param);
 
     let mut grad_sqrt_pi_likelihood: na::SMatrix<F, DIM, 1> =
         param.sqrt_pi_recip * <F as FloatTrait>::from_f64(2.0);
     grad_sqrt_pi_likelihood.component_mul_assign(&grad_log_prior);
     grad_sqrt_pi += grad_sqrt_pi_likelihood;
-    TrainColumnParamResult::<F, DIM> {
+    SingleSideResult::<F, DIM> {
         log_likelihood,
-        grad_delta,
+        grad_s,
         grad_sqrt_pi,
     }
 }
@@ -190,7 +190,7 @@ pub fn train_parallel_param_unpaired<F: FloatTrait, const DIM: usize>(
 
     for col_result in col_results {
         log_likelihood_total.push(col_result.log_likelihood);
-        grad_delta_total.push(col_result.grad_delta);
+        grad_delta_total.push(col_result.grad_s);
         grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
     }
 
