@@ -225,18 +225,18 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
     );
 
     if !(output == output) {
-        println!("NaN in d_child_input_param");
+        println!("NaN in d_child_input_param 1");
     }
 
     d_ln_vjp(output, &forward.matrix_exp);
 
     if !(output == output) {
-        println!("NaN in d_child_input_param");
+        println!("NaN in d_child_input_param 2");
     }
     d_expm_vjp(output, distance, param);
 
     if !(output == output) {
-        println!("NaN in d_child_input_param");
+        println!("NaN in d_child_input_param 3");
     }
     grad_log_p
 }
