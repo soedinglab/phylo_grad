@@ -243,6 +243,7 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
         dbg!(distance);
         dbg!(param);
         println!("NaN in d_child_input_param 3");
+        dbg!(X(param.eigenvalues.as_view(), distance));
     }
     grad_log_p
 }
