@@ -12,35 +12,46 @@ mod tree;
 use rand::distributions::uniform::SampleUniform;
 use rand::prelude::Distribution;
 use rand::seq::SliceRandom;
-pub use train::InferenceResultParam;
+pub use train::FelsensteinResult;
 
 use crate::data_types::*;
 use crate::preprocessing::*;
 use crate::train::*;
 use crate::tree::*;
 
-pub struct FTreeBackend<F, const DIM: usize> {
+pub struct FelsensteinTree<F, const DIM: usize> {
     tree: Vec<TreeNodeId<u32>>,
     distances: Vec<F>,
     leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
 }
 
-impl<F: FloatTrait, const DIM : usize> FTreeBackend<F, DIM> {
+impl<F: FloatTrait, const DIM : usize> FelsensteinTree<F, DIM> {
+    /// The tree topology is represented as a vector of parent node ids. The root node has parent id -1.
+    /// The leaf nodes have to come first in this vector. The order of the leaf nodes is the same as the order of the second dimension of leaf_log_p.
+    /// 
+    /// The distances are given as a vector of branch lengths with the same order as the parent vector.
+    /// 
+    /// leaf_log_p gives the log probabilities of the leaf nodes. The first dimension is the side id in the alignment, the second is over the leaf nodes, the third is over the states.
     pub fn new(parents : Vec<i32>, distances : Vec<F>, leaf_log_p : Vec<Vec<na::SVector<F, DIM>>>) -> Self {
         let (tree, distances) = topological_preprocess::<F>(parents, distances, leaf_log_p[0].len() as u32).expect("Tree topology is invalid");
 
-        FTreeBackend {
+        FelsensteinTree {
             tree,
             distances,
             leaf_log_p,
         }
     }
 
-    pub fn infer(&self, s: Vec<na::SMatrix<F, DIM, DIM>>, sqrt_pi: Vec<na::SVector<F, DIM>>) -> InferenceResultParam<F, DIM> {
+    /// s and sqrt_pi have as first dimension the side id in the alignment. s gives the state transition matrix for each side, sqrt_pi gives the square root of the stationary distribution for each side.
+    /// See the paper for more details.
+    /// 
+    /// The result contains the gradients of s and sqrt_pi with respect to the log likelihood of the tree. It also gives the log likelihood of the tree.
+    pub fn calculate_gradients(&self, s: Vec<na::SMatrix<F, DIM, DIM>>, sqrt_pi: Vec<na::SVector<F, DIM>>) -> FelsensteinResult<F, DIM> {
         train_parallel_param_unpaired(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
     }
 }
 
+/// Returns a random tree topology in the format required by FelsensteinTree::new
 pub fn random_tree_top(num_leaf: u32) -> Vec<i32> {
     let mut parents = vec![-2;num_leaf as usize];
     let mut orphans : Vec<u32> = (0..num_leaf).collect();
@@ -75,6 +86,7 @@ pub fn random_tree_top(num_leaf: u32) -> Vec<i32> {
     parents
 }
 
+/// Returns a random distance vector in the format required by FelsensteinTree::new uniformly distributed between 0.1 and 1.0
 pub fn random_dist<F : FloatTrait + SampleUniform>(num_nodes : u32) -> Vec<F> {
     let dist = rand::distributions::Uniform::new::<F, F>(FloatTrait::from_f64(0.1), FloatTrait::from_f64(1.0));
     (0..num_nodes).map(|_| dist.sample(&mut rand::thread_rng())).collect()

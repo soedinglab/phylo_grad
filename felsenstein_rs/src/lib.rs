@@ -14,44 +14,44 @@ use pyo3::{
 
 use std::collections::HashMap;
 
-use felsenstein_impl::{FTreeBackend, InferenceResultParam};
+use felsenstein_impl::{FelsensteinTree, FelsensteinResult};
 
 pub fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     tree: PyReadonlyArray2<'_, F>,
     leaf_log_p: PyReadonlyArray3<'_, F>,
     distance_threshold: F,
-) -> FTreeBackend<F, DIM> {
+) -> FelsensteinTree<F, DIM> {
     let (parents, distances) = array2tree(tree, distance_threshold);
     let leaf_log_p = leaf_log_p.as_array();
     let leaf_log_p_shape = leaf_log_p.shape(); // [L num_leaves, DIM]
     assert!(DIM == leaf_log_p_shape[2]);
     let leaf_log_p = vec_leaf_p_from_python(leaf_log_p);
 
-    FTreeBackend::new(parents, distances, leaf_log_p)
+    FelsensteinTree::new(parents, distances, leaf_log_p)
 }
 
 pub fn backend_infer_py<F: FloatTrait + numpy::Element, const DIM: usize>(
-    backend: &FTreeBackend<F, DIM>,
+    backend: &FelsensteinTree<F, DIM>,
     s: PyReadonlyArray3<'_, F>,
     sqrt_pi: PyReadonlyArray2<'_, F>,
-) -> InferenceResultParam<F, DIM> {
+) -> FelsensteinResult<F, DIM> {
     let s = vec_2d_from_python(s);
     let sqrt_pi = vec_1d_from_python(sqrt_pi);
-    backend.infer(s, sqrt_pi)
+    backend.calculate_gradients(s, sqrt_pi)
 }
 
 enum FTreeBackendSingle {
-    K4(FTreeBackend<f32, 4>),
-    K5(FTreeBackend<f32, 5>),
-    K16(FTreeBackend<f32, 16>),
-    K20(FTreeBackend<f32, 20>),
+    K4(FelsensteinTree<f32, 4>),
+    K5(FelsensteinTree<f32, 5>),
+    K16(FelsensteinTree<f32, 16>),
+    K20(FelsensteinTree<f32, 20>),
 }
 
 enum FTreeBackendDouble {
-    K4(FTreeBackend<f64, 4>),
-    K5(FTreeBackend<f64, 5>),
-    K16(FTreeBackend<f64, 16>),
-    K20(FTreeBackend<f64, 20>),
+    K4(FelsensteinTree<f64, 4>),
+    K5(FelsensteinTree<f64, 5>),
+    K16(FelsensteinTree<f64, 16>),
+    K20(FelsensteinTree<f64, 20>),
 }
 
 fn vec_0d_into_python<T>(vec: Vec<T>, py: Python) -> Bound<PyArray1<T>>
@@ -156,10 +156,10 @@ fn vec_leaf_p_from_python<'py, F: FloatTrait + numpy::Element, const DIM: usize>
     vec
 }
 
-fn inference_into_py<'py, F : FloatTrait + numpy::Element, const DIM : usize>(result : InferenceResultParam<F, DIM>, py: Python<'_>) -> PyObject {
-    let log_likelihood_total_py = vec_0d_into_python(result.log_likelihood_total, py);
-    let grad_delta_total_py = vec_2d_into_python(result.grad_delta_total, py);
-    let grad_sqrt_pi_total_py = vec_1d_into_python(result.grad_sqrt_pi_total, py);
+fn inference_into_py<'py, F : FloatTrait + numpy::Element, const DIM : usize>(result : FelsensteinResult<F, DIM>, py: Python<'_>) -> PyObject {
+    let log_likelihood_total_py = vec_0d_into_python(result.log_likelihood, py);
+    let grad_delta_total_py = vec_2d_into_python(result.grad_s, py);
+    let grad_sqrt_pi_total_py = vec_1d_into_python(result.grad_sqrt_pi, py);
 
     let result: HashMap<String, PyObject> = [
         ("log_likelihood".to_string(), log_likelihood_total_py.into()),

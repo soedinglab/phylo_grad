@@ -158,10 +158,10 @@ fn train_column_param<F: FloatTrait, const DIM: usize>(
 }
 
 #[derive(Debug)]
-pub struct InferenceResultParam<F, const DIM: usize> {
-    pub log_likelihood_total: Vec<F>,
-    pub grad_delta_total: Vec<na::SMatrix<F, DIM, DIM>>,
-    pub grad_sqrt_pi_total: Vec<na::SVector<F, DIM>>,
+pub struct FelsensteinResult<F, const DIM: usize> {
+    pub log_likelihood: Vec<F>,
+    pub grad_s: Vec<na::SMatrix<F, DIM, DIM>>,
+    pub grad_sqrt_pi: Vec<na::SVector<F, DIM>>,
 }
 
 pub fn train_parallel_param_unpaired<F: FloatTrait, const DIM: usize>(
@@ -170,7 +170,7 @@ pub fn train_parallel_param_unpaired<F: FloatTrait, const DIM: usize>(
     sqrt_pi: &[na::SVector<F, DIM>],
     tree: &[TreeNode],
     distances: &[F],
-) -> InferenceResultParam<F, DIM> {
+) -> FelsensteinResult<F, DIM> {
     let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
         .map(|(leaf_log_p, S, sqrt_pi)| {
@@ -194,9 +194,9 @@ pub fn train_parallel_param_unpaired<F: FloatTrait, const DIM: usize>(
         grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
     }
 
-    InferenceResultParam {
-        log_likelihood_total,
-        grad_delta_total,
-        grad_sqrt_pi_total,
+    FelsensteinResult {
+        log_likelihood: log_likelihood_total,
+        grad_s: grad_delta_total,
+        grad_sqrt_pi: grad_sqrt_pi_total,
     }
 }

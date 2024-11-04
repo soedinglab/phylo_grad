@@ -22,7 +22,7 @@ pub fn main() {
         }).collect()
     }).collect();
 
-    let backend = felsenstein_impl::FTreeBackend::new(parents, dist, leaf_log_p);
+    let backend = felsenstein_impl::FelsensteinTree::new(parents, dist, leaf_log_p);
     
     let s : Vec<_> = (0..L).map(|_| {
         na::SMatrix::<Float, DIM, DIM>::from_iterator((0..DIM*DIM).map(|_| rand::random::<Float>().exp()))
@@ -34,7 +34,7 @@ pub fn main() {
         dist.map(Float::sqrt)
     }).collect();
 
-    let result = backend.infer(s, sqrt_pi);
+    let result = backend.calculate_gradients(s, sqrt_pi);
 
     std::hint::black_box(result);
 }
