@@ -34,7 +34,7 @@ impl FloatTrait for f32 {
         f as f32
     }
     const EPS_LOG: Self = 1e-15;
-    const EPS_DIV: Self = 1e-10;
+    const EPS_DIV: Self = 1e-8;
     fn scalar_exp(self) -> Self {
         sleef::f32::exp_u10(self)
     }
