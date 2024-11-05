@@ -19,7 +19,9 @@ def run_and_monitor(command):
     elapsed_time = end_time - start_time
     
     # Get memory info
-    
+    if process.returncode != 0:
+        print("ERROR")
+        print(stderr.decode())
     print(f"Time: {elapsed_time:.2f}")
     print(f"Mem: {stdout.decode()}")
         
