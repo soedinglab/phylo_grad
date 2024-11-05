@@ -9,6 +9,8 @@ import felsenstein
 import numpy as np
 import argparse
 
+# Command line parsing, this can be mostly ignored
+
 parser = argparse.ArgumentParser(prog='optimize_benchmark')
 
 group = parser.add_argument_group('Leaf data', 'Alginment or distribution of leaf data')
@@ -50,8 +52,6 @@ torch.manual_seed(0)
 shared = torch.rand(190, requires_grad=True, dtype=dtype)
 energies = torch.rand(L, 20, requires_grad=True, dtype=dtype)
 
-
-
 if args.rust:
     leaf_log_p = torch.stack([seq for _,_, seq in tree if seq is not None]).transpose(1,0)
     tree = np.array([(par, dist) for par, dist, _ in tree], dtype=np_dtype)
@@ -64,10 +64,12 @@ optimizer = torch.optim.Adam([shared, energies], lr=0.01)
 
 for i in range(100):
     optimizer.zero_grad()
+    # This is the actual model part, where the parameters are mapped to S and sqrt_pi
     S, sqrt_pi = cat.rate_matrix(shared, energies)
+    
     if args.rust:
         result = tree.infer_param_unpaired(S.detach().numpy(), sqrt_pi.detach().numpy())
-        S.backward(-torch.tensor(result['grad_delta'], dtype=dtype))
+        S.backward(-torch.tensor(result['grad_s'], dtype=dtype))
         sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi'], dtype=dtype))
         #print(result['log_likelihood'].sum())
         
@@ -78,5 +80,6 @@ for i in range(100):
         loss.backward()
     optimizer.step()
 
+# Print peak memory usage
 import resource
 print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
