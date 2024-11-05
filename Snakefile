@@ -27,7 +27,7 @@ rule random_fasta:
     shell: "python random_fasta.py {input[0]} {wildcards.L} {output[0]}"
 
 def benchmark_input(wildcards):
-    num_leafs = [10,20,30,100,500,1000,2000]
+    num_leafs = [2**n for n in [4,6,8,10,11]]
     L = [300] * len(num_leafs)
 
     newick = [f"data/random/tree_{n}.nwk" for n in num_leafs]
