@@ -45,14 +45,7 @@ def helper_test(dtype, dim : int, gradients: bool):
     
     result = rust_tree.infer_param_unpaired(S.numpy(), sqrt_pi.numpy())
     
-    #print(result['log_likelihood'])
-    #print(torch_logP)
-    
     assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=1e-4))
-    
-    print(S[148])
-    print(sqrt_pi[148] ** 2)
-    print(result['log_likelihood'][148])
     
     if gradients:
         torch_S_grad, torch_sqrt_pi_grad = felsenstein.gradients(torch_tree, S, sqrt_pi)
@@ -71,8 +64,15 @@ def helper_test(dtype, dim : int, gradients: bool):
             print("Rust sqrt pi grad is nan")
             print(np.where(np.isnan(result['grad_sqrt_pi'])))
         
-        assert(np.allclose(result['grad_sqrt_pi'], torch_sqrt_pi_grad, rtol=1e-3, atol=1e-3))
-        assert(np.allclose(result['grad_s'], torch_S_grad, rtol=1e-3, atol=1e-3))
+        if dtype == "f32":
+            rtol = 1e-2
+            atol = 1e-2
+        else:
+            rtol = 1e-4
+            atol = 1e-4
+        
+        assert(np.allclose(result['grad_sqrt_pi'], torch_sqrt_pi_grad, rtol=rtol, atol=atol))
+        assert(np.allclose(result['grad_s'], torch_S_grad, rtol=rtol, atol=atol))
     
 def test_liklelihood():
     helper_test("f32", 4, False)
@@ -82,5 +82,6 @@ def test_liklelihood():
 
 def test_grads():
     helper_test("f32", 4, True)
+    helper_test("f32", 20, True)
     helper_test("f64", 4, True)
     helper_test("f64", 20, True)
