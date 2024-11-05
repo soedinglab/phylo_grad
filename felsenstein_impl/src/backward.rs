@@ -1,3 +1,5 @@
+use core::num;
+
 use na::distance_squared;
 use num_traits::Float;
 
@@ -56,11 +58,15 @@ fn X<F: FloatTrait, const DIM: usize>(
     t: F,
 ) -> na::SMatrix<F, DIM, DIM> {
     na::SMatrix::<F, DIM, DIM>::from_fn(|i, j| {
-        if num_traits::Float::abs(eigenvalues[i] - eigenvalues[j]) < FloatTrait::from_f64(1e-10) {
+        let diff = num_traits::Float::abs(eigenvalues[i] - eigenvalues[j]);
+        if diff < FloatTrait::from_f64(1e-10) {
             t * FloatTrait::scalar_exp(eigenvalues[i] * t)
+        } else if diff > FloatTrait::from_f64(10.0) {
+            (FloatTrait::scalar_exp(eigenvalues[i] * t) - FloatTrait::scalar_exp(eigenvalues[j] * t)) / (eigenvalues[i] - eigenvalues[j])
         } else {
-            FloatTrait::scalar_exp(eigenvalues[j] * t) * (num_traits::Float::exp_m1(t * (eigenvalues[i] - eigenvalues[j]))
-                / (eigenvalues[i] - eigenvalues[j]))
+            FloatTrait::scalar_exp(eigenvalues[j] * t)
+                * (num_traits::Float::exp_m1(t * (eigenvalues[i] - eigenvalues[j]))
+                    / (eigenvalues[i] - eigenvalues[j]))
         }
     })
 }
