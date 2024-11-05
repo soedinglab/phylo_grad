@@ -71,11 +71,8 @@ def helper_test(dtype, dim : int, gradients: bool):
             print("Rust sqrt pi grad is nan")
             print(np.where(np.isnan(result['grad_sqrt_pi'])))
         
-        #print(result['grad_s'])
-        #print(torch_S_grad)
-        
-        assert(np.allclose(result['grad_sqrt_pi'], torch_sqrt_pi_grad, rtol=1e-1, atol=1e-1))
-        assert(np.allclose(result['grad_s'], torch_S_grad, rtol=1e-1, atol=1e-1))
+        assert(np.allclose(result['grad_sqrt_pi'], torch_sqrt_pi_grad, rtol=1e-3, atol=1e-3))
+        assert(np.allclose(result['grad_s'], torch_S_grad, rtol=1e-3, atol=1e-3))
     
 def test_liklelihood():
     helper_test("f32", 4, False)
