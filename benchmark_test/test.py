@@ -5,7 +5,7 @@ import torch
 from input import read_newick
 import felsenstein
 
-import felsenstein_rs
+import phylo_grad
 
 import numpy as np
 
@@ -30,20 +30,18 @@ def helper_test(dtype, dim : int, gradients: bool):
     if dtype == "f32":
         t_dtype = torch.float32
         np_dtype = np.float32
-        tree_type = felsenstein_rs.FTreeSingle
     else:
         t_dtype = torch.float64
         np_dtype = np.float64
-        tree_type = felsenstein_rs.FTreeDouble 
     
     torch_tree, S, sqrt_pi, leaf_log_p, tree_top = gen_data(t_dtype, dim)
     
     torch_logP = torch_tree.log_likelihood(S, sqrt_pi)
     
     np_tree = np.array(tree_top, dtype=np_dtype)
-    rust_tree = tree_type(dim, np_tree, leaf_log_p.numpy(), 1e-4)
+    rust_tree = phylo_grad.FelsensteinTree(np_tree, leaf_log_p.numpy(), 1e-4)
     
-    result = rust_tree.infer_param_unpaired(S.numpy(), sqrt_pi.numpy())
+    result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
     
     assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=1e-4))
     

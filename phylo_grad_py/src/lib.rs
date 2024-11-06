@@ -1,20 +1,18 @@
 #![allow(non_snake_case, clippy::needless_range_loop)]
 
-
 extern crate nalgebra as na;
 
-use phylo_grad::FloatTrait;
 use num_traits::Float;
 use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
+use phylo_grad::FloatTrait;
 use pyo3::{
-    exceptions::PyValueError, pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy,
-    PyObject, PyRef, PyResult, Python,
+    pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy, PyObject, PyRef, PyResult, Python,
 };
 
 use std::collections::HashMap;
 
-use phylo_grad::{FelsensteinTree, FelsensteinResult};
+use phylo_grad::{FelsensteinResult, FelsensteinTree};
 
 pub fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     tree: PyReadonlyArray2<'_, F>,
@@ -30,7 +28,7 @@ pub fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     FelsensteinTree::new(parents, distances, leaf_log_p)
 }
 
-pub fn backend_infer_py<F: FloatTrait + numpy::Element, const DIM: usize>(
+pub fn backend_calc_grad_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     backend: &FelsensteinTree<F, DIM>,
     s: PyReadonlyArray3<'_, F>,
     sqrt_pi: PyReadonlyArray2<'_, F>,
@@ -38,20 +36,6 @@ pub fn backend_infer_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     let s = vec_2d_from_python(s);
     let sqrt_pi = vec_1d_from_python(sqrt_pi);
     backend.calculate_gradients(s, sqrt_pi)
-}
-
-enum FTreeBackendSingle {
-    K4(FelsensteinTree<f32, 4>),
-    K5(FelsensteinTree<f32, 5>),
-    K16(FelsensteinTree<f32, 16>),
-    K20(FelsensteinTree<f32, 20>),
-}
-
-enum FTreeBackendDouble {
-    K4(FelsensteinTree<f64, 4>),
-    K5(FelsensteinTree<f64, 5>),
-    K16(FelsensteinTree<f64, 16>),
-    K20(FelsensteinTree<f64, 20>),
 }
 
 fn vec_0d_into_python<T>(vec: Vec<T>, py: Python) -> Bound<PyArray1<T>>
@@ -156,7 +140,10 @@ fn vec_leaf_p_from_python<'py, F: FloatTrait + numpy::Element, const DIM: usize>
     vec
 }
 
-fn inference_into_py<'py, F : FloatTrait + numpy::Element, const DIM : usize>(result : FelsensteinResult<F, DIM>, py: Python<'_>) -> PyObject {
+fn inference_into_py<'py, F: FloatTrait + numpy::Element, const DIM: usize>(
+    result: FelsensteinResult<F, DIM>,
+    py: Python<'_>,
+) -> PyObject {
     let log_likelihood_total_py = vec_0d_into_python(result.log_likelihood, py);
     let grad_s_total_py = vec_2d_into_python(result.grad_s, py);
     let grad_sqrt_pi_total_py = vec_1d_into_python(result.grad_sqrt_pi, py);
@@ -193,146 +180,59 @@ fn array2tree<F: FloatTrait + numpy::Element>(
     (parents, distances)
 }
 
-#[pyclass]
-struct FTreeDouble {
-    backend: FTreeBackendDouble,
+macro_rules! backend {
+    ($float:ty, $dim:expr) => {
+        paste::item! {
+            #[pyclass]
+            #[allow(non_camel_case_types)]
+            struct [<Backend_ $float _ $dim>] {
+                tree: FelsensteinTree<$float, $dim>,
+            }
+
+            #[pymethods]
+            impl [<Backend_ $float _ $dim>] {
+                #[new]
+                fn py_new(
+                    tree: PyReadonlyArray2<$float>,
+                    leaf_log_p: PyReadonlyArray3<$float>,
+                    distance_threshold: $float,
+                ) -> PyResult<Self> {
+                    Ok([<Backend_ $float _ $dim>] {
+                        tree: backend_from_py(tree, leaf_log_p, distance_threshold),
+                    })
+                }
+
+                #[pyo3(signature=(s, sqrt_pi))]
+                fn calculate_gradients<'py>(
+                    self_: PyRef<'py, Self>,
+                    s: PyReadonlyArray3<$float>,
+                    sqrt_pi: PyReadonlyArray2<$float>,
+                ) -> PyResult<PyObject> {
+                    let backend = &self_.tree;
+                    let py = self_.py();
+
+                    Ok(inference_into_py(backend_calc_grad_py(backend, s, sqrt_pi), py))
+                }
+            }
+        }
+    };
 }
 
-#[pymethods]
-impl FTreeDouble {
-    #[new]
-    fn py_new(
-        k: u32,
-        tree: PyReadonlyArray2<'_, f64>,
-        leaf_log_p: PyReadonlyArray3<'_, f64>,
-        distance_threshold: f64,
-    ) -> PyResult<Self> {
-        if k == 4 {
-            Ok(FTreeDouble {
-                backend: FTreeBackendDouble::K4(backend_from_py(
-                    tree,
-                    leaf_log_p,
-                    distance_threshold,
-                )),
-            })
-        } else if k == 5 {
-            Ok(FTreeDouble {
-                backend: FTreeBackendDouble::K5(backend_from_py(
-                    tree,
-                    leaf_log_p,
-                    distance_threshold,
-                )),
-            })
-        } else if k == 16 {
-            Ok(FTreeDouble {
-                backend: FTreeBackendDouble::K16(backend_from_py(
-                    tree,
-                    leaf_log_p,
-                    distance_threshold,
-                )),
-            })
-        } else if k == 20 {
-            Ok(FTreeDouble {
-                backend: FTreeBackendDouble::K20(backend_from_py(
-                    tree,
-                    leaf_log_p,
-                    distance_threshold,
-                )),
-            })
-        } else {
-            Err(PyValueError::new_err("unsupported k value"))
-        }
-    }
-
-    #[pyo3(signature=(s, sqrt_pi))]
-    fn infer_param_unpaired<'py>(
-        self_: PyRef<'py, Self>,
-        s: PyReadonlyArray3<'py, f64>,
-        sqrt_pi: PyReadonlyArray2<'py, f64>,
-    ) -> PyResult<PyObject> {
-        let backend = &self_.backend;
-        let py = self_.py();
-
-        match backend {
-            FTreeBackendDouble::K4(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
-            FTreeBackendDouble::K5(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
-            FTreeBackendDouble::K16(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
-            FTreeBackendDouble::K20(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
-        }
-    }
-}
-#[pyclass]
-struct FTreeSingle {
-    backend: FTreeBackendSingle,
-}
-
-#[pymethods]
-impl FTreeSingle {
-    #[new]
-    fn py_new(
-        k: u32,
-        tree: PyReadonlyArray2<'_, f32>,
-        leaf_log_p: PyReadonlyArray3<'_, f32>,
-        distance_threshold: f32,
-    ) -> PyResult<Self> {
-        if k == 4 {
-            Ok(FTreeSingle {
-                backend: FTreeBackendSingle::K4(backend_from_py(
-                    tree,
-                    leaf_log_p,
-                    distance_threshold,
-                )),
-            })
-        } else if k == 5 {
-            Ok(FTreeSingle {
-                backend: FTreeBackendSingle::K5(backend_from_py(
-                    tree,
-                    leaf_log_p,
-                    distance_threshold,
-                )),
-            })
-        } else if k == 16 {
-            Ok(FTreeSingle {
-                backend: FTreeBackendSingle::K16(backend_from_py(
-                    tree,
-                    leaf_log_p,
-                    distance_threshold,
-                )),
-            })
-        } else if k == 20 {
-            Ok(FTreeSingle {
-                backend: FTreeBackendSingle::K20(backend_from_py(
-                    tree,
-                    leaf_log_p,
-                    distance_threshold,
-                )),
-            })
-        } else {
-            Err(PyValueError::new_err("unsupported k value"))
-        }
-    }
-
-    #[pyo3(signature=(s, sqrt_pi))]
-    fn infer_param_unpaired<'py>(
-        self_: PyRef<'py, Self>,
-        s: PyReadonlyArray3<'py, f32>,
-        sqrt_pi: PyReadonlyArray2<'py, f32>,
-    ) -> PyResult<PyObject> {
-        let backend = &self_.backend;
-        let py = self_.py();
-
-        match backend {
-            FTreeBackendSingle::K4(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
-            FTreeBackendSingle::K5(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
-            FTreeBackendSingle::K16(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
-            FTreeBackendSingle::K20(backend) => Ok(inference_into_py(backend_infer_py(backend, s, sqrt_pi), py)),
-        }
-    }
-}
+backend!(f32, 4);
+backend!(f64, 4);
+backend!(f32, 20);
+backend!(f64, 20);
+backend!(f32, 16);
+backend!(f64, 16);
 
 #[pymodule]
-fn felsenstein_rs<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
-    m.add_class::<FTreeSingle>()?;
-    m.add_class::<FTreeDouble>()?;
+#[pyo3(name = "_phylo_grad")]
+fn phylo_grad_mod<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<Backend_f32_4>()?;
+    m.add_class::<Backend_f64_4>()?;
+    m.add_class::<Backend_f32_20>()?;
+    m.add_class::<Backend_f64_20>()?;
+    m.add_class::<Backend_f32_16>()?;
+    m.add_class::<Backend_f64_16>()?;
     Ok(())
 }

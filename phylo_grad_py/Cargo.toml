@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "phylo_grad"
+name = "_phylo_grad"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -15,3 +15,4 @@ nalgebra = {git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen
 nalgebra-lapack = { git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen_bounds"}
 lapack = "0.19.0"
 num-traits = "0.2.19"
+paste = "=0.1.2"

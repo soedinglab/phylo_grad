@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 
 class FelsensteinNode:
     def __init__(self, time):
