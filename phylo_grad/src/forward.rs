@@ -64,7 +64,7 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
 ) -> Option<ParamPrecomp<F, DIM>> {
     use num_traits::Float;
 
-    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, F::EPS_DIV)));
+    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, F::MIN_SQRT_PI)));
 
     let mut S_symmetric = S.clone_owned();
     for i in 0..DIM {
@@ -126,7 +126,7 @@ fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
     );
     matrix_exp *= param.V_pi_inv;
 
-    matrix_exp.apply(|x| *x = Float::max(*x, F::EPS_DIV));
+    matrix_exp.apply(|x| *x = Float::max(*x, F::MIN_SQRT_PI));
 
 
     let log_transition = matrix_exp.map(Float::ln);

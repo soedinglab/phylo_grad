@@ -18,7 +18,7 @@ where
         + nalgebra_lapack::SymmetricEigenScalar,
 {
     const EPS_LOG: Self;
-    const EPS_DIV: Self; // Minimum value for sqrt_pi
+    const MIN_SQRT_PI: Self;
     fn logsumexp<'a, I: Iterator<Item = &'a Self>>(iter: I) -> Self;
     fn from_f64(f: f64) -> Self;
     fn scalar_exp(self) -> Self;
@@ -34,7 +34,7 @@ impl FloatTrait for f32 {
         f as f32
     }
     const EPS_LOG: Self = 1e-20;
-    const EPS_DIV: Self = 1e-5;
+    const MIN_SQRT_PI: Self = 1e-10;
     fn scalar_exp(self) -> Self {
         sleef::f32::exp_u10(self)
     }
@@ -90,7 +90,7 @@ impl FloatTrait for f64 {
         f
     }
     const EPS_LOG: Self = 1e-100;
-    const EPS_DIV: Self = 1e-10;
+    const MIN_SQRT_PI: Self = 1e-10;
     fn scalar_exp(self) -> Self {
         sleef::f64::exp_u10(self)
     }
