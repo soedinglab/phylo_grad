@@ -100,29 +100,13 @@ checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 name = "felsenstein-rs"
 version = "0.1.0"
 dependencies = [
- "felsenstein_impl",
  "lapack",
  "nalgebra 0.33.1",
  "nalgebra-lapack",
  "num-traits",
  "numpy",
+ "phylo_grad",
  "pyo3",
-]
-
-[[package]]
-name = "felsenstein_impl"
-version = "0.1.0"
-dependencies = [
- "itertools",
- "lapack",
- "libm",
- "logsumexp",
- "nalgebra 0.33.1",
- "nalgebra-lapack",
- "num-traits",
- "rand",
- "rayon",
- "sleef",
 ]
 
 [[package]]
@@ -415,6 +399,22 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "phylo_grad"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "lapack",
+ "libm",
+ "logsumexp",
+ "nalgebra 0.33.1",
+ "nalgebra-lapack",
+ "num-traits",
+ "rand",
+ "rayon",
+ "sleef",
+]
 
 [[package]]
 name = "portable-atomic"

@@ -8,7 +8,7 @@ name = "felsenstein_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-felsenstein_impl = {path = "../felsenstein_impl"}
+phylo_grad = {path = "../phylo_grad"}
 numpy = { version = "0.21.0", features = ["nalgebra"] }
 pyo3 = { version = "0.21.2", features = ["extension-module"] }
 nalgebra = {git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen_bounds"}

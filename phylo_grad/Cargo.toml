@@ -1,5 +1,5 @@
 [package]
-name = "felsenstein_impl"
+name = "phylo_grad"
 version = "0.1.0"
 edition = "2021"
 authors = ["Benjamin Lieser <benjamin.lieser@mpinat.mpg.de>", "Jora Belousov <jorabelousov@gmail.com>"]

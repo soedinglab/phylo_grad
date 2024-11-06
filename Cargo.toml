@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "felsenstein_impl",
+    "phylo_grad",
     "felsenstein_rs"
 ]
 
