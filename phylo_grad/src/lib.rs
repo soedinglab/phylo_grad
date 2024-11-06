@@ -6,9 +6,14 @@
 //! For usage refer to the [FelsensteinTree] struct.
 //! 
 //! If you are looking to use this from Python, you can find information on <https://github.com/soedinglab/phylo_grad>
+//! 
+//! # SIMD
+//! 
+//! This crate uses the `portable_simd` feature to enable SIMD acceleration. This feature is not stable yet, so you need to use the nightly compiler for now.
+//! It is tested and developed on `rustc 1.84.0-nightly (1e4f10ba6 2024-10-29)`
 
-extern crate nalgebra as na;
-
+/// Export the nalgebra which is used in the library, this can enable using multiple versions of nalgebra in the same project
+pub use na as nalgebra;
 pub use data_types::FloatTrait;
 pub use backward::softmax;
 
@@ -31,7 +36,7 @@ use crate::tree::*;
 /// Represents a tree topology, branch length and leaf node data
 /// This struct contains the main functionality of the library.
 /// 
-/// It is generic over the number of states in the model, which is given by DIM.
+/// It is generic over the number of states in the model, which is given by `DIM`.
 /// 
 /// It is generic over `f32` and `f64`
 pub struct FelsensteinTree<F, const DIM: usize> {

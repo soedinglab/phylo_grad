@@ -1,6 +1,5 @@
 #![allow(non_snake_case)]
 
-extern crate nalgebra as na;
 use phylo_grad as lib;
 
 use f64 as Float;
