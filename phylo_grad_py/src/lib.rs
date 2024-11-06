@@ -3,7 +3,7 @@
 
 extern crate nalgebra as na;
 
-use felsenstein_impl::data_types::FloatTrait;
+use phylo_grad::data_types::FloatTrait;
 use num_traits::Float;
 use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
@@ -14,7 +14,7 @@ use pyo3::{
 
 use std::collections::HashMap;
 
-use felsenstein_impl::{FelsensteinTree, FelsensteinResult};
+use phylo_grad::{FelsensteinTree, FelsensteinResult};
 
 pub fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     tree: PyReadonlyArray2<'_, F>,
