@@ -21,7 +21,7 @@ pub fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
 ) -> FelsensteinTree<F, DIM> {
     let (parents, distances) = array2tree(tree, distance_threshold);
     let leaf_log_p = leaf_log_p.as_array();
-    let leaf_log_p_shape = leaf_log_p.shape(); // [L num_leaves, DIM]
+    let leaf_log_p_shape = leaf_log_p.shape(); // [L, num_leaves, DIM]
     assert!(DIM == leaf_log_p_shape[2]);
     let leaf_log_p = vec_leaf_p_from_python(leaf_log_p);
 
