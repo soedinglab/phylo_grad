@@ -1,7 +1,11 @@
 #![allow(non_snake_case)]
 #![feature(portable_simd)]
 
-
+//! # PhyloGrad
+//! This crate provides a Rust implementation of a fast differentiation algorithm for the rate matrix in phylogenetic models.
+//! For usage refer to the [FelsensteinTree] struct.
+//! 
+//! If you are looking to use this from Python, you can find information on <https://github.com/soedinglab/phylo_grad>
 
 extern crate nalgebra as na;
 
