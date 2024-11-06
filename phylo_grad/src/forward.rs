@@ -73,7 +73,6 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
         }
     }
 
-    /* TODO remove */
     /* rate_matrix = diag(sqrt_pi_recip) * S_output * diag(sqrt_pi) */
     let mut rate_matrix = S_symmetric.clone_owned();
     diag_times_assign(rate_matrix.as_view_mut(), sqrt_pi_recip.iter().copied());
