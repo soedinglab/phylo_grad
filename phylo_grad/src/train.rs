@@ -5,6 +5,8 @@ use crate::data_types::*;
 use crate::forward::*;
 use crate::tree::*;
 
+use nalgebra as na;
+
 fn forward_column<F: FloatTrait, const DIM: usize>(
     mut leaf_log_p: Vec<na::SVector<F, DIM>>,
     tree: &[TreeNode],

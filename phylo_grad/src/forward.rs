@@ -1,6 +1,8 @@
 use crate::data_types::*;
 use crate::tree::*;
 
+use nalgebra as na;
+
 use nalgebra_lapack::SymmetricEigen;
 
 pub struct ForwardData<F, const DIM: usize> {

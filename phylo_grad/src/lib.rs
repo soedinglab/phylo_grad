@@ -13,7 +13,10 @@
 //! It is tested and developed on `rustc 1.84.0-nightly (1e4f10ba6 2024-10-29)`
 
 /// Export the nalgebra which is used in the library, this can enable using multiple versions of nalgebra in the same project
-pub use na as nalgebra;
+pub use nalgebra;
+
+use nalgebra as na;
+
 pub use data_types::FloatTrait;
 pub use backward::softmax;
 

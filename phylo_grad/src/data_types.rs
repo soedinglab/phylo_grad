@@ -1,5 +1,7 @@
 use std::{iter::Sum, simd::num::SimdFloat};
 
+use nalgebra as na;
+
 use logsumexp::LogSumExp;
 
 use std::simd;

@@ -1,6 +1,8 @@
 use crate::data_types::*;
 use crate::forward::*;
 
+use nalgebra as na;
+
 pub struct BackwardData<F, const DIM: usize> {
     pub grad_log_p: na::SVector<F, DIM>,
 }
