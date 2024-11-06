@@ -1,10 +1,10 @@
 [package]
-name = "felsenstein-rs"
+name = "phylo_grad_py"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "felsenstein_rs"
+name = "phylo_grad"
 crate-type = ["cdylib"]
 
 [dependencies]

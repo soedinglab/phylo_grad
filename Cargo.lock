@@ -97,19 +97,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 
 [[package]]
-name = "felsenstein-rs"
-version = "0.1.0"
-dependencies = [
- "lapack",
- "nalgebra 0.33.1",
- "nalgebra-lapack",
- "num-traits",
- "numpy",
- "phylo_grad",
- "pyo3",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -414,6 +401,19 @@ dependencies = [
  "rand",
  "rayon",
  "sleef",
+]
+
+[[package]]
+name = "phylo_grad_py"
+version = "0.1.0"
+dependencies = [
+ "lapack",
+ "nalgebra 0.33.1",
+ "nalgebra-lapack",
+ "num-traits",
+ "numpy",
+ "phylo_grad",
+ "pyo3",
 ]
 
 [[package]]

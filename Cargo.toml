@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "phylo_grad",
-    "felsenstein_rs"
+    "phylo_grad_py"
 ]
 
 [profile.release]
