@@ -1,8 +1,3 @@
-use core::num;
-
-use na::distance_squared;
-use num_traits::Float;
-
 use crate::data_types::*;
 use crate::forward::*;
 
@@ -30,26 +25,6 @@ fn d_ln_vjp<F: FloatTrait, const DIM: usize>(
         for j in 0..DIM {
             cotangent_vector[(i, j)] = cotangent_vector[(i, j)] / argument[(i, j)];
         }
-    }
-}
-
-/* TODO! excessive precision for constants */
-fn exprel(x: f64) -> f64 {
-    const THRESHOLD: f64 = 2e-3;
-    /* LOG_F64_MAX = f64::MAX.log() */
-    const LOG_F64_MAX: f64 = 7.09782712893384e+02;
-    /* LOG_F64_MIN = ? */
-    const LOG_F64_MIN: f64 = -7.083964185322641e+02;
-    if x < LOG_F64_MIN {
-        -1.0 / x
-    } else if x < -THRESHOLD {
-        (x.exp() - 1.0) / x
-    } else if x < THRESHOLD {
-        1.0 + 0.5 * x * (1.0 + x / 3.0 * (1.0 + 0.25 * x * (1.0 + 0.2 * x)))
-    } else if x < LOG_F64_MAX {
-        (x.exp() - 1.0) / x
-    } else {
-        f64::MAX
     }
 }
 
