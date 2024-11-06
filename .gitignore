@@ -1,5 +1,7 @@
 /target
 .ipynb_checkpoints
 .vscode
-**/flamegraph.svg
-**/perf.data*
+__pycache__
+.pytest_cache
+data
+.snakemake
