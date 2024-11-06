@@ -9,10 +9,8 @@ license = "MIT OR Apache-2.0"
 keywords = ["math", "felsenstein", "machine-learning", "bioinformatics"]
 categories = ["mathematics", "science::bioinformatics"]
 
-
-
 [dependencies]
-logsumexp = "0.1.0" #Compare with the logaddexp crate
+logsumexp = "0.1.0"
 nalgebra = {git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen_bounds"}
 nalgebra-lapack = { git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen_bounds"}
 lapack = "0.19.0"
