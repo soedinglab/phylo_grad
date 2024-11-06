@@ -45,6 +45,14 @@ rule benchmark:
         runtime=1000
     shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {input.files} > {output}"
 
+rule plot:
+    input:  "plot.py",
+            "data/random/time_{num_t}.txt"
+    output: "data/random/plot_{num_t}_time.pdf",
+            "data/random/plot_{num_t}_mem.pdf",
+            "data/random/plot_{num_t}_ratio.pdf"
+    shell: "python {input} {output}"
+
 rule time:
     input: "data/{dataset}/alignment.fasta",
            "data/{dataset}/tree.nwk"
