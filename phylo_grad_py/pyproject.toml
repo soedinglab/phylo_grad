@@ -4,3 +4,8 @@ build-backend = "maturin"
 
 [tool.maturin]
 module-name = "phylo_grad._phylo_grad"
+
+[project]
+name = "phylo_grad"
+version = "0.1.0"
+dependencies = ["numpy"]
