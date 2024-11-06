@@ -24,3 +24,37 @@ It is recommended to install it into a conda environment.
 ## Using from Rust
 
 Just do `cargo add phylo_grad`
+
+## Running benchmarks/tests
+
+Create and activate a conda environment:
+
+```
+conda env create -n phylo_grad --file=benchmark_test/environment.yml
+source activate phylo_grad
+```
+
+Install phylo_grad (requires rustup):
+
+```
+pip install phylo_grad_py
+```
+
+Run Tests
+
+```
+cd benchmark_test
+pytest test.py
+```
+
+Install phylotree (to generate random trees)
+
+```
+cargo install phylotree
+```
+
+Run Benchmarks
+
+```
+snakemake -c all data/random/plot_{num_threads}_time.pdf
+```
