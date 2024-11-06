@@ -12,12 +12,12 @@
 You need a working Rust compiler, the easiest is to install rustup : https://www.rust-lang.org/tools/install
 We depend on a specific version of the compiler for now to get better performance, rustup will download the correct toolchain for you if you compile from this repository.
 
-It is recommended to install it into a conda environment. You have to install `maturin` and `patchelf` (on Linux).
+It is recommended to install it into a conda environment.
 
  To install the package into your current environment, run
  ```
+ export RUSTFLAGS="-C target-cpu=native"
  cd phylo_grad_py
- maturin build --release
  pip install .
  ```
  
