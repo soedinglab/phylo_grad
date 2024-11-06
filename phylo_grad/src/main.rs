@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use phylo_grad as lib;
+use nalgebra as na;
 
 use f64 as Float;
 const DIM : usize = 20;
