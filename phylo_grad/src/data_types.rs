@@ -4,6 +4,8 @@ use logsumexp::LogSumExp;
 
 use std::simd;
 
+/// This Trait is used to abstract over `f32` and `f64` in the codebase.
+/// You can use this in trait bounds to write generic code.
 pub trait FloatTrait
 where
     Self: num_traits::Float

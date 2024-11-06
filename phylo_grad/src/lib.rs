@@ -2,8 +2,11 @@
 #![feature(portable_simd)]
 extern crate nalgebra as na;
 
-pub mod backward;
-pub mod data_types;
+pub use data_types::FloatTrait;
+pub use backward::softmax;
+
+mod backward;
+mod data_types;
 mod forward;
 mod preprocessing;
 mod train;
@@ -14,7 +17,6 @@ use rand::prelude::Distribution;
 use rand::seq::SliceRandom;
 pub use train::FelsensteinResult;
 
-use crate::data_types::*;
 use crate::preprocessing::*;
 use crate::train::*;
 use crate::tree::*;

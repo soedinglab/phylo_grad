@@ -18,7 +18,7 @@ pub fn main() {
     let leaf_log_p : Vec<Vec<na::SVector<Float, DIM>>> = (0..L).map(|_| {
         (0..num_leaf).map(|_| {
             let init = na::SVector::<Float, DIM>::from_iterator((0..DIM).map(|_| rand::random()));
-            let dist = lib::backward::softmax(&init);
+            let dist = lib::softmax(&init);
             dist.map(Float::ln)
         }).collect()
     }).collect();
@@ -31,7 +31,7 @@ pub fn main() {
 
     let sqrt_pi : Vec<_> = (0..L).map(|_| {
         let init = na::SVector::<Float, DIM>::from_iterator((0..DIM).map(|_| rand::random()));
-        let dist = lib::backward::softmax(&init);
+        let dist = lib::softmax(&init);
         dist.map(Float::sqrt)
     }).collect();
 

@@ -5,6 +5,7 @@ pub struct BackwardData<F, const DIM: usize> {
     pub grad_log_p: na::SVector<F, DIM>,
 }
 
+/// Numerical stable softmax
 pub fn softmax<F: FloatTrait, const N: usize>(x: &na::SVector<F, N>) -> na::SVector<F, N> {
     let x_max = x.max();
 

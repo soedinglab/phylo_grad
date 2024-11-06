@@ -3,7 +3,7 @@
 
 extern crate nalgebra as na;
 
-use phylo_grad::data_types::FloatTrait;
+use phylo_grad::FloatTrait;
 use num_traits::Float;
 use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
