@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::u32;
 
 use crate::data_types::*;
 use crate::tree::*;
@@ -39,12 +38,12 @@ pub fn topological_preprocess<F: FloatTrait>(
     let mut indices = (num_leaves..num_nodes as u32).collect::<Vec<u32>>();
     indices.sort_by_key(|&id| height[id as usize]);
     let indices = (0..num_leaves)
-        .chain(indices.into_iter())
+        .chain(indices)
         .collect::<Vec<u32>>();
     let rev_mapping = indices
         .iter()
         .enumerate()
-        .map(|(i, &x)| (x as u32, i as u32))
+        .map(|(i, &x)| (x, i as u32))
         .collect::<HashMap<u32, u32>>();
 
     // Change parents ids
@@ -68,7 +67,7 @@ pub fn topological_preprocess<F: FloatTrait>(
         .iter()
         .map(|&x| dist[x as usize])
         .collect::<Vec<F>>();
-    
+
     drop(parents);
 
     let mut tree_nodes = vec![
@@ -105,10 +104,11 @@ pub fn topological_preprocess<F: FloatTrait>(
                 return Err(TreeError::RootNotThreeChildren);
             }
         } else {
+            #[allow(clippy::collapsible_else_if)]
             if children.len() == 2 {
                 tree_nodes[idx].left = Some(children[0]);
                 tree_nodes[idx].right = Some(children[1]);
-            } else if children.len() == 0 {
+            } else if children.is_empty() {
                 // Leaf node
             } else {
                 return Err(TreeError::NotBinary);

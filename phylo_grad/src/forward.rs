@@ -127,7 +127,6 @@ fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
 
     matrix_exp.apply(|x| *x = Float::max(*x, F::MIN_SQRT_PI));
 
-
     let log_transition = matrix_exp.map(Float::ln);
 
     LogTransitionForwardData {
@@ -161,7 +160,7 @@ fn child_input<F: FloatTrait, const DIM: usize>(
     for a in 0..DIM {
         let row_a = log_transition.log_transition_T.column(a);
         let tmp = log_p + row_a;
-        unsafe { result[a] = F::vec_logsumexp(std::mem::transmute::<_, &[F; DIM]>(&tmp.data.0)) }
+        unsafe { result[a] = F::vec_logsumexp(std::mem::transmute::<&[[F;DIM];1], &[F; DIM]>(&tmp.data.0)) }
     }
     result
 }
@@ -211,14 +210,12 @@ pub fn forward_root<F: FloatTrait, const DIM: usize>(
         log_p[root.parent as usize].as_view(),
         &forward_data.log_transition[root.parent as usize],
     );
-    for opt_child in [root.left, root.right] {
-        if let Some(child) = opt_child {
-            let child_input = child_input(
-                log_p[child as usize].as_view(),
-                &forward_data.log_transition[child as usize],
-            );
-            result += child_input;
-        }
+    for child in [root.left, root.right].into_iter().flatten() {
+        let child_input = child_input(
+            log_p[child as usize].as_view(),
+            &forward_data.log_transition[child as usize],
+        );
+        result += child_input;
     }
 
     result

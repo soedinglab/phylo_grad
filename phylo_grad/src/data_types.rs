@@ -49,6 +49,7 @@ impl FloatTrait for f32 {
             simd::f32x8::copy_to_slice(b, &mut x[i * 8..]);
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in blocks * 8..N {
             x[i] = x[i].scalar_exp();
         }
@@ -81,7 +82,7 @@ impl FloatTrait for f32 {
                 simd::f32x8::load_or(&x[blocks * 8..], simd::f32x8::splat(f32::NEG_INFINITY));
             sum += sleef::f32x::exp_u10(last_elements - simd::f32x8::splat(max));
         }
-        return max + (sum.reduce_sum()).ln();
+        max + (sum.reduce_sum()).ln()
     }
 }
 impl FloatTrait for f64 {
@@ -105,6 +106,7 @@ impl FloatTrait for f64 {
             simd::f64x4::copy_to_slice(b, &mut x[i * 4..]);
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in blocks * 4..N {
             x[i] = x[i].scalar_exp();
         }
@@ -137,6 +139,6 @@ impl FloatTrait for f64 {
                 simd::f64x4::load_or(&x[blocks * 4..], simd::f64x4::splat(f64::NEG_INFINITY));
             sum += sleef::f64x::exp_u10(last_elements - simd::f64x4::splat(max));
         }
-        return max + (sum.reduce_sum()).ln();
+        max + (sum.reduce_sum()).ln()
     }
 }

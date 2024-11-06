@@ -1,5 +1,8 @@
-#![allow(non_snake_case, clippy::needless_range_loop)]
+#![allow(non_snake_case)]
 #![feature(portable_simd)]
+
+
+
 extern crate nalgebra as na;
 
 pub use data_types::FloatTrait;
@@ -21,6 +24,12 @@ use crate::preprocessing::*;
 use crate::train::*;
 use crate::tree::*;
 
+/// Represents a tree topology, branch length and leaf node data
+/// This struct contains the main functionality of the library.
+/// 
+/// It is generic over the number of states in the model, which is given by DIM.
+/// 
+/// It is generic over `f32` and `f64`
 pub struct FelsensteinTree<F, const DIM: usize> {
     tree: Vec<TreeNodeId<u32>>,
     distances: Vec<F>,
@@ -28,12 +37,12 @@ pub struct FelsensteinTree<F, const DIM: usize> {
 }
 
 impl<F: FloatTrait, const DIM : usize> FelsensteinTree<F, DIM> {
-    /// The tree topology is represented as a vector of parent node ids. The root node has parent id -1.
-    /// The leaf nodes have to come first in this vector. The order of the leaf nodes is the same as the order of the second dimension of leaf_log_p.
+    /// The tree topology is represented as a vector of parent node ids. The root node has parent id `-1`.
+    /// The leaf nodes have to come first in this vector. The order of the leaf nodes is the same as the order of the second dimension of `leaf_log_p`.
     /// 
     /// The distances are given as a vector of branch lengths with the same order as the parent vector.
     /// 
-    /// leaf_log_p gives the log probabilities of the leaf nodes. The first dimension is the side id in the alignment, the second is over the leaf nodes, the third is over the states.
+    /// `leaf_log_p` gives the log probabilities of the leaf nodes. The first dimension is the side id in the alignment, the second is over the leaf nodes, the third is over the states.
     pub fn new(parents : Vec<i32>, distances : Vec<F>, leaf_log_p : Vec<Vec<na::SVector<F, DIM>>>) -> Self {
         let (tree, distances) = topological_preprocess::<F>(parents, distances, leaf_log_p[0].len() as u32).expect("Tree topology is invalid");
 
@@ -44,10 +53,12 @@ impl<F: FloatTrait, const DIM : usize> FelsensteinTree<F, DIM> {
         }
     }
 
-    /// s and sqrt_pi have as first dimension the side id in the alignment. s gives the state transition matrix for each side, sqrt_pi gives the square root of the stationary distribution for each side.
+    /// `s` and `sqrt_pi` have as first dimension the side id in the alignment. `s` gives the state transition matrix for each side, `sqrt_pi` gives the square root of the stationary distribution for each side.
     /// See the paper for more details.
     /// 
-    /// The result contains the gradients of s and sqrt_pi with respect to the log likelihood of the tree. It also gives the log likelihood of the tree.
+    /// The result contains the gradients of `s` and `sqrt_pi` with respect to the log likelihood of the tree. It also gives the log likelihood of the tree.
+    /// 
+    /// This function internally parallelizes over the sides in the alignment. You can control the number of threads with the `RAYON_NUM_THREADS` environment variable.
     pub fn calculate_gradients(&self, s: Vec<na::SMatrix<F, DIM, DIM>>, sqrt_pi: Vec<na::SVector<F, DIM>>) -> FelsensteinResult<F, DIM> {
         train_parallel_param_unpaired(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
     }
