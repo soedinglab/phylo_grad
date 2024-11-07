@@ -23,7 +23,7 @@ It is recommended to install it into a conda environment.
  
 ## Using from Rust
 
-Just do `cargo add phylo_grad`
+Just do `cargo add phylo_grad` (will work after publishing)
 
 ## Running benchmarks/tests
 
