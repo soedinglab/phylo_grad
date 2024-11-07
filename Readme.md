@@ -12,13 +12,16 @@
 You need a working Rust compiler, the easiest is to install rustup : https://www.rust-lang.org/tools/install
 We depend on a specific version of the compiler for now to get better performance, rustup will download the correct toolchain for you if you compile from this repository.
 
-It is recommended to install it into a conda environment.
+You also have to have cmake, gcc and gfortran available on the system.
+
+It is recommended to install it into a conda environment, it needs at least python 3.7
 
  To install the package into your current environment, run
  ```
+ conda create -n phylo_grad python=3.11
+ source activate phylo_grad
  export RUSTFLAGS="-C target-cpu=native"
- cd phylo_grad_py
- pip install .
+ pip install phylo_grad_py
  ```
  
 ## Using from Rust
