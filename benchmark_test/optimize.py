@@ -4,7 +4,7 @@ import torch
 
 import input
 import cat
-import felsenstein_rs
+import phylo_grad
 import felsenstein
 import numpy as np
 import argparse
@@ -16,7 +16,6 @@ parser = argparse.ArgumentParser(prog='optimize_benchmark')
 group = parser.add_argument_group('Leaf data', 'Alginment or distribution of leaf data')
 exclusive_group = group.add_mutually_exclusive_group(required=True)
 exclusive_group.add_argument('--fasta_amino', help='Fasta file with amino acid sequences')
-exclusive_group.add_argument('--leaf_dist_numpy', help='npz file with taxa names as key and [L,S] array of log probabilities')
 
 parser.add_argument('--newick', help='Newick file with tree structure')
 
@@ -42,9 +41,6 @@ else:
 if args.fasta_amino is not None:
     tree, L = input.read_newick_fasta(args.newick, args.fasta_amino)
     tree = [(par, dist, input.amino_to_embedding(seq)) for par, dist, seq in tree]
-    
-if args.leaf_dist_numpy is not None:
-    raise NotImplementedError('Not implemented yet')
 
 
 #Init random parameters
@@ -55,7 +51,7 @@ energies = torch.rand(L, 20, requires_grad=True, dtype=dtype)
 if args.rust:
     leaf_log_p = torch.stack([seq for _,_, seq in tree if seq is not None]).transpose(1,0)
     tree = np.array([(par, dist) for par, dist, _ in tree], dtype=np_dtype)
-    tree = felsenstein_rs.FTreeDouble(20, tree, leaf_log_p.numpy(), 1e-4)
+    tree = phylo_grad.FelsensteinTree(tree, leaf_log_p.numpy(), 1e-4)
     
 else:
     tree = felsenstein.FelsensteinTree(tree)
