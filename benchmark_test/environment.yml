@@ -1,4 +1,4 @@
-name: fs_torch
+name: phylo_grad_test
 channels:
   - bioconda
   - conda-forge
