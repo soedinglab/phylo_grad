@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 phylo_grad = {path = "../phylo_grad"}
-numpy = { version = "0.21.0", features = ["nalgebra"] }
+numpy = { version = "0.21.0"}
 pyo3 = { version = "0.21.2", features = ["extension-module"] }
 nalgebra = {git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen_bounds"}
 nalgebra-lapack = { git="https://github.com/benjamin-lieser/nalgebra", branch="sym_eigen_bounds"}
