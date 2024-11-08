@@ -40,7 +40,7 @@ source activate phylo_grad
 Install phylo_grad (requires rustup):
 
 ```
-pip install phylo_grad_py
+pip install ./phylo_grad_py
 ```
 
 Run Tests
