@@ -31,7 +31,13 @@ L = 2 # Number of sides
 shared = torch.rand(190, requires_grad=True)
 energies = torch.rand(L, 20, requires_grad=True)
 
-tree_top = np.array([[3,0.1], [3,0.2], [3,0.5], [-1,0.0]], dtype=np.float32) # Three nodes and one root
+# The tree topology as nodes with parent and distance to parent
+# The nodes are numbered from 0 to 3, where the root is 3
+# The leaf nodes have to come before the internal nodes
+# The root has to have parent -1
+#
+# Three nodes and one root
+tree_top = np.array([[3,0.1], [3,0.2], [3,0.5], [-1,0.0]], dtype=np.float32)
 
 # Create random leaf probabilities. Typically this would be a one hot of the sequence
 leaf_log_p = torch.randn([L, 3, 20])
