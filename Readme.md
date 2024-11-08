@@ -21,7 +21,7 @@ It is recommended to install it into a conda environment, it needs at least pyth
  conda create -n phylo_grad python=3.11
  source activate phylo_grad
  export RUSTFLAGS="-C target-cpu=native"
- pip install phylo_grad_py
+ pip install ./phylo_grad_py
  ```
  
 ## Using from Rust
