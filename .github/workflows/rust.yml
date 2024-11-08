@@ -17,4 +17,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: pip install phylo_grad_py
+      run: cd phylo_grad_py && pip install .
