@@ -17,11 +17,13 @@ jobs:
       run:
         shell: bash -l {0}
     steps:
+    - name: Conda
+      run: |
+         conda init
+         conda create -y -n test python=3.10
+           
     - uses: actions/checkout@v4
     - name: Build
       run: |
-           conda init
-           source ~/.bashrc
-           conda create -y -n test python=3.10
-           conda activate test
+           source activate test
            pip install ./phylo_grad_py
