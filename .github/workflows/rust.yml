@@ -17,12 +17,11 @@ jobs:
       run:
         shell: bash -l {0}
     steps:
+    - uses: actions/checkout@v4
     - uses: conda-incubator/setup-miniconda@v3
       with:
           auto-update-conda: true
           environment-file: benchmark_test/environment.yml
-           
-    - uses: actions/checkout@v4
     - name: Build and install
       run: pip install ./phylo_grad_py
     - name: Test
