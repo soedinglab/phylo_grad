@@ -20,8 +20,14 @@ jobs:
     - uses: conda-incubator/setup-miniconda@v3
       with:
           auto-update-conda: true
-          python-version: ${{ matrix.python-version }}
+          python-version: 3.11
            
     - uses: actions/checkout@v4
     - name: Build
       run: pip install ./phylo_grad_py
+    - name: Conda info
+      shell: bash -el {0}
+      run: conda info
+    - name: Conda list
+      shell: pwsh
+      run: conda list
