@@ -61,3 +61,7 @@ Run Benchmarks
 ```
 snakemake -c all data/random/plot_{num_threads}_time.pdf
 ```
+
+## How to use it
+
+See `examples/train.py` for a simple example usage
