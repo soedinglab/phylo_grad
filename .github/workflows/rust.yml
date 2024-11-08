@@ -23,7 +23,7 @@ jobs:
           auto-update-conda: true
           environment-file: benchmark_test/environment.yml
     - name: Build and install
-      run: pip install ./phylo_grad_py
+      run: pip install ./phylo_grad_py -v
     - name: Test
       working-directory: ./benchmark_test
       run: pytest test.py
