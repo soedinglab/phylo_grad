@@ -17,4 +17,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: cd phylo_grad_py && pip install .
+      run: conda create -y -n test python=3.10
+           source activate test
+           pip install -t phylo_grad_py
