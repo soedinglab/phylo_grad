@@ -20,14 +20,11 @@ jobs:
     - uses: conda-incubator/setup-miniconda@v3
       with:
           auto-update-conda: true
-          python-version: 3.11
+          environment-file: benchmark_test/environment.yml
            
     - uses: actions/checkout@v4
-    - name: Build
+    - name: Build and install
       run: pip install ./phylo_grad_py
-    - name: Conda info
-      shell: bash -el {0}
-      run: conda info
-    - name: Conda list
-      shell: pwsh
-      run: conda list
+    - name: Test
+      working-directory: ./benchmark_test
+      run: pytest test.py
