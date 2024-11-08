@@ -21,6 +21,7 @@ jobs:
     - name: Build
       run: |
            conda init
+           source ~/.bashrc
            conda create -y -n test python=3.10
            conda activate test
            pip install ./phylo_grad_py
