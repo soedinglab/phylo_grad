@@ -19,5 +19,5 @@ jobs:
     - name: Build
       run: |
            conda create -y -n test python=3.10
-           source activate test
+           conda activate test
            pip install -t phylo_grad_py
