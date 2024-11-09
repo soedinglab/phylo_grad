@@ -16,6 +16,9 @@ class FelsensteinTree:
             dtype = 'f64'
         else:
             raise ValueError('leaf_log_p must be either np.float32 or np.float64')
+
+        assert tree.dtype == leaf_log_p.dtype, "tree and leaf_log_p must have the same dtype"
+        
         try:
             tree_class = getattr(_phylo_grad, f'Backend_{dtype}_{dim}')
         except AttributeError:
