@@ -1,6 +1,6 @@
 use std::{iter::Sum, simd::num::SimdFloat};
 
-use nalgebra as na;
+use nalgebra::{self as na, SMatrix, SVector, SymmetricEigen};
 
 use logsumexp::LogSumExp;
 
@@ -18,8 +18,7 @@ where
         + std::marker::Sync
         + Into<f64>
         + Sum
-        + na::RealField
-        + nalgebra_lapack::SymmetricEigenScalar,
+        + na::RealField,
 {
     const EPS_LOG: Self;
     const MIN_SQRT_PI: Self;
@@ -28,6 +27,9 @@ where
     fn scalar_exp(self) -> Self;
     fn vec_exp<const N: usize>(x: &mut [Self; N]);
     fn vec_logsumexp<const N: usize>(x: &[Self; N]) -> Self;
+    fn symmetric_eigen<const N: usize>(
+        matrix: na::SMatrix<Self, N, N>,
+    ) -> Option<(SVector<Self, N>, SMatrix<Self, N, N>)>;
 }
 
 impl FloatTrait for f32 {
@@ -86,6 +88,16 @@ impl FloatTrait for f32 {
         }
         max + (sum.reduce_sum()).ln()
     }
+
+    fn symmetric_eigen<const N: usize>(
+        matrix: na::SMatrix<Self, N, N>,
+    ) -> Option<(SVector<f32, N>, SMatrix<f32, N, N>)> {
+        let nalgebra_lapack::SymmetricEigen {
+            eigenvectors,
+            eigenvalues,
+        } = nalgebra_lapack::SymmetricEigen::try_new(matrix)?;
+        Some((eigenvalues, eigenvectors))
+    }
 }
 impl FloatTrait for f64 {
     fn logsumexp<'a, I: Iterator<Item = &'a Self>>(iter: I) -> Self {
@@ -142,5 +154,14 @@ impl FloatTrait for f64 {
             sum += sleef::f64x::exp_u10(last_elements - simd::f64x4::splat(max));
         }
         max + (sum.reduce_sum()).ln()
+    }
+    fn symmetric_eigen<const N: usize>(
+        matrix: na::SMatrix<Self, N, N>,
+    ) -> Option<(SVector<f64, N>, SMatrix<f64, N, N>)> {
+        let nalgebra_lapack::SymmetricEigen {
+            eigenvectors,
+            eigenvalues,
+        } = nalgebra_lapack::SymmetricEigen::try_new(matrix)?;
+        Some((eigenvalues, eigenvectors))
     }
 }
