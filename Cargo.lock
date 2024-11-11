@@ -215,8 +215,9 @@ dependencies = [
 
 [[package]]
 name = "nalgebra"
-version = "0.33.1"
-source = "git+https://github.com/benjamin-lieser/nalgebra?branch=sym_eigen_bounds#cce50f76485e26d72883d8d0af466a01e98c8ee6"
+version = "0.33.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26aecdf64b707efd1310e3544d709c5c0ac61c13756046aaaba41be5c4f66a3b"
 dependencies = [
  "approx",
  "matrixmultiply",
@@ -231,7 +232,8 @@ dependencies = [
 [[package]]
 name = "nalgebra-lapack"
 version = "0.25.0"
-source = "git+https://github.com/benjamin-lieser/nalgebra?branch=sym_eigen_bounds#cce50f76485e26d72883d8d0af466a01e98c8ee6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b375d1c3c6c8f1eeaeefda3f0e3517af4c294c44f5c2929101f6b0dc977d1db7"
 dependencies = [
  "lapack",
  "lapack-src",
@@ -244,7 +246,8 @@ dependencies = [
 [[package]]
 name = "nalgebra-macros"
 version = "0.2.2"
-source = "git+https://github.com/benjamin-lieser/nalgebra?branch=sym_eigen_bounds#cce50f76485e26d72883d8d0af466a01e98c8ee6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "254a5372af8fc138e36684761d3c0cdb758a4410e938babcff1c860ce14ddbfc"
 dependencies = [
  "proc-macro2",
  "quote",

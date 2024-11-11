@@ -84,10 +84,7 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
         S_symmetric[(i, i)] = -rate_matrix.row(i).sum() + rate_matrix[(i, i)];
     }
 
-    let SymmetricEigen {
-        eigenvalues,
-        eigenvectors,
-    } = nalgebra_lapack::SymmetricEigen::try_new(S_symmetric)?;
+    let (eigenvalues, eigenvectors) = F::symmetric_eigen(S_symmetric)?;
 
     // Prevent numerical instability
     let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<F>();
@@ -162,7 +159,11 @@ fn child_input<F: FloatTrait, const DIM: usize>(
     for a in 0..DIM {
         let row_a = log_transition.log_transition_T.column(a);
         let tmp = log_p + row_a;
-        unsafe { result[a] = F::vec_logsumexp(std::mem::transmute::<&[[F;DIM];1], &[F; DIM]>(&tmp.data.0)) }
+        unsafe {
+            result[a] = F::vec_logsumexp(std::mem::transmute::<&[[F; DIM]; 1], &[F; DIM]>(
+                &tmp.data.0,
+            ))
+        }
     }
     result
 }
