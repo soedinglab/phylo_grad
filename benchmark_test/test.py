@@ -74,6 +74,7 @@ def helper_test(dtype, dim : int, gradients: bool):
     
 def test_liklelihood():
     helper_test("f32", 4, False)
+    helper_test("f32", 20, False)
     helper_test("f64", 4, False)
     helper_test("f64", 20, False)
 
