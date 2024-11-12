@@ -1,5 +1,3 @@
-import csv
-
 import Bio.AlignIO as AlignIO
 import Bio.Phylo as Phylo
 from Bio.Align import MultipleSeqAlignment
