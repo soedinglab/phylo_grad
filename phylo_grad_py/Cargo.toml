@@ -1,7 +1,13 @@
 [package]
 name = "phylo_grad_py"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+authors = ["Benjamin Lieser <benjamin.lieser@mpinat.mpg.de>", "Jora Belousov <jorabelousov@gmail.com>"]
+description = "Python bindings for phylo_grad"
+repository = "https://github.com/soedinglab/phylo_grad"
+license = "MIT OR Apache-2.0"
+keywords = ["math", "felsenstein", "machine-learning", "bioinformatics"]
+categories = ["mathematics", "science::bioinformatics"]
 
 [lib]
 name = "_phylo_grad"
@@ -12,7 +18,5 @@ phylo_grad = {path = "../phylo_grad"}
 numpy = { version = "0.21.0"}
 pyo3 = { version = "0.21.2", features = ["extension-module"] }
 nalgebra = "0.33.2"
-nalgebra-lapack = "0.25.0"
-lapack = "0.19.0"
 num-traits = "0.2.19"
 paste = "=0.1.2"

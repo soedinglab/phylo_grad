@@ -412,11 +412,9 @@ dependencies = [
 
 [[package]]
 name = "phylo_grad_py"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
- "lapack",
  "nalgebra",
- "nalgebra-lapack",
  "num-traits",
  "numpy",
  "paste 0.1.2",
