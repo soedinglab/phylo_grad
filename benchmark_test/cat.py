@@ -1,3 +1,7 @@
+"""
+    Example implementation of a continuous CAT Model used for the benchmark test
+"""
+
 import torch
 
 def rate_matrix(shared, energies):

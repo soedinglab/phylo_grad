@@ -1,3 +1,7 @@
+"""
+    Generate random sequences for the leaves in a newick tree as fasta format.
+"""
+
 import sys
 import Bio.Phylo as Phylo
 import input

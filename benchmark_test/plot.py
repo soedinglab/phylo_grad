@@ -1,3 +1,7 @@
+"""
+    Creates the plots in the paper from the measurements
+"""
+
 import re
 import sys
 import matplotlib.pyplot as plt

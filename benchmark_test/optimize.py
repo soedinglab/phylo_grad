@@ -1,3 +1,7 @@
+"""
+    This script is the benchmark, it supports the phylo_grad gradients and pytorch gradients.
+"""
+
 import sys
 
 import torch

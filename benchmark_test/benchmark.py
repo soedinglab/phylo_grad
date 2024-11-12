@@ -1,9 +1,11 @@
+"""
+    This script runs the benchmark and measures the time and memory usage of the program.
+"""
 import sys
 import subprocess
-import psutil
 import time
 
-def run_and_monitor(command):
+def run_and_measure(command):
     # Start time
     start_time = time.time()
 
@@ -34,7 +36,7 @@ fasta_files = files[len(files)//2:]
 for fasta_file, newick_file in zip(fasta_files, newick_files):
     print("--Dataset--: ", fasta_file, newick_file)
     print("Rust:")
-    run_and_monitor(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --rust --f64')
+    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --rust --f64')
     print("Pytorch:")
-    run_and_monitor(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --pytorch --f64')
+    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --pytorch --f64')
     print()
