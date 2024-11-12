@@ -26,7 +26,7 @@ It is recommended to install it into a conda environment, it needs at least pyth
  
 ## Using from Rust
 
-Just do `cargo add phylo_grad` (will work after publishing)
+Just `cargo add phylo_grad` (will work after publishing)
 
 ## Running benchmarks/tests
 
@@ -65,3 +65,8 @@ snakemake -c all data/random/plot_{num_threads}_time.pdf
 ## How to use it
 
 See `examples/train.py` for a simple example usage
+
+## Unsupported DIM in Python
+
+If you use the python bindings you can by default only use 4, 16 and 20 for the number of states in the Felsenstein.
+If you need other numbers you can add them at the end of `phylo_grad_py/src/lib.rs` (needs a change in 2 positions) and compile from source.
