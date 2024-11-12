@@ -1,10 +1,10 @@
 [package]
 name = "phylo_grad"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Benjamin Lieser <benjamin.lieser@mpinat.mpg.de>", "Jora Belousov <jorabelousov@gmail.com>"]
-description = "Gradient calculation of the Felsenstein algorithm with respect to rate matrix"
-repository = "https://github.com/soedinglab/felsenstein-generator-grad"
+description = "Fast gradient calculation of the Felsenstein algorithm with respect to the rate matrix"
+repository = "https://github.com/soedinglab/phylo_grad"
 license = "MIT OR Apache-2.0"
 keywords = ["math", "felsenstein", "machine-learning", "bioinformatics"]
 categories = ["mathematics", "science::bioinformatics"]

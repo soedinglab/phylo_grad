@@ -180,7 +180,7 @@ fn array2tree<F: FloatTrait + numpy::Element>(
     (parents, distances)
 }
 
-macro_rules! backend {
+macro_rules! backend_both {
     ($float:ty, $dim:expr) => {
         paste::item! {
             #[pyclass]
@@ -218,21 +218,44 @@ macro_rules! backend {
     };
 }
 
-backend!(f32, 4);
-backend!(f64, 4);
-backend!(f32, 20);
-backend!(f64, 20);
-backend!(f32, 16);
-backend!(f64, 16);
+macro_rules! backend {
+    ($dim:expr) => {
+        backend_both!(f32, $dim);
+        backend_both!(f64, $dim);
+    };
+}
+
+macro_rules! backend_all {
+    ($($dim:expr), *) => {
+        $(
+            backend!($dim);
+        )*
+    };
+}
+
+
+macro_rules! add_class {
+    ($mod:expr, $dim:expr) => {
+        paste::item! {
+            $mod.add_class::<[<Backend_f32_ $dim>]>()?;
+            $mod.add_class::<[<Backend_f64_ $dim>]>()?;
+        }
+    };
+}
+
+macro_rules! add_class_all {
+    ($mod:expr, $($dim:expr),*) => {
+        $( 
+            add_class!($mod, $dim);
+        )*
+    };
+}
+
+backend_all!(4, 16, 20);
 
 #[pymodule]
 #[pyo3(name = "_phylo_grad")]
 fn phylo_grad_mod<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
-    m.add_class::<Backend_f32_4>()?;
-    m.add_class::<Backend_f64_4>()?;
-    m.add_class::<Backend_f32_20>()?;
-    m.add_class::<Backend_f64_20>()?;
-    m.add_class::<Backend_f32_16>()?;
-    m.add_class::<Backend_f64_16>()?;
+    add_class_all!(m, 4, 16, 20);
     Ok(())
 }
