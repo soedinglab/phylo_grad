@@ -1,3 +1,6 @@
+"""
+    This is the Felsenstein implementation in PyTorch.
+"""
 import torch
 
 class FelsensteinNode:
@@ -16,6 +19,7 @@ class FelsensteinNode:
         rate = self.time * matrices
         mexp = torch.matrix_exp(rate)
         
+        # To prevent negative values out of the matrix_exp which can happen due to numerical instability, we use the 1e-20 threshold
         self.log_transitions = torch.log(torch.max(mexp, torch.tensor(1e-20, dtype=mexp.dtype)))
         
         if len(self.children) > 0: # Inner node

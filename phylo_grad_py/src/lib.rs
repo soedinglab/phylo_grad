@@ -47,15 +47,15 @@ where
         .into_pyarray_bound(py)
 }
 
-fn na_1d_from_python<'py, T, const N: usize>(py_array1: ArrayView1<'py, T>) -> na::SVector<T, N>
+fn na_1d_from_python<T, const N: usize>(py_array1: ArrayView1<'_, T>) -> na::SVector<T, N>
 where
     T: numpy::Element + na::Scalar + Copy,
 {
     na::SVector::<T, N>::from_iterator(py_array1.iter().copied())
 }
 
-fn vec_1d_from_python<'py, T, const N: usize>(
-    py_array2: PyReadonlyArray2<'py, T>,
+fn vec_1d_from_python<T, const N: usize>(
+    py_array2: PyReadonlyArray2<'_, T>,
 ) -> Vec<na::SVector<T, N>>
 where
     T: numpy::Element + na::Scalar + Copy,
@@ -65,10 +65,10 @@ where
     vec
 }
 
-fn vec_1d_into_python<'py, T, const N: usize>(
+fn vec_1d_into_python<T, const N: usize>(
     vec: Vec<na::SVector<T, N>>,
-    py: Python<'py>,
-) -> Bound<'py, PyArray2<T>>
+    py: Python<'_>,
+) -> Bound<'_, PyArray2<T>>
 where
     T: numpy::Element + na::Scalar + Copy,
 {
@@ -82,8 +82,8 @@ where
     .into_pyarray_bound(py)
 }
 
-fn na_2d_from_python<'py, T, const R: usize, const C: usize>(
-    py_array2: ArrayView2<'py, T>,
+fn na_2d_from_python<T, const R: usize, const C: usize>(
+    py_array2: ArrayView2<'_, T>,
 ) -> na::SMatrix<T, R, C>
 where
     T: numpy::Element + na::Scalar + Copy,
@@ -91,8 +91,8 @@ where
     na::SMatrix::<T, R, C>::from_iterator(py_array2.t().iter().copied())
 }
 
-fn vec_2d_from_python<'py, T, const R: usize, const C: usize>(
-    py_array3: PyReadonlyArray3<'py, T>,
+fn vec_2d_from_python<T, const R: usize, const C: usize>(
+    py_array3: PyReadonlyArray3<'_, T>,
 ) -> Vec<na::SMatrix<T, R, C>>
 where
     T: numpy::Element + na::Scalar + Copy,
@@ -103,10 +103,10 @@ where
     vec
 }
 
-fn vec_2d_into_python<'py, T, const R: usize, const C: usize>(
+fn vec_2d_into_python<T, const R: usize, const C: usize>(
     vec: Vec<na::SMatrix<T, R, C>>,
-    py: Python<'py>,
-) -> Bound<'py, PyArray3<T>>
+    py: Python<'_>,
+) -> Bound<'_, PyArray3<T>>
 where
     T: numpy::Element + na::Scalar + Copy,
 {
@@ -129,7 +129,7 @@ fn to_vec_DIM<F: FloatTrait + numpy::Element, const DIM: usize>(
         .collect()
 }
 
-fn vec_leaf_p_from_python<'py, F: FloatTrait + numpy::Element, const DIM: usize>(
+fn vec_leaf_p_from_python<F: FloatTrait + numpy::Element, const DIM: usize>(
     py_array3: ArrayView3<F>,
 ) -> Vec<Vec<na::SVector<F, DIM>>> {
     let ndarray = py_array3;
@@ -140,7 +140,7 @@ fn vec_leaf_p_from_python<'py, F: FloatTrait + numpy::Element, const DIM: usize>
     vec
 }
 
-fn inference_into_py<'py, F: FloatTrait + numpy::Element, const DIM: usize>(
+fn inference_into_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     result: FelsensteinResult<F, DIM>,
     py: Python<'_>,
 ) -> PyObject {
@@ -180,7 +180,7 @@ fn array2tree<F: FloatTrait + numpy::Element>(
     (parents, distances)
 }
 
-macro_rules! backend {
+macro_rules! backend_both {
     ($float:ty, $dim:expr) => {
         paste::item! {
             #[pyclass]
@@ -203,8 +203,8 @@ macro_rules! backend {
                 }
 
                 #[pyo3(signature=(s, sqrt_pi))]
-                fn calculate_gradients<'py>(
-                    self_: PyRef<'py, Self>,
+                fn calculate_gradients(
+                    self_: PyRef<'_, Self>,
                     s: PyReadonlyArray3<$float>,
                     sqrt_pi: PyReadonlyArray2<$float>,
                 ) -> PyResult<PyObject> {
@@ -218,21 +218,44 @@ macro_rules! backend {
     };
 }
 
-backend!(f32, 4);
-backend!(f64, 4);
-backend!(f32, 20);
-backend!(f64, 20);
-backend!(f32, 16);
-backend!(f64, 16);
+macro_rules! backend {
+    ($dim:expr) => {
+        backend_both!(f32, $dim);
+        backend_both!(f64, $dim);
+    };
+}
+
+macro_rules! backend_all {
+    ($($dim:expr), *) => {
+        $(
+            backend!($dim);
+        )*
+    };
+}
+
+
+macro_rules! add_class {
+    ($mod:expr, $dim:expr) => {
+        paste::item! {
+            $mod.add_class::<[<Backend_f32_ $dim>]>()?;
+            $mod.add_class::<[<Backend_f64_ $dim>]>()?;
+        }
+    };
+}
+
+macro_rules! add_class_all {
+    ($mod:expr, $($dim:expr),*) => {
+        $( 
+            add_class!($mod, $dim);
+        )*
+    };
+}
+
+backend_all!(4, 16, 20);
 
 #[pymodule]
 #[pyo3(name = "_phylo_grad")]
 fn phylo_grad_mod<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
-    m.add_class::<Backend_f32_4>()?;
-    m.add_class::<Backend_f64_4>()?;
-    m.add_class::<Backend_f32_20>()?;
-    m.add_class::<Backend_f64_20>()?;
-    m.add_class::<Backend_f32_16>()?;
-    m.add_class::<Backend_f64_16>()?;
+    add_class_all!(m, 4, 16, 20);
     Ok(())
 }

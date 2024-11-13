@@ -1,4 +1,6 @@
-import csv
+"""
+    This module contains functions to read a newick file and put it in the required format for phylo_grad
+"""
 
 import Bio.AlignIO as AlignIO
 import Bio.Phylo as Phylo
