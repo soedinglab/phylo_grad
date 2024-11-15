@@ -7,4 +7,4 @@ module-name = "phylo_grad._phylo_grad"
 
 [project]
 name = "phylo_grad"
-dependencies = ["numpy"]
+dependencies = ["numpy", "biopython"]
