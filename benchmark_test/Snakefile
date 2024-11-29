@@ -23,18 +23,18 @@ def benchmark_input(wildcards):
 
 rule benchmark:
     input: files = benchmark_input, script = "benchmark.py"
-    output: "data/random/time_{num_t}.txt"
+    output: "data/random/time_{num_t}_{dtype}.txt"
     threads: lambda w : int(w.num_t)
     resources:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py f64 {input.files} > {output}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {wildcards.dtype} {input.files} > {output}"
 
 rule plot:
     input:  "plot.py",
-            "data/random/time_{num_t}.txt"
-    output: "data/random/plot_{num_t}_time.pdf",
-            "data/random/plot_{num_t}_mem.pdf",
-            "data/random/plot_{num_t}_ratio.pdf"
+            "data/random/time_{num_t}_{dtype}.txt"
+    output: "data/random/plot_{num_t}_{dtype}_time.pdf",
+            "data/random/plot_{num_t}_{dtype}_mem.pdf",
+            "data/random/plot_{num_t}_{dtype}_ratio.pdf"
     shell: "python {input} {output}"
