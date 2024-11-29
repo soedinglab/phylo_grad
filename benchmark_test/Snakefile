@@ -29,7 +29,7 @@ rule benchmark:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {input.files} > {output}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py f64 {input.files} > {output}"
 
 rule plot:
     input:  "plot.py",

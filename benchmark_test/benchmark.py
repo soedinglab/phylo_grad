@@ -26,8 +26,12 @@ def run_and_measure(command):
         print(stderr.decode())
     print(f"Time: {elapsed_time:.2f}")
     print(f"Mem: {stdout.decode()}")
-        
-files = sys.argv[1:]
+
+dtype = sys.argv[1]
+
+assert dtype in ['f32', 'f64']
+
+files = sys.argv[2:]
 assert(len(files) %2 == 0)
 
 newick_files = files[0:len(files)//2]
@@ -36,7 +40,7 @@ fasta_files = files[len(files)//2:]
 for fasta_file, newick_file in zip(fasta_files, newick_files):
     print("--Dataset--: ", fasta_file, newick_file)
     print("Rust:")
-    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --rust --f64')
+    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --rust --{dtype}')
     print("Pytorch:")
-    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --pytorch --f64')
+    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --pytorch --{dtype}')
     print()
