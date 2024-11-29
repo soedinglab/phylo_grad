@@ -23,7 +23,7 @@ class FelsensteinNode:
         self.log_transitions = torch.log(torch.max(mexp, torch.tensor(1e-20, dtype=mexp.dtype)))
         
         if len(self.children) > 0: # Inner node
-            self.precomp = torch.zeros([1,1], dtype=matrices.dtype) # this will be broadcasted to [L,S]
+            self.precomp = torch.zeros([1,1], dtype=matrices.dtype, device=matrices.device) # this will be broadcasted to [L,S]
             
             for child in self.children:
                 child.compute(matrices)
