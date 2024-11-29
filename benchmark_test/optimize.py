@@ -27,6 +27,7 @@ backend = parser.add_argument_group('Backend')
 exclusive_group = backend.add_mutually_exclusive_group(required=True)
 exclusive_group.add_argument('--rust', action='store_true')
 exclusive_group.add_argument('--pytorch', action='store_true')
+exclusive_group.add_argument('--pytorch_gpu', action='store_true')
 
 fp_precision = parser.add_argument_group('fp precision')
 exclusive_group = fp_precision.add_mutually_exclusive_group(required=True)
@@ -44,18 +45,26 @@ else:
     
 if args.fasta_amino is not None:
     tree, L = input.read_newick_fasta(args.newick, args.fasta_amino)
-    tree = [(par, dist, input.amino_to_embedding(seq)) for par, dist, seq in tree]
+    if args.pytorch_gpu:
+        tree = [(par, dist, input.amino_to_embedding(seq).cuda() if seq else None) for par, dist, seq in tree]
+    else:
+        tree = [(par, dist, input.amino_to_embedding(seq)) for par, dist, seq in tree]
 
 
 #Init random parameters
 torch.manual_seed(0)
-shared = torch.rand(190, requires_grad=True, dtype=dtype)
-energies = torch.rand(L, 20, requires_grad=True, dtype=dtype)
+
+if args.pytorch_gpu:
+    shared = torch.rand(190, requires_grad=True, dtype=dtype, device="cuda")
+    energies = torch.rand(L, 20, requires_grad=True, dtype=dtype, device="cuda")
+else:
+    shared = torch.rand(190, requires_grad=True, dtype=dtype)
+    energies = torch.rand(L, 20, requires_grad=True, dtype=dtype)
 
 if args.rust:
     leaf_log_p = torch.stack([seq for _,_, seq in tree if seq is not None]).transpose(1,0)
     tree = np.array([(par, dist) for par, dist, _ in tree], dtype=np_dtype)
-    tree = phylo_grad.FelsensteinTree(tree, leaf_log_p.numpy(), 1e-4)
+    tree = phylo_grad.FelsensteinTree(tree, leaf_log_p.type(dtype).numpy(), 1e-4)
     
 else:
     tree = felsenstein.FelsensteinTree(tree)
@@ -68,7 +77,7 @@ for i in range(100):
     S, sqrt_pi = cat.rate_matrix(shared, energies)
     
     if args.rust:
-        result = tree.infer_param_unpaired(S.detach().numpy(), sqrt_pi.detach().numpy())
+        result = tree.calculate_gradients(S.detach().numpy(), sqrt_pi.detach().numpy())
         S.backward(-torch.tensor(result['grad_s'], dtype=dtype))
         sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi'], dtype=dtype))
         #print(result['log_likelihood'].sum())

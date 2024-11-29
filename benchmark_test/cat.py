@@ -10,7 +10,7 @@ def rate_matrix(shared, energies):
         energies is a [L, 20] tensor representing the energy of each amino acid at each side. The distribution is given by the softmax of the energies
     """
     dtype = shared.dtype
-    S = torch.zeros((20,20), dtype=dtype)
+    S = torch.zeros((20,20), dtype=dtype, device=shared.device)
     S[*torch.triu_indices(20,20, offset= 1)] = shared
     S = torch.exp(S)
     
