@@ -1,11 +1,8 @@
-
-import torch
-
-from torch.nn.functional import log_softmax
-
-import phylo_grad
 import io
+import torch
+from torch.nn.functional import log_softmax
 import numpy as np
+import phylo_grad
 
 # This file gives an example of how to use the phylo_grad library in a real world example
 # It trains a variation of the CAT model
