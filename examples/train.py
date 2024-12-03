@@ -12,7 +12,8 @@ import phylo_grad
 def rate_matrix(shared, energies):
     """
         shared is a [190] tensor representing the upper diagonal of the log(S) matrix
-        energies is a [L, 20] tensor representing the energy of each amino acid at each side. The distribution is given by the softmax of the energies
+        energies is a [L, 20] tensor representing the energy of each amino acid at each side.
+        The distribution is given by the softmax of the energies
     """
     dtype = shared.dtype
     S = torch.zeros((20,20), dtype=dtype)
