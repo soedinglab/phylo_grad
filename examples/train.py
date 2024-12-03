@@ -35,13 +35,13 @@ shared = torch.rand(190, requires_grad=True)
 energies = torch.rand(L, 20, requires_grad=True)
 
 # The tree topology:
-
 tree_top = "(A:0.1, B:0.2, (C:0.5,D:0.2):0.1);"
 
 # Create random leaf probabilities. Typically this would be a one hot of the sequence.
 # This allows for maximum flexibility, for example gap treatment
 leaf_log_p = { seq : log_softmax(torch.randn([L, 20]), dim=1) for seq in ['A', 'B', 'C', 'D']}
 
+# Create the tree object
 tree = phylo_grad.FelsensteinTree.from_newick(io.StringIO(tree_top), leaf_log_p, dtype=np.float32)
         
 optimizer = torch.optim.Adam([shared, energies], lr=0.01)
@@ -54,12 +54,11 @@ for i in range(100):
     # Calculate the gradients with respect to S and sqrt_pi
     result = tree.calculate_gradients(S.detach().numpy(), sqrt_pi.detach().numpy())
     
-    # Backpropagate the gradients to our original parameters
+    # Backpropagate the gradients to our original parameters and invert the sign to maximize the likelihood
     S.backward(-torch.tensor(result['grad_s']))
     sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi']))
     
     # Print the current likelihood of the tree
     print(result['log_likelihood'].sum())
     
-    optimizer.step()
-        
+    optimizer.step()    
