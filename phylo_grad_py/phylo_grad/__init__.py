@@ -1,3 +1,5 @@
+import io
+
 from . import _phylo_grad
 import numpy as np
 from Bio import Phylo
@@ -29,7 +31,13 @@ class FelsensteinTree:
         self.tree = tree_class(tree, leaf_log_p, distance_threshold)
         
     @classmethod
-    def from_newick(cls, newick, leaf_log_p_dict, dtype = np.float64, distance_threshold=1e-4):
+    def from_newick(cls, newick : str | io.TextIOBase, leaf_log_p_dict : dict, dtype: np.floating = np.float64, distance_threshold : float = 1e-4):
+        """
+            newick: File Handle or File name containing the newick tree
+            leaf_log_p_dict: A dictionary mapping leaf names to log probabilities
+            dtype: The desired dtype, either np.float32 or np.float64
+            distance_threshold: Every edge of the tree will be at least this long
+        """
         tree = Phylo.read(newick, "newick")
         
         nodes = tree.get_terminals() + tree.get_nonterminals()
