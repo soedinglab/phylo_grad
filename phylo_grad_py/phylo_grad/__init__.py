@@ -7,11 +7,11 @@ from Bio import AlignIO
 
 class FelsensteinTree:
     def __init__(self, tree, leaf_log_p, distance_threshold=1e-4):
-        assert(isinstance(tree, np.ndarray))
-        assert(isinstance(leaf_log_p, np.ndarray))
-        assert(isinstance(distance_threshold, float))
+        assert isinstance(tree, np.ndarray)
+        assert isinstance(leaf_log_p, np.ndarray)
+        assert isinstance(distance_threshold, float)
         
-        assert(len(leaf_log_p.shape) == 3)
+        assert len(leaf_log_p.shape) == 3, "leaf_log_p must have shape (L, N, DIM)"
         
         dim = leaf_log_p.shape[2]
         if leaf_log_p.dtype == np.float32:
