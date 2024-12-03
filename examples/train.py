@@ -1,7 +1,10 @@
 
 import torch
 
+from torch.nn.functional import log_softmax
+
 import phylo_grad
+import io
 import numpy as np
 
 # This file gives an example of how to use the phylo_grad library in a real world example
@@ -31,20 +34,15 @@ L = 2 # Number of sides
 shared = torch.rand(190, requires_grad=True)
 energies = torch.rand(L, 20, requires_grad=True)
 
-# The tree topology as nodes with parent and distance to parent
-# The nodes are numbered from 0 to 3, where the root is 3
-# The leaf nodes have to come before the internal nodes
-# The root has to have parent -1
-#
-# Three nodes and one root
-tree_top = np.array([[3,0.1], [3,0.2], [3,0.5], [-1,0.0]], dtype=np.float32)
+# The tree topology:
 
-# Create random leaf probabilities. Typically this would be a one hot of the sequence
-leaf_log_p = torch.randn([L, 3, 20])
-leaf_log_p = torch.nn.functional.log_softmax(leaf_log_p, dim = 2)
+tree_top = "(A:0.1, B:0.2, (C:0.5,D:0.2):0.1);"
 
-# The last parameter is the minimum edge length of the tree, for numerical reasons any edge shorter than this will be set to this value
-tree = phylo_grad.FelsensteinTree(tree_top, leaf_log_p.numpy(), 1e-4)
+# Create random leaf probabilities. Typically this would be a one hot of the sequence.
+# This allows for maximum flexibility, for example gap treatment
+leaf_log_p = { seq : log_softmax(torch.randn([L, 20]), dim=1) for seq in ['A', 'B', 'C', 'D']}
+
+tree = phylo_grad.FelsensteinTree.from_newick(io.StringIO(tree_top), leaf_log_p, dtype=np.float32)
         
 optimizer = torch.optim.Adam([shared, energies], lr=0.01)
 

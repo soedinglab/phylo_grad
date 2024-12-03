@@ -4,7 +4,7 @@ from Bio import Phylo
 from Bio import AlignIO
 
 class FelsensteinTree:
-    def __init__(self, tree, leaf_log_p, distance_threshold):
+    def __init__(self, tree, leaf_log_p, distance_threshold=1e-4):
         assert(isinstance(tree, np.ndarray))
         assert(isinstance(leaf_log_p, np.ndarray))
         assert(isinstance(distance_threshold, float))
@@ -29,7 +29,7 @@ class FelsensteinTree:
         self.tree = tree_class(tree, leaf_log_p, distance_threshold)
         
     @classmethod
-    def from_newick(cls, newick, leaf_log_p_dict, distance_threshold, dtype):
+    def from_newick(cls, newick, leaf_log_p_dict, dtype = np.float64, distance_threshold=1e-4):
         tree = Phylo.read(newick, "newick")
         
         nodes = tree.get_terminals() + tree.get_nonterminals()
@@ -52,7 +52,7 @@ class FelsensteinTree:
             if node.is_terminal():
                 leaf_log_p.append(leaf_log_p_dict[node.name])
         
-        leaf_log_p_array = np.array(leaf_log_p, dtype=dtype)
+        leaf_log_p_array = np.array(leaf_log_p, dtype=dtype).transpose(1, 0, 2)
         
         return cls(np.array(parent_list, dtype=dtype), leaf_log_p_array, distance_threshold)
         
