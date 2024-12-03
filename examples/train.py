@@ -19,14 +19,10 @@ def rate_matrix(shared, energies):
     S = torch.zeros((20,20), dtype=dtype)
     S[*torch.triu_indices(20,20, offset= 1)] = shared
     S = torch.exp(S)
-    
     sqrt_pi = torch.sqrt(torch.nn.functional.softmax(energies, dim=1))
-    
     return S.unsqueeze(0).expand(energies.shape[0], -1, -1), sqrt_pi
 
-
 L = 2 # Number of sides
-
 
 #Init random parameters
 shared = torch.rand(190, requires_grad=True)
