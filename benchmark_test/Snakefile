@@ -29,7 +29,21 @@ rule benchmark:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {wildcards.dtype} {input.files} > {output}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {wildcards.dtype} pytorch {input.files} > {output}"
+
+def benchmark_input_gpu(wildcards):
+    num_leafs = [2**n for n in [4,6,8]]
+    L = [300] * len(num_leafs)
+
+    newick = [f"data/random/tree_{n}.nwk" for n in num_leafs]
+    fasta = [f"data/random/alignment_{n}_{l}.fasta" for n,l in zip(num_leafs,L)]
+
+    return newick + fasta
+rule benchmark_gpu:
+    input: files = benchmark_input_gpu, script = "benchmark.py"
+    output: "data/random/time_gpu_{dtype}.txt"
+    threads: 8
+    shell: "OMP_NUM_THREADS=8 RAYON_NUM_THREADS=8 python benchmark.py {wildcards.dtype} pytorch_gpu {input.files} > {output}"
 
 rule plot:
     input:  "plot.py",

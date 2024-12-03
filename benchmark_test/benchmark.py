@@ -31,7 +31,9 @@ dtype = sys.argv[1]
 
 assert dtype in ['f32', 'f64']
 
-files = sys.argv[2:]
+pytorch_backend = sys.argv[2]
+
+files = sys.argv[3:]
 assert(len(files) %2 == 0)
 
 newick_files = files[0:len(files)//2]
@@ -42,5 +44,5 @@ for fasta_file, newick_file in zip(fasta_files, newick_files):
     print("Rust:")
     run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --rust --{dtype}')
     print("Pytorch:")
-    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --pytorch --{dtype}')
+    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --{pytorch_backend} --{dtype}')
     print()
