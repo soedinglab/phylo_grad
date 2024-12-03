@@ -28,6 +28,7 @@ class FelsensteinTree:
         except AttributeError:
             raise ValueError(f'Unsupported dim {dim}')
         
+        self.dtype = leaf_log_p.dtype
         self.tree = tree_class(tree, leaf_log_p, distance_threshold)
         
     @classmethod
@@ -35,7 +36,7 @@ class FelsensteinTree:
         """
             newick: File Handle or File name containing the newick tree
             leaf_log_p_dict: A dictionary mapping leaf names to log probabilities
-            dtype: The desired dtype, either np.float32 or np.float64
+            dtype: The desired dtype, either np.float32 or np.float64, leaf_log_p will be converted to this dtype
             distance_threshold: Every edge of the tree will be at least this long
         """
         tree = Phylo.read(newick, "newick")
@@ -66,4 +67,8 @@ class FelsensteinTree:
         
         
     def calculate_gradients(self, S, sqrt_pi):
+        assert isinstance(S, np.ndarray), "S must be a numpy array"
+        assert isinstance(sqrt_pi, np.ndarray), "sqrt_pi must be a numpy array"
+        assert S.dtype == self.dtype, "S must have the same dtype as the tree"
+        assert sqrt_pi.dtype == self.dtype, "sqrt_pi must have the same dtype as the tree"
         return self.tree.calculate_gradients(S, sqrt_pi)
