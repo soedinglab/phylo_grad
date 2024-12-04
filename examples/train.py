@@ -55,4 +55,4 @@ for i in range(100):
     # Print the current likelihood of the tree
     print(result['log_likelihood'].sum())
     
-    optimizer.step()    
+    optimizer.step()

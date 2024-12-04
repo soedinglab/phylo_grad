@@ -26,7 +26,7 @@ class FelsensteinTree:
         try:
             tree_class = getattr(_phylo_grad, f'Backend_{dtype}_{dim}')
         except AttributeError:
-            raise ValueError(f'Unsupported dim {dim}')
+            raise ValueError(f'Unsupported dim {dim}, see Readme.md for more information')
         
         self.dtype = leaf_log_p.dtype
         self.tree = tree_class(tree, leaf_log_p, distance_threshold)
