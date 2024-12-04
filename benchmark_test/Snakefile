@@ -23,13 +23,13 @@ def benchmark_input(wildcards):
 
 rule benchmark:
     input: files = benchmark_input, script = "benchmark.py"
-    output: "data/random/time_{num_t}_{dtype}.txt"
+    output: "data/random/time_{num_t}.pickle"
     threads: lambda w : int(w.num_t)
     resources:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {wildcards.dtype} pytorch {input.files} > {output}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py f32,f64 rust,pytorch {input.files} > {output}"
 
 def benchmark_input_gpu(wildcards):
     num_leafs = [2**n for n in [4,6,8]]

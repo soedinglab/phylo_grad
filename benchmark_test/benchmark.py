@@ -5,7 +5,7 @@ import sys
 import subprocess
 import time
 import re
-import json
+import pickle
 
 def run_and_measure(command):
     # Start time
@@ -23,14 +23,14 @@ def run_and_measure(command):
     elapsed_time = end_time - start_time
     
     if process.returncode != 0:
-        print("Error running command:" + command)
-        print("stderr:")
-        print(stderr.decode())
-        print("stdout:")
-        print(stdout.decode())
+        print("Error running command:" + command, file=sys.stderr)
+        print("stderr:", file=sys.stderr)
+        print(stderr.decode(), file=sys.stderr)
+        print("stdout:", file=sys.stderr)
+        print(stdout.decode(), file=sys.stderr)
         return (0.0, 0.0)
     else:
-        return (float(elapsed_time), float(stdout.decode))
+        return (float(elapsed_time), float(stdout.decode()))
     
 dtypes = sys.argv[1] # comma separated list of dtypes (no spaces)
 dtypes = dtypes.split(',')
@@ -58,8 +58,8 @@ for fasta_file, newick_file in zip(fasta_files, newick_files):
     
     for dtype in dtypes:
         for backend in backends:
-            command = f"python3 benchmark.py --{backend} --{dtype} --newick {newick_file} --amino_fasta {fasta_file}"
+            command = f"python3 optimize.py --{backend} --{dtype} --newick {newick_file} --fasta_amino {fasta_file}"
             t, mem = run_and_measure(command)
             measurements[(backend, dtype, L, N)] = (t, mem)
 
-print(json.dumps(measurements))
+print(pickle.dumps(measurements))
