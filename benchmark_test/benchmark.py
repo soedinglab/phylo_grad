@@ -4,6 +4,8 @@
 import sys
 import subprocess
 import time
+import re
+import json
 
 def run_and_measure(command):
     # Start time
@@ -20,18 +22,23 @@ def run_and_measure(command):
     # Calculate elapsed time
     elapsed_time = end_time - start_time
     
-    # Get memory info
     if process.returncode != 0:
-        print("ERROR")
+        print("Error running command:" + command)
+        print("stderr:")
         print(stderr.decode())
-    print(f"Time: {elapsed_time:.2f}")
-    print(f"Mem: {stdout.decode()}")
+        print("stdout:")
+        print(stdout.decode())
+        return (0.0, 0.0)
+    else:
+        return (float(elapsed_time), float(stdout.decode))
+    
+dtypes = sys.argv[1] # comma separated list of dtypes (no spaces)
+dtypes = dtypes.split(',')
+assert all([dtype in ['f32', 'f64'] for dtype in dtypes])
 
-dtype = sys.argv[1]
-
-assert dtype in ['f32', 'f64']
-
-pytorch_backend = sys.argv[2]
+backends = sys.argv[2] # comma separated list of backends (no spaces)
+backends = backends.split(',')
+assert all([backend in ['pytorch', 'rust', 'pytorch_gpu'] for backend in backends])
 
 files = sys.argv[3:]
 assert(len(files) %2 == 0)
@@ -39,10 +46,20 @@ assert(len(files) %2 == 0)
 newick_files = files[0:len(files)//2]
 fasta_files = files[len(files)//2:]
 
+measurements = {}
+
 for fasta_file, newick_file in zip(fasta_files, newick_files):
-    print("--Dataset--: ", fasta_file, newick_file)
-    print("Rust:")
-    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --rust --{dtype}')
-    print("Pytorch:")
-    run_and_measure(f'python optimize.py --fasta_amino {fasta_file} --newick {newick_file} --{pytorch_backend} --{dtype}')
-    print()
+    match = re.search(r'(\d+)_(\d+)', fasta_file)
+    if match:
+        L = int(match.group(2))
+        N = int(match.group(1))
+    else:
+        raise ValueError("Could not parse L and N from fasta file")
+    
+    for dtype in dtypes:
+        for backend in backends:
+            command = f"python3 benchmark.py --{backend} --{dtype} --newick {newick_file} --amino_fasta {fasta_file}"
+            t, mem = run_and_measure(command)
+            measurements[(backend, dtype, L, N)] = (t, mem)
+
+print(json.dumps(measurements))
