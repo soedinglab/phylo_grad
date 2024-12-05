@@ -32,15 +32,17 @@ def run_and_measure(command):
     else:
         return (float(elapsed_time), float(stdout.decode()))
     
-dtypes = sys.argv[1] # comma separated list of dtypes (no spaces)
+output = sys.argv[1]
+
+dtypes = sys.argv[2] # comma separated list of dtypes (no spaces)
 dtypes = dtypes.split(',')
 assert all([dtype in ['f32', 'f64'] for dtype in dtypes])
 
-backends = sys.argv[2] # comma separated list of backends (no spaces)
+backends = sys.argv[3] # comma separated list of backends (no spaces)
 backends = backends.split(',')
 assert all([backend in ['pytorch', 'rust', 'pytorch_gpu'] for backend in backends])
 
-files = sys.argv[3:]
+files = sys.argv[4:]
 assert(len(files) %2 == 0)
 
 newick_files = files[0:len(files)//2]
@@ -62,4 +64,4 @@ for fasta_file, newick_file in zip(fasta_files, newick_files):
             t, mem = run_and_measure(command)
             measurements[(backend, dtype, L, N)] = (t, mem)
 
-print(pickle.dumps(measurements))
+pickle.dump(measurements, open(output, 'wb'))

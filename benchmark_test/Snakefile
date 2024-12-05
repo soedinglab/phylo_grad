@@ -29,7 +29,7 @@ rule benchmark:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py f32,f64 rust,pytorch {input.files} > {output}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 rust,pytorch {input.files}"
 
 def benchmark_input_gpu(wildcards):
     num_leafs = [2**n for n in [4,6,8]]
