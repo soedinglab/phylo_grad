@@ -30,6 +30,7 @@ class FelsensteinTree:
         
         self.dtype = leaf_log_p.dtype
         self.tree = tree_class(tree, leaf_log_p, distance_threshold)
+        self.L = leaf_log_p.shape[0]
         
     @classmethod
     def from_newick(cls, newick : str | io.TextIOBase, leaf_log_p_dict : dict, dtype: np.floating = np.float64, distance_threshold : float = 1e-4):
@@ -72,3 +73,6 @@ class FelsensteinTree:
         assert S.dtype == self.dtype, "S must have the same dtype as the tree"
         assert sqrt_pi.dtype == self.dtype, "sqrt_pi must have the same dtype as the tree"
         return self.tree.calculate_gradients(S, sqrt_pi)
+
+    def get_sequence_length(self) -> int:
+        return self.L
