@@ -31,6 +31,7 @@ class FelsensteinTree:
         self.dtype = leaf_log_p.dtype
         self.tree = tree_class(tree, leaf_log_p, distance_threshold)
         self.L = leaf_log_p.shape[0]
+        self.dim = dim
         
     @classmethod
     def from_newick(cls, newick : str | io.TextIOBase, leaf_log_p_dict : dict, dtype: np.floating = np.float64, distance_threshold : float = 1e-4):
@@ -69,7 +70,9 @@ class FelsensteinTree:
         
     def calculate_gradients(self, S, sqrt_pi):
         assert isinstance(S, np.ndarray), "S must be a numpy array"
+        assert S.shape == (self.L, self.dim, self.dim), "S must have shape (L, DIM, DIM)"
         assert isinstance(sqrt_pi, np.ndarray), "sqrt_pi must be a numpy array"
+        assert sqrt_pi.shape == (self.L, self.dim), "sqrt_pi must have shape (L, DIM)"
         assert S.dtype == self.dtype, "S must have the same dtype as the tree"
         assert sqrt_pi.dtype == self.dtype, "sqrt_pi must have the same dtype as the tree"
         return self.tree.calculate_gradients(S, sqrt_pi)
