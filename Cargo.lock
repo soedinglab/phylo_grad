@@ -403,6 +403,7 @@ dependencies = [
  "logsumexp",
  "nalgebra",
  "nalgebra-lapack",
+ "netlib-src",
  "num-traits",
  "rand",
  "rayon",
