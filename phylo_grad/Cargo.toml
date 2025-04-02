@@ -13,7 +13,7 @@ categories = ["mathematics", "science::bioinformatics"]
 logsumexp = "0.1.0"
 nalgebra = "0.33.2"
 nalgebra-lapack = "0.25.0"
-netlib-src = {version = "0.8.0", features = ["system"]}
+netlib-src = {version = "0.8.0", features = ["static"]}
 num-traits = {version="0.2.19", default-features=false, features = ["libm"]}
 rayon = "1.10.0"
 rand = "0.8"
