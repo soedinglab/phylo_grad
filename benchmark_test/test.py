@@ -80,6 +80,8 @@ def test_likelihood():
 
     helper_test("f64", 4, False, gpu = True)
     helper_test("f64", 20, False, gpu= True)
+    helper_test("f32", 4, False, gpu= True)
+    helper_test("f32", 20, False, gpu= True)
 
 def test_grads():
     helper_test("f32", 4, True)
