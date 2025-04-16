@@ -3,7 +3,6 @@ import io
 from . import _phylo_grad
 import numpy as np
 from Bio import Phylo
-from Bio import AlignIO
 
 class FelsensteinTree:
     """A class to represent a phylogenetic tree, it contains the tree topology and edge lengths as well as the log probabilities of the leaf nodes"""
