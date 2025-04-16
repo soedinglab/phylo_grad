@@ -88,3 +88,8 @@ def test_grads():
     helper_test("f32", 20, True)
     helper_test("f64", 4, True)
     helper_test("f64", 20, True)
+    
+    helper_test("f64", 4, True, gpu = True)
+    helper_test("f64", 20, True, gpu= True)
+    helper_test("f32", 4, True, gpu= True)
+    helper_test("f32", 20, True, gpu= True)
