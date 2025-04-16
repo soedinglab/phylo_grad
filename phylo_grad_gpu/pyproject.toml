@@ -1,0 +1,9 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+
+[project]
+name = "phylo_grad_gpu"
+version = "0.0.1"
+dependencies = ["jax"]

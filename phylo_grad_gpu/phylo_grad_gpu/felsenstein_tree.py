@@ -25,7 +25,7 @@ def log_p_transformation(t : float, rate_matrix : jnp.ndarray, log_p : jnp.ndarr
     return new_log_p
 
 class FelsensteinTree:
-    def __init__(self, parent_list : jnp.ndarray, leaf_log_p : jnp.ndarray, distance_threshold : float = 1e-4) -> None:
+    def __init__(self, parent_list : jnp.ndarray, distance_threshold : float = 1e-4) -> None:
         
         self.nodes = [FelsensteinNode(idx) for idx in range(len(parent_list))]
         
@@ -34,23 +34,23 @@ class FelsensteinTree:
         branch_lengths = []
         for child_idx, (parent_idx, branch_length) in enumerate(parent_list):
             if parent_idx == -1:
-                self.root = self.nodes[child_idx]
+                self.root = child_idx
             else:
-                self.nodes[parent_idx].children.append(self.nodes[child_idx])
+                self.nodes[int(parent_idx)].children.append(self.nodes[child_idx])
             branch_lengths.append(max(branch_length, distance_threshold))
         
         assert(self.root is not None), "Tree has no root"
         
         self.branch_lengths = jnp.array(branch_lengths)
-        plan = self.root.get_computation_plan()
-        self.computation_plan = jnp.array(plan, dtype=jnp.int32)
-    
-        internal_nodes = len(parent_list) - leaf_log_p.shape[1]
+        plan = self.nodes[self.root].get_computation_plan()
+        self.computation_plan = jnp.array(plan, dtype=jnp.int32)     
+        
+    def log_p(self, rate_matrix : jnp.ndarray, prior: jnp.ndarray, leaf_log_p) -> jnp.ndarray:
+        
+        internal_nodes = len(self.nodes) - leaf_log_p.shape[-2]
     
         # Extent the leaf_log_p to include the internal nodes
-        self.global_log_p = jnp.pad(leaf_log_p, ((0, 0), (0, internal_nodes), (0, 0)), mode='constant', constant_values=0.0)
-        
-    def log_p_single_column(self, rate_matrix : jnp.ndarray, global_log_p) -> jnp.ndarray:
+        global_log_p = jnp.pad(leaf_log_p, ((0, internal_nodes), (0, 0)), mode='constant', constant_values=0.0)
         
         def do_step(idx, current_global_log_p):
             child, parent = self.computation_plan[idx]
@@ -58,4 +58,8 @@ class FelsensteinTree:
             new_log_p = log_p_transformation(branch_length, rate_matrix, current_global_log_p[child])
             return current_global_log_p.at[parent].add(new_log_p)
         # Loop over the computation plan
-        return jax.lax.fori_loop(0, self.computation_plan.shape[0], do_step, global_log_p)
+        log_p_all = jax.lax.fori_loop(0, self.computation_plan.shape[0], do_step, global_log_p)
+        
+        log_p_root = log_p_all[self.root]
+        # Add the prior
+        return jax.scipy.special.logsumexp(log_p_root + prior, axis=0)

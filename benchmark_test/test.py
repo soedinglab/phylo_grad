@@ -26,7 +26,7 @@ def gen_data(t_dtype, dim):
     
 
     
-def helper_test(dtype, dim : int, gradients: bool):
+def helper_test(dtype, dim : int, gradients: bool, gpu = False):
     if dtype == "f32":
         t_dtype = torch.float32
         np_dtype = np.float32
@@ -39,7 +39,7 @@ def helper_test(dtype, dim : int, gradients: bool):
     torch_logP = torch_tree.log_likelihood(S, sqrt_pi)
     
     np_tree = np.array(tree_top, dtype=np_dtype)
-    rust_tree = phylo_grad.FelsensteinTree(np_tree, leaf_log_p.numpy(), 1e-4)
+    rust_tree = phylo_grad.FelsensteinTree(np_tree, leaf_log_p.numpy(), 1e-4, gpu)
     
     result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
     
@@ -72,12 +72,14 @@ def helper_test(dtype, dim : int, gradients: bool):
         assert(np.allclose(result['grad_sqrt_pi'], torch_sqrt_pi_grad, rtol=rtol, atol=atol))
         assert(np.allclose(result['grad_s'], torch_S_grad, rtol=rtol, atol=atol))
     
-def test_liklelihood():
+def test_likelihood():
     helper_test("f32", 4, False)
     helper_test("f32", 20, False)
     helper_test("f64", 4, False)
     helper_test("f64", 20, False)
 
+    helper_test("f64", 4, False, gpu = True)
+    helper_test("f64", 20, False, gpu= True)
 
 def test_grads():
     helper_test("f32", 4, True)
