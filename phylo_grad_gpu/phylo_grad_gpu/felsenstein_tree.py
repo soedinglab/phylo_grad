@@ -1,6 +1,59 @@
 import jax
 import jax.numpy as jnp
 
+MIN_SQRT_PI = 1e-10
+
+def precomp_S_pi(S : jnp.ndarray, sqrt_pi : jnp.ndarray) -> dict:
+
+    S = jnp.triu(S, k=1)
+    S = S + S.T
+    sqrt_pi = jnp.clip(sqrt_pi, min=MIN_SQRT_PI)
+    sqrt_pi_inv = 1.0 / sqrt_pi
+    sqrt_pi = jnp.diag(sqrt_pi)
+    sqrt_pi_inv = jnp.diag(sqrt_pi_inv)
+
+    Q = sqrt_pi_inv @ S @ sqrt_pi
+
+    S = S - jnp.diag(Q.sum(axis=1))
+
+    eigenvalues, eigenvectors = jnp.linalg.eigh(S)
+
+    B = sqrt_pi_inv @ eigenvectors
+    B_inv = eigenvectors.T @ sqrt_pi
+
+    return {'B': B, 'B_inv': B_inv, 'eigenvalues': eigenvalues}
+
+
+def X(t : float, eigenvalues: jnp.ndarray) -> jnp.ndarray:
+
+    exp = jnp.exp(t * eigenvalues)
+
+    small_diff = jnp.expand_dims(t * exp, axis=0)
+
+    big_diff = (jnp.expand_dims(exp, axis=0) - jnp.expand_dims(exp, axis=1)) / (jnp.expand_dims(eigenvalues, axis=0) - jnp.expand_dims(eigenvalues, axis=1))
+
+    medium_diff = jnp.expand_dims(exp, axis=0) * jnp.expm1(t * (jnp.expand_dims(eigenvalues, axis=0) - jnp.expand_dims(eigenvalues, axis=1))) / (jnp.expand_dims(eigenvalues, axis=0) - jnp.expand_dims(eigenvalues, axis=1))
+
+@jax.custom_gradient
+def matrix_exp(t : float, precomp_S_pi : dict) -> jnp.ndarray:
+    """
+    Computes the matrix exponential of a symmetric matrix S using the eigenvalue decomposition.
+    The matrix is assumed to be symmetric and positive definite.
+    """
+    B = precomp_S_pi['B']
+    B_inv = precomp_S_pi['B_inv']
+    eigenvalues = precomp_S_pi['eigenvalues']
+
+    # Compute the matrix exponential
+    exp_eigenvalues = jnp.exp(t * eigenvalues)
+    exp_matrix = B @ jnp.diag(exp_eigenvalues) @ B_inv
+
+
+
+    return exp_matrix, lambda g: 
+
+
+
 class FelsensteinNode:
     def __init__(self, idx: int) -> None:
         self.children = []
