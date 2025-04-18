@@ -3,6 +3,17 @@ import jax.numpy as jnp
 
 MIN_SQRT_PI = 1e-10
 
+
+def rate_prior(S, sqrt_pi):
+    S = jnp.triu(S)
+    S = S + S.transpose()
+    
+    rate = jnp.diag(1/sqrt_pi) @ S @ jnp.diag(sqrt_pi)
+    rate = rate - jnp.diag(jnp.sum(rate, axis=1))
+    prior = jnp.log(sqrt_pi) * 2
+
+    return rate, prior
+
 def precomp_S_pi(S : jnp.ndarray, sqrt_pi : jnp.ndarray) -> dict:
 
     S = jnp.triu(S, k=1)
@@ -34,7 +45,7 @@ def X(t : float, eigenvalues: jnp.ndarray) -> jnp.ndarray:
     eigen_i = jnp.expand_dims(eigenvalues, axis = 1) # (i, j) of the array will be i
     eigen_j = jnp.expand_dims(eigenvalues, axis = 0) # (i, j) of the array will be j
 
-    small_diff = exp_i
+    small_diff = t * exp_i
 
     big_diff = (exp_i - exp_j) / (eigen_i - eigen_j)
 
@@ -70,8 +81,8 @@ def custom_matrix_exp(t : float, precomp_S_pi : dict) -> jnp.ndarray:
 
         # We use B for the gradient of Q, the other gradients are 0
         return 0.0, {'B' : B_inv.T @ tmp2 @ B.T, 
-                     'B_inv' : 0.0, 
-                     'eigenvalues' : 0.0}
+                     'B_inv' : jnp.zeros_like(B_inv), 
+                     'eigenvalues' : jnp.zeros_like(eigenvalues)}
 
     return exp_matrix, grad 
 
@@ -141,9 +152,9 @@ class FelsensteinTree:
         log_p_root = log_p_all[self.root]
         # Add the prior
         prior = jnp.log(sqrt_pi) * 2
-        return jax.scipy.special.logsumexp(log_p_root + prior, axis=0), log_p_all
+        return jax.scipy.special.logsumexp(log_p_root + prior, axis=0), log_p_all, precomp
     
-    def gradients(self, rate_matrix : jnp.ndarray, prior: jnp.ndarray, global_log_p) -> tuple[jnp.ndarray, jnp.ndarray]:
+    def gradients(self, S : jnp.ndarray, sqrt_pi: jnp.ndarray, global_log_p, precomp) -> tuple[jnp.ndarray, jnp.ndarray]:
         """
         Calculates the gradients of the log likelihood with respect to the rate matrix and the prior.
         """
@@ -155,15 +166,20 @@ class FelsensteinTree:
             current_log_p_grad, current_grad_rate_matrix = data
             child, parent = reverse_computation_plan[idx]
             branch_length = self.branch_lengths[child]
-            _, vjp = jax.vjp(log_p_transformation, branch_length, rate_matrix, global_log_p[child])
+            _, vjp = jax.vjp(log_p_transformation, branch_length, precomp, global_log_p[child])
             _, grad_rate_matrix, grad_log_p = vjp(current_log_p_grad[parent])
+
+            # Here we extract the grad w.r.t. the rate matrix from the storage of B
+            grad_rate_matrix = grad_rate_matrix['B']
             
             return current_log_p_grad.at[child].set(grad_log_p), current_grad_rate_matrix + grad_rate_matrix
         
+        (_, prior), vjp = jax.vjp(rate_prior, S, sqrt_pi)
         root_log_p_grad, prior_grad = jax.grad(lambda log_p, prior: jax.scipy.special.logsumexp(log_p + prior, axis=0), argnums=[0,1])(global_log_p[self.root], prior)
         
         log_p_grad = jnp.zeros_like(global_log_p)
         log_p_grad = log_p_grad.at[self.root].set(root_log_p_grad)
-        _, grad_rate_matrix = jax.lax.fori_loop(0, reverse_computation_plan.shape[0], do_step, (log_p_grad, jnp.zeros_like(rate_matrix)))
-        return grad_rate_matrix, prior_grad
+        _, grad_rate_matrix = jax.lax.fori_loop(0, reverse_computation_plan.shape[0], do_step, (log_p_grad, jnp.zeros_like(S)))
+
+        return vjp((grad_rate_matrix, prior_grad))
         
