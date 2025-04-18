@@ -28,18 +28,33 @@ def X(t : float, eigenvalues: jnp.ndarray) -> jnp.ndarray:
 
     exp = jnp.exp(t * eigenvalues)
 
-    small_diff = jnp.expand_dims(t * exp, axis=0)
+    exp_i = jnp.expand_dims(exp, axis = 1) # (i, j) of the array will be i
+    exp_j = jnp.expand_dims(exp, axis = 0) # (i, j) of the array will be j
 
-    big_diff = (jnp.expand_dims(exp, axis=0) - jnp.expand_dims(exp, axis=1)) / (jnp.expand_dims(eigenvalues, axis=0) - jnp.expand_dims(eigenvalues, axis=1))
+    eigen_i = jnp.expand_dims(eigenvalues, axis = 1) # (i, j) of the array will be i
+    eigen_j = jnp.expand_dims(eigenvalues, axis = 0) # (i, j) of the array will be j
 
-    medium_diff = jnp.expand_dims(exp, axis=0) * jnp.expm1(t * (jnp.expand_dims(eigenvalues, axis=0) - jnp.expand_dims(eigenvalues, axis=1))) / (jnp.expand_dims(eigenvalues, axis=0) - jnp.expand_dims(eigenvalues, axis=1))
+    small_diff = exp_i
+
+    big_diff = (exp_i - exp_j) / (eigen_i - eigen_j)
+
+    medium_diff = exp_j * jnp.expm1(t * (eigen_i - eigen_j)) / (eigen_i - eigen_j)
+
+    diff = jnp.abs(eigen_i - eigen_j)
+
+    big = diff > 10
+    small = diff < 1e-10
+    medium = jnp.logical_not(big) & jnp.logical_not(small)
+
+    big_diff = jnp.where(big, big_diff, 0)
+    small_diff = jnp.where(small, small_diff, 0)
+    medium_diff = jnp.where(medium, medium_diff, 0)
+    X = jnp.where(big, big_diff, 0) + jnp.where(small, small_diff, 0) + jnp.where(medium, medium_diff, 0)
+
+    return X
 
 @jax.custom_gradient
-def matrix_exp(t : float, precomp_S_pi : dict) -> jnp.ndarray:
-    """
-    Computes the matrix exponential of a symmetric matrix S using the eigenvalue decomposition.
-    The matrix is assumed to be symmetric and positive definite.
-    """
+def custom_matrix_exp(t : float, precomp_S_pi : dict) -> jnp.ndarray:
     B = precomp_S_pi['B']
     B_inv = precomp_S_pi['B_inv']
     eigenvalues = precomp_S_pi['eigenvalues']
@@ -48,9 +63,17 @@ def matrix_exp(t : float, precomp_S_pi : dict) -> jnp.ndarray:
     exp_eigenvalues = jnp.exp(t * eigenvalues)
     exp_matrix = B @ jnp.diag(exp_eigenvalues) @ B_inv
 
+    def grad(cotangent):
+        tmp = B.T @ cotangent @ B_inv.T
 
+        tmp2 = tmp * X(t, eigenvalues)
 
-    return exp_matrix, lambda g: 
+        # We use B for the gradient of Q, the other gradients are 0
+        return 0.0, {'B' : B_inv.T @ tmp2 @ B.T, 
+                     'B_inv' : 0.0, 
+                     'eigenvalues' : 0.0}
+
+    return exp_matrix, grad 
 
 
 
@@ -71,8 +94,8 @@ class FelsensteinNode:
         
         return plan
 
-def log_p_transformation(t : float, rate_matrix : jnp.ndarray, log_p : jnp.ndarray) -> jnp.ndarray:
-    matrix_exp = jax.scipy.linalg.expm(t * rate_matrix)
+def log_p_transformation(t : float, precomp_S_pi : dict, log_p : jnp.ndarray) -> jnp.ndarray:
+    matrix_exp = custom_matrix_exp(t, precomp_S_pi)
     log_trans = jnp.log(matrix_exp)
     new_log_p = jax.scipy.special.logsumexp(jnp.expand_dims(log_p, 0) + log_trans, axis=1)
     return new_log_p
