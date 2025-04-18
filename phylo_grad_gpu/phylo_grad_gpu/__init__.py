@@ -9,6 +9,7 @@ class FelsensteinTree:
     def __init__(self, tree, leaf_log_p, distance_threshold=1e-4):
         self.tree = felsenstein_tree.FelsensteinTree(tree, distance_threshold)
         self.leaf_log_p = jnp.array(leaf_log_p)
+        self.vmap_grad = jax.jit(jax.vmap(self.calculate_gradients_jax, in_axes=(0, 0, 0)))
         
     def calculate_gradients_jax(self, S, sqrt_pi, leaf_log_p) -> dict:
         
@@ -21,9 +22,7 @@ class FelsensteinTree:
         return {"grad_s": grad_s, "grad_sqrt_pi": grad_sqrt_pi, "log_likelihood": log_p}
     
     def calculate_gradients(self, S, sqrt_pi) -> dict:
-        vmap_grad = jax.vmap(self.calculate_gradients_jax, in_axes=(0, 0, 0))
-        
-        result = vmap_grad(S, sqrt_pi, self.leaf_log_p)
+        result = self.vmap_grad(S, sqrt_pi, self.leaf_log_p)
         return {"grad_s": np.array(result['grad_s']), 
                 "grad_sqrt_pi": np.array(result['grad_sqrt_pi']),
                 "log_likelihood": np.array(result['log_likelihood'])}
