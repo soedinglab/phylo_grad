@@ -27,6 +27,7 @@ backend = parser.add_argument_group('Backend')
 exclusive_group = backend.add_mutually_exclusive_group(required=True)
 exclusive_group.add_argument('--rust', action='store_true')
 exclusive_group.add_argument('--pytorch', action='store_true')
+exclusive_group.add_argument('--jax_gpu', action='store_true')
 exclusive_group.add_argument('--pytorch_gpu', action='store_true')
 
 fp_precision = parser.add_argument_group('fp precision')
@@ -61,10 +62,10 @@ else:
     shared = torch.rand(190, requires_grad=True, dtype=dtype)
     energies = torch.rand(L, 20, requires_grad=True, dtype=dtype)
 
-if args.rust:
+if args.rust or args.jax_gpu:
     leaf_log_p = torch.stack([seq for _,_, seq in tree if seq is not None]).transpose(1,0)
     tree = np.array([(par, dist) for par, dist, _ in tree], dtype=np_dtype)
-    tree = phylo_grad.FelsensteinTree(tree, leaf_log_p.type(dtype).numpy(), 1e-4)
+    tree = phylo_grad.FelsensteinTree(tree, leaf_log_p.type(dtype).numpy(), 1e-4, gpu = args.jax_gpu)
     
 else:
     tree = felsenstein.FelsensteinTree(tree)
@@ -76,7 +77,7 @@ for i in range(100):
     # This is the actual model part, where the parameters are mapped to S and sqrt_pi
     S, sqrt_pi = cat.rate_matrix(shared, energies)
     
-    if args.rust:
+    if args.rust or args.jax_gpu:
         result = tree.calculate_gradients(S.detach().numpy(), sqrt_pi.detach().numpy())
         S.backward(-torch.tensor(result['grad_s'], dtype=dtype))
         sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi'], dtype=dtype))
