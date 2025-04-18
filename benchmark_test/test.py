@@ -10,9 +10,9 @@ import phylo_grad
 import numpy as np
 
 
-torch.manual_seed(0)
 
 def gen_data(t_dtype, dim):
+    torch.manual_seed(0)
     tree_top, num_leaf = read_newick('test_tree.newick')
     L = 300
     S = torch.exp(torch.randn(L,dim, dim, dtype=t_dtype))
