@@ -13,10 +13,10 @@ class FelsensteinTree:
         
     def calculate_gradients_jax(self, S, sqrt_pi, leaf_log_p) -> dict:
         
-        # Calculate the gradients using the Felsenstein algorithm
+        # Forward pass to calculate log likelihood
         log_p, all_log_p, precomp = self.tree.log_p(S, sqrt_pi, leaf_log_p)
         
-        # Calculate the gradients
+        # Backward pass to calculate gradients
         grad_s, grad_sqrt_pi = self.tree.gradients(S, sqrt_pi, all_log_p, precomp)
         
         return {"grad_s": grad_s, "grad_sqrt_pi": grad_sqrt_pi, "log_likelihood": log_p}
