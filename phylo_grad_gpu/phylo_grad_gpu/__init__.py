@@ -1,5 +1,6 @@
 import jax
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_default_matmul_precision", "highest")
 import jax.numpy as jnp
 from . import felsenstein_tree
 import numpy as np
