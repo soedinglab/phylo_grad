@@ -13,7 +13,7 @@ rule random_fasta:
     shell: "python random_fasta.py {input[0]} {wildcards.L} {output[0]}"
 
 def benchmark_input(wildcards):
-    num_leafs = [2**n for n in [4,6,8,10,11]]
+    num_leafs = [2**n for n in [4,6,8,10,12,14]]
     L = [300] * len(num_leafs)
 
     newick = [f"data/random/tree_{n}.nwk" for n in num_leafs]
@@ -29,7 +29,7 @@ rule benchmark:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 rust,pytorch {input.files}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 rust,jax_gpu {input.files}"
 
 def benchmark_input_gpu(wildcards):
     num_leafs = [2**n for n in [4,6,8]]
