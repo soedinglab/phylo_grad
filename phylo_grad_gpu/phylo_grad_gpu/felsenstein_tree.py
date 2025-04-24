@@ -35,9 +35,10 @@ def precomp_S_pi(S : jnp.ndarray, sqrt_pi : jnp.ndarray) -> dict:
     return {'B': B, 'B_inv': B_inv, 'eigenvalues': eigenvalues}
 
 
-def X(t : float, eigenvalues: jnp.ndarray) -> jnp.ndarray:
-
-    exp = jnp.exp(t * eigenvalues)
+def X(t : float, eigenvalues: jnp.ndarray, exp : jnp.ndarray) -> jnp.ndarray:
+    """
+        exp = jnp.exp(t * eigenvalues)
+    """
 
     exp_i = jnp.expand_dims(exp, axis = 1) # (i, j) of the array will be i
     exp_j = jnp.expand_dims(exp, axis = 0) # (i, j) of the array will be j
@@ -77,10 +78,11 @@ def custom_matrix_exp(t : float, precomp_S_pi : dict) -> jnp.ndarray:
     def grad(cotangent):
         tmp = B.T @ cotangent @ B_inv.T
 
-        tmp2 = tmp * X(t, eigenvalues)
+        tmp2 = tmp * X(t, eigenvalues, exp_eigenvalues)
 
         # We use B for the gradient of Q, the other gradients are 0
-        return 0.0, {'B' : B_inv.T @ tmp2 @ B.T, 
+        # We also do not do the B_inv and B.T multiplication, since they can be done after summing the gradients over all the branches
+        return 0.0, {'B' : tmp2, 
                      'B_inv' : jnp.zeros_like(B_inv), 
                      'eigenvalues' : jnp.zeros_like(eigenvalues)}
 
@@ -180,6 +182,8 @@ class FelsensteinTree:
         log_p_grad = jnp.zeros_like(global_log_p)
         log_p_grad = log_p_grad.at[self.root].set(root_log_p_grad)
         _, grad_rate_matrix = jax.lax.fori_loop(0, reverse_computation_plan.shape[0], do_step, (log_p_grad, jnp.zeros_like(S)))
+        
+        grad_rate_matrix = precomp['B_inv'].T @ grad_rate_matrix @ precomp['B'].T
 
         return vjp((grad_rate_matrix, prior_grad))
         
