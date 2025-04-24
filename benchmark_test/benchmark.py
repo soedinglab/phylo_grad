@@ -40,7 +40,7 @@ assert all([dtype in ['f32', 'f64'] for dtype in dtypes])
 
 backends = sys.argv[3] # comma separated list of backends (no spaces)
 backends = backends.split(',')
-assert all([backend in ['pytorch', 'rust', 'pytorch_gpu'] for backend in backends])
+assert all([backend in ['pytorch', 'rust', 'pytorch_gpu', 'jax_gpu'] for backend in backends])
 
 files = sys.argv[4:]
 assert(len(files) %2 == 0)

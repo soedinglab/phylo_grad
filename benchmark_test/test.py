@@ -20,7 +20,7 @@ def gen_data(t_dtype, dim):
     leaf_log_p = torch.randn([L, num_leaf, dim], dtype=t_dtype)
     leaf_log_p = torch.nn.functional.log_softmax(leaf_log_p, dim = 2)
     
-    pytroch_tree = [(par, dist, llp) for (par, dist), llp in itertools.zip_longest(tree_top, leaf_log_p.transpose(0,1))]
+    pytroch_tree = [(par, dist, llp.double() if llp is not None else None) for (par, dist), llp in itertools.zip_longest(tree_top, leaf_log_p.transpose(0,1))]
     
     return felsenstein.FelsensteinTree(pytroch_tree), S, sqrt_pi, leaf_log_p, tree_top
     
@@ -34,19 +34,25 @@ def helper_test(dtype, dim : int, gradients: bool, gpu = False):
         t_dtype = torch.float64
         np_dtype = np.float64
     
+    if dtype == "f32":
+        rtol = 1e-2
+        atol = 1e-2
+    else:
+        rtol = 1e-4
+        atol = 1e-4
     torch_tree, S, sqrt_pi, leaf_log_p, tree_top = gen_data(t_dtype, dim)
     
-    torch_logP = torch_tree.log_likelihood(S, sqrt_pi)
+    torch_logP = torch_tree.log_likelihood(S.double(), sqrt_pi.double())
     
     np_tree = np.array(tree_top, dtype=np_dtype)
     rust_tree = phylo_grad.FelsensteinTree(np_tree, leaf_log_p.numpy(), 1e-4, gpu)
     
     result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
     
-    assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=1e-4))
+    assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=rtol))
     
     if gradients:
-        torch_S_grad, torch_sqrt_pi_grad = felsenstein.gradients(torch_tree, S, sqrt_pi)
+        torch_S_grad, torch_sqrt_pi_grad = felsenstein.gradients(torch_tree, S.double(), sqrt_pi.double())
         
         if torch_S_grad.isnan().any():
             print("Torch S grad is nan")
@@ -62,12 +68,6 @@ def helper_test(dtype, dim : int, gradients: bool, gpu = False):
             print("Rust sqrt pi grad is nan")
             print(np.where(np.isnan(result['grad_sqrt_pi'])))
         
-        if dtype == "f32":
-            rtol = 1e-2
-            atol = 1e-2
-        else:
-            rtol = 1e-4
-            atol = 1e-4
         
         assert(np.allclose(result['grad_sqrt_pi'], torch_sqrt_pi_grad, rtol=rtol, atol=atol))
         assert(np.allclose(result['grad_s'], torch_S_grad, rtol=rtol, atol=atol))
@@ -93,3 +93,18 @@ def test_grads():
     helper_test("f64", 20, True, gpu= True)
     helper_test("f32", 4, True, gpu= True)
     helper_test("f32", 20, True, gpu= True)
+
+def test_f32_gpu():
+    # Test with f32 and GPU
+    helper_test("f32", 4, True, gpu=True)
+    helper_test("f32", 20, True, gpu=True)
+
+def test_f64_gpu():
+    # Test with f64 and GPU
+    helper_test("f64", 4, True, gpu=True)
+    helper_test("f64", 20, True, gpu=True)
+
+def test_f32_rust():
+    # Test with f32 and Rust
+    helper_test("f32", 4, True, gpu=False)
+    helper_test("f32", 20, True, gpu=False)

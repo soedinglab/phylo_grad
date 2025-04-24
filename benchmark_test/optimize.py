@@ -72,6 +72,7 @@ else:
     
 optimizer = torch.optim.Adam([shared, energies], lr=0.01)
 
+#with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
 for i in range(100):
     optimizer.zero_grad()
     # This is the actual model part, where the parameters are mapped to S and sqrt_pi
