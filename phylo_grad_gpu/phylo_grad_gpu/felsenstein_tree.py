@@ -107,7 +107,7 @@ class FelsensteinNode:
 
 def log_p_transformation(t : float, precomp_S_pi : dict, log_p : jnp.ndarray) -> jnp.ndarray:
     matrix_exp = custom_matrix_exp(t, precomp_S_pi)
-    log_trans = jnp.log(matrix_exp)
+    log_trans = jnp.log(jnp.clip(matrix_exp, min=1e-20))
     new_log_p = jax.scipy.special.logsumexp(jnp.expand_dims(log_p, 0) + log_trans, axis=1)
     return new_log_p
 
