@@ -60,22 +60,20 @@ fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     B_inv = V_pi_T
 
     result =
-      B @ ((B_inv @ cotangent @ B) \odot X_T(lam, dist)) @ B_inv
+      ((B_inv @ cotangent @ B) \odot X_T(lam, dist))
+
+      we do not do the outer most matrix muls here
     */
 
     let B = param.V_pi_inv.transpose();
     let B_inv = param.V_pi.transpose();
 
-    let mut X = X(param.eigenvalues.as_view(), distance);
-    /* TODO optimize */
-    //let result = B * ((B_inv * cotangent_vector * B).component_mul(&X)) * B_inv;
+    let X = X(param.eigenvalues.as_view(), distance);
+    
     *cotangent_vector *= B;
     *cotangent_vector = B_inv * *cotangent_vector;
 
     cotangent_vector.component_mul_assign(&X);
-    // Reusing X here
-    B.mul_to(cotangent_vector, &mut X);
-    X.mul_to(&B_inv, cotangent_vector);
 }
 
 /// Backward pass for rho(W) = 1/sqrt_pi @ S @ sqrt_pi

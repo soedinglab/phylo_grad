@@ -96,7 +96,7 @@ fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
         );
         grad_rate_column += grad_rate;
     }
-    grad_rate_column
+    param.V_pi_inv.tr_mul(&grad_rate_column) * param.V_pi.transpose()
 }
 
 struct SingleSideResult<F, const DIM: usize> {
