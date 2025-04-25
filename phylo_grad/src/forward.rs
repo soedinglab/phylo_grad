@@ -18,6 +18,7 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
 pub struct LogTransitionForwardData<F, const DIM: usize> {
     pub matrix_exp: na::SMatrix<F, DIM, DIM>,
     pub log_transition_T: na::SMatrix<F, DIM, DIM>,
+    pub exp_t_lambda: na::SVector<F, DIM>,
 }
 
 #[derive(Debug)]
@@ -112,14 +113,12 @@ fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
 ) -> LogTransitionForwardData<F, DIM> {
     use num_traits::Float;
 
+    let exp_t_lambda = param
+        .eigenvalues
+        .map(|lam| Float::exp(lam * distance));
+
     let mut matrix_exp = param.V_pi.clone_owned();
-    times_diag_assign(
-        matrix_exp.as_view_mut(),
-        param
-            .eigenvalues
-            .iter()
-            .map(|lam| Float::exp(*lam * distance)),
-    );
+    times_diag_assign(matrix_exp.as_view_mut(), exp_t_lambda.iter().copied());
     matrix_exp *= param.V_pi_inv;
 
     matrix_exp.apply(|x| *x = Float::max(*x, F::MIN_SQRT_PI));
@@ -129,6 +128,7 @@ fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
     LogTransitionForwardData {
         matrix_exp,
         log_transition_T: log_transition.transpose(),
+        exp_t_lambda,
     }
 }
 
