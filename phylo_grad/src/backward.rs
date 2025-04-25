@@ -1,6 +1,7 @@
 use crate::data_types::*;
 use crate::forward::*;
 
+use libm::exp;
 use nalgebra as na;
 
 pub struct BackwardData<F, const DIM: usize> {
@@ -34,15 +35,16 @@ fn d_ln_vjp<F: FloatTrait, const DIM: usize>(
 fn X<F: FloatTrait, const DIM: usize>(
     eigenvalues: na::SVectorView<F, DIM>,
     t: F,
+    exp_t_lambda: &na::SVector<F, DIM>
 ) -> na::SMatrix<F, DIM, DIM> {
     na::SMatrix::<F, DIM, DIM>::from_fn(|i, j| {
         let diff = num_traits::Float::abs(eigenvalues[i] - eigenvalues[j]);
         if diff < FloatTrait::from_f64(1e-10) {
-            t * FloatTrait::scalar_exp(eigenvalues[i] * t)
-        } else if diff > FloatTrait::from_f64(10.0) {
-            (FloatTrait::scalar_exp(eigenvalues[i] * t) - FloatTrait::scalar_exp(eigenvalues[j] * t)) / (eigenvalues[i] - eigenvalues[j])
+            t * exp_t_lambda[i]
+        } else if diff > FloatTrait::from_f64(1.0) {
+            (exp_t_lambda[i] - exp_t_lambda[j]) / (eigenvalues[i] - eigenvalues[j])
         } else {
-            FloatTrait::scalar_exp(eigenvalues[j] * t)
+            exp_t_lambda[j]
                 * (num_traits::Float::exp_m1(t * (eigenvalues[i] - eigenvalues[j]))
                     / (eigenvalues[i] - eigenvalues[j]))
         }
@@ -54,6 +56,7 @@ fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: &mut na::SMatrix<F, DIM, DIM>,
     distance: F,
     param: &ParamPrecomp<F, DIM>,
+    exp_t_lambda: &na::SVector<F, DIM>,
 ) {
     /*
     B = V_pi_invT
@@ -68,7 +71,7 @@ fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     let B = param.V_pi_inv.transpose();
     let B_inv = param.V_pi.transpose();
 
-    let X = X(param.eigenvalues.as_view(), distance);
+    let X = X(param.eigenvalues.as_view(), distance, exp_t_lambda);
     
     *cotangent_vector *= B;
     *cotangent_vector = B_inv * *cotangent_vector;
@@ -199,7 +202,7 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
     );
     d_ln_vjp(output, &forward.matrix_exp);
 
-    d_expm_vjp(output, distance, param);
+    d_expm_vjp(output, distance, param, &forward.exp_t_lambda);
 
     grad_log_p
 }
