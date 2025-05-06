@@ -20,10 +20,13 @@ It is recommended to install it into a conda environment, it needs at least pyth
  ```
  conda create -n phylo_grad python=3.11
  source activate phylo_grad
+ export NUM_THREADS="256"
  export RUSTFLAGS="-C target-cpu=native"
  pip install ./phylo_grad_py
  ```
- 
+`NUM_THREADS` governs the maximum amount of threads that openblas will be able to use. If not set it will use the number of cores of the machine where it is compiled, which can be a problem on a HPC cluster environment.
+
+
 ## Using from Rust
 
 Just `cargo add phylo_grad` (will work after publishing)
@@ -33,7 +36,7 @@ Just `cargo add phylo_grad` (will work after publishing)
 Create and activate a conda environment:
 
 ```
-conda env create -n phylo_grad --file=benchmark_test/environment.yml
+conda env create -n phylo_grad python=3.11 pytorch bioconda::snakemake pytest bioconda::newick_utils
 source activate phylo_grad
 ```
 
@@ -58,6 +61,7 @@ cargo install phylotree
 
 Run Benchmarks
 
+TODO: Update this
 ```
 snakemake -c all data/random/plot_{num_threads}_time.pdf
 ```
