@@ -36,7 +36,7 @@ Just `cargo add phylo_grad` (will work after publishing)
 Create and activate a conda environment:
 
 ```
-conda env create -n phylo_grad --file=benchmark_test/environment.yml
+conda env create -n phylo_grad python=3.11 pytorch bioconda::snakemake pytest bioconda::newick_utils
 source activate phylo_grad
 ```
 
@@ -61,6 +61,7 @@ cargo install phylotree
 
 Run Benchmarks
 
+TODO: Update this
 ```
 snakemake -c all data/random/plot_{num_threads}_time.pdf
 ```
