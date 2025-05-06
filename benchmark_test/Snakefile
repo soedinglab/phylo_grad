@@ -31,6 +31,17 @@ rule benchmark:
         runtime=1000
     shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 rust {input.files}"
 
+rule benchmark_iqtree:
+    input: tree = "data/random/tree_{num_leafs}.nwk",
+           alignment = "data/random/alignment_{num_leafs}_{L}.fasta"
+    output: "data/random/iqtree_{num_leafs}_{L}.txt"
+    threads: 64
+    resources:
+        slurm_extra="--exclusive",
+        mem_mb=800000,
+        runtime=1000
+    shell: "time iqtree -s {input.alignment} -nt {threads} -m GTR20+FO --redo -te {input.tree} --show-lh -quiet> {output}"
+
 def benchmark_input_gpu(wildcards):
     num_leafs = [2**n for n in [4,6,8]]
     L = [300] * len(num_leafs)
