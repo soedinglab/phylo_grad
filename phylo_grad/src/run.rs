@@ -105,7 +105,7 @@ struct SingleSideResult<F, const DIM: usize> {
     grad_sqrt_pi: na::SVector<F, DIM>,
 }
 
-fn train_column_param<F: FloatTrait, const DIM: usize>(
+fn calculate_column<F: FloatTrait, const DIM: usize>(
     leaf_log_p: Vec<na::SVector<F, DIM>>,
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
@@ -166,7 +166,7 @@ pub struct FelsensteinResult<F, const DIM: usize> {
     pub grad_sqrt_pi: Vec<na::SVector<F, DIM>>,
 }
 
-pub fn train_parallel_param_unpaired<F: FloatTrait, const DIM: usize>(
+pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize>(
     leaf_log_p: &[Vec<na::SVector<F, DIM>>],
     S: &[na::SMatrix<F, DIM, DIM>],
     sqrt_pi: &[na::SVector<F, DIM>],
@@ -176,7 +176,7 @@ pub fn train_parallel_param_unpaired<F: FloatTrait, const DIM: usize>(
     let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
         .map(|(leaf_log_p, S, sqrt_pi)| {
-            train_column_param(
+            calculate_column(
                 leaf_log_p.clone(),
                 S.as_view(),
                 sqrt_pi.as_view(),

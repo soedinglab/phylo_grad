@@ -24,16 +24,16 @@ mod backward;
 mod data_types;
 mod forward;
 mod preprocessing;
-mod train;
+mod run;
 mod tree;
 
 use rand::distributions::uniform::SampleUniform;
 use rand::prelude::Distribution;
 use rand::seq::SliceRandom;
-pub use train::FelsensteinResult;
+pub use run::FelsensteinResult;
 
 use crate::preprocessing::*;
-use crate::train::*;
+use crate::run::*;
 use crate::tree::*;
 
 /// Represents a tree topology, branch length and leaf node data
@@ -72,7 +72,7 @@ impl<F: FloatTrait, const DIM : usize> FelsensteinTree<F, DIM> {
     /// 
     /// This function internally parallelizes over the sides in the alignment. You can control the number of threads with the `RAYON_NUM_THREADS` environment variable.
     pub fn calculate_gradients(&self, s: Vec<na::SMatrix<F, DIM, DIM>>, sqrt_pi: Vec<na::SVector<F, DIM>>) -> FelsensteinResult<F, DIM> {
-        train_parallel_param_unpaired(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
+        calculate_column_parallel(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
     }
 }
 
