@@ -1,7 +1,6 @@
 use crate::data_types::*;
 use crate::forward::*;
 
-use libm::exp;
 use nalgebra as na;
 
 pub struct BackwardData<F, const DIM: usize> {
