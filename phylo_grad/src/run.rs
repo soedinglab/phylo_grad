@@ -202,3 +202,57 @@ pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize>(
         grad_sqrt_pi: grad_sqrt_pi_total,
     }
 }
+
+/// Same as `calculate_column_parallel`, but a single S and sqrt_pi are passed and used for all sides. It still produces a FelsensteinResult with Vec of length 1.
+/// This is significantly faster than calculate_column_parallel.
+pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
+    leaf_log_p: &[Vec<na::SVector<F, DIM>>],
+    S: &na::SMatrix<F, DIM, DIM>,
+    sqrt_pi: &na::SVector<F, DIM>,
+    tree: &[TreeNode],
+    distances: &[F],
+) -> FelsensteinResult<F, DIM> {
+
+
+    let param = match compute_param_data(S.view(), sqrt_pi.view()) {
+        Some(param) => param,
+        None => {
+            return SingleSideResult::<F, DIM> {
+                log_likelihood: <F as num_traits::Float>::neg_infinity(),
+                grad_s: na::SMatrix::<F, DIM, DIM>::zeros(),
+                grad_sqrt_pi: na::SVector::<F, DIM>::zeros(),
+            }
+        }
+    };
+
+    let forward_data = forward_data_precompute_param(&param, distances);
+
+    let col_results = (leaf_log_p, S, sqrt_pi)
+        .into_par_iter()
+        .map(|(leaf_log_p, S, sqrt_pi)| {
+            calculate_column(
+                leaf_log_p.clone(),
+                S.as_view(),
+                sqrt_pi.as_view(),
+                tree,
+                distances,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let mut log_likelihood_total = vec![];
+    let mut grad_delta_total = vec![];
+    let mut grad_sqrt_pi_total = vec![];
+
+    for col_result in col_results {
+        log_likelihood_total.push(col_result.log_likelihood);
+        grad_delta_total.push(col_result.grad_s);
+        grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
+    }
+
+    FelsensteinResult {
+        log_likelihood: log_likelihood_total,
+        grad_s: grad_delta_total,
+        grad_sqrt_pi: grad_sqrt_pi_total,
+    }
+}
