@@ -35,7 +35,7 @@ fn process_likelihood<F: FloatTrait, const DIM: usize>(
     (log_likelihood_column, grad_log_p_outgoing)
 }
 
-fn d_rate_column_param<F: FloatTrait, const DIM: usize>(
+fn d_rate<F: FloatTrait, const DIM: usize>(
     grad_log_p_root: na::SVectorView<F, DIM>,
     tree: &[TreeNode],
     log_p: &[na::SVector<F, DIM>],
@@ -136,7 +136,7 @@ fn calculate_column<F: FloatTrait, const DIM: usize>(
     let grad_log_prior = grad_log_p_likelihood;
     let grad_log_p_root = grad_log_p_likelihood;
 
-    let grad_rate = d_rate_column_param(
+    let grad_rate = d_rate(
         grad_log_p_root.as_view(),
         tree,
         &log_p,
