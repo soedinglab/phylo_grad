@@ -247,6 +247,19 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
             )
         }).collect::<Vec<_>>();
 
+
+    let d_rate_matrix = forward_data.log_transition.into_par_iter().enumerate().map(|(idx, forward)| {
+        d_rate_matrix_per_edge(&d_trans_matrix, idx , distances[idx], &param, &forward)
+    }).sum::<na::SMatrix<F, DIM, DIM>>();
+
+    let d_rate_matrix = param.V_pi_inv.tr_mul(&d_rate_matrix) * param.V_pi.transpose();
+
+    let (grad_s, mut grad_sqrt_pi) = d_param(d_rate_matrix.as_view(), &param);
+
+    let mut grad_sqrt_pi_likelihood: na::SMatrix<F, DIM, 1> =
+        param.sqrt_pi_recip * <F as FloatTrait>::from_f64(2.0);
+    grad_sqrt_pi_likelihood.component_mul_assign(&grad_log_prior);
+    grad_sqrt_pi += grad_sqrt_pi_likelihood;
     todo!()
 }
 
@@ -257,8 +270,7 @@ fn d_rate_matrix_per_edge<F: FloatTrait, const DIM: usize>(d_trans_matrix : &[Ve
 
     d_ln_vjp(&mut sum_d_log_trans, &forward.matrix_exp);
     d_expm_vjp(&mut sum_d_log_trans, distance, param, &forward.exp_t_lambda);
-
-    param.V_pi_inv.tr_mul(&sum_d_log_trans) * param.V_pi.transpose()
+    sum_d_log_trans
 }
 
 fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
