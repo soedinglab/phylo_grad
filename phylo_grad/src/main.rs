@@ -23,7 +23,7 @@ pub fn main() {
         }).collect()
     }).collect();
 
-    let backend = lib::FelsensteinTree::new(parents, dist, leaf_log_p);
+    let mut backend = lib::FelsensteinTree::new(parents, dist, leaf_log_p);
     
     let s : Vec<_> = (0..L).map(|_| {
         na::SMatrix::<Float, DIM, DIM>::from_iterator((0..DIM*DIM).map(|_| rand::random::<Float>().exp()))

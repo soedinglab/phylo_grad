@@ -7,7 +7,7 @@ use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
 use phylo_grad::FloatTrait;
 use pyo3::{
-    pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy, PyObject, PyRef, PyResult, Python,
+    pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy, PyObject, PyRefMut, PyResult, Python,
 };
 
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ pub fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
 }
 
 pub fn backend_calc_grad_py<F: FloatTrait + numpy::Element, const DIM: usize>(
-    backend: &FelsensteinTree<F, DIM>,
+    backend: &mut FelsensteinTree<F, DIM>,
     s: PyReadonlyArray3<'_, F>,
     sqrt_pi: PyReadonlyArray2<'_, F>,
 ) -> FelsensteinResult<F, DIM> {
@@ -204,12 +204,12 @@ macro_rules! backend_both {
 
                 #[pyo3(signature=(s, sqrt_pi))]
                 fn calculate_gradients(
-                    self_: PyRef<'_, Self>,
+                    mut self_: PyRefMut<'_, Self>,
                     s: PyReadonlyArray3<$float>,
                     sqrt_pi: PyReadonlyArray2<$float>,
                 ) -> PyResult<PyObject> {
-                    let backend = &self_.tree;
                     let py = self_.py();
+                    let backend = &mut self_.tree;
 
                     Ok(inference_into_py(backend_calc_grad_py(backend, s, sqrt_pi), py))
                 }
