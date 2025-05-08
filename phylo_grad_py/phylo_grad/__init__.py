@@ -6,7 +6,7 @@ from Bio import Phylo
 
 class FelsensteinTree:
     """A class to represent a phylogenetic tree, it contains the tree topology and edge lengths as well as the log probabilities of the leaf nodes"""
-    def __init__(self, tree, leaf_log_p, distance_threshold=1e-4):
+    def __init__(self, tree, leaf_log_p, distance_threshold=1e-4, gpu = False):
         """Typically you should prefer to use the from_newick method to create a FelsensteinTree object.
         For more information see the Rust documentation of phylo_grad
         """
@@ -26,18 +26,23 @@ class FelsensteinTree:
 
         assert tree.dtype == leaf_log_p.dtype, "tree and leaf_log_p must have the same dtype"
         
-        try:
-            tree_class = getattr(_phylo_grad, f'Backend_{dtype}_{dim}')
-        except AttributeError:
-            raise ValueError(f'Unsupported dim {dim}, see Readme.md for more information')
-        
         self.dtype = leaf_log_p.dtype
-        self.tree = tree_class(tree, leaf_log_p, distance_threshold)
         self.L = leaf_log_p.shape[0]
         self.dim = dim
         
+        if gpu:
+            import phylo_grad_gpu
+            self.tree = phylo_grad_gpu.FelsensteinTree(tree, leaf_log_p, distance_threshold)
+        else:
+            try:
+                tree_class = getattr(_phylo_grad, f'Backend_{dtype}_{dim}')
+            except AttributeError:
+                raise ValueError(f'Unsupported dim {dim}, see Readme.md for more information')
+            
+            self.tree = tree_class(tree, leaf_log_p, distance_threshold)
+        
     @classmethod
-    def from_newick(cls, newick : str | io.TextIOBase, leaf_log_p_dict : dict, dtype: np.floating = np.float64, distance_threshold : float = 1e-4):
+    def from_newick(cls, newick : str | io.TextIOBase, leaf_log_p_dict : dict, dtype: np.floating = np.float64, distance_threshold : float = 1e-4, gpu = False) -> 'FelsensteinTree':
         """
             Preferred method to create a FelsensteinTree object.
             
@@ -79,7 +84,7 @@ class FelsensteinTree:
         
         leaf_log_p_array = np.array(leaf_log_p, dtype=dtype).transpose(1, 0, 2)
         
-        return cls(np.array(parent_list, dtype=dtype), leaf_log_p_array, distance_threshold)
+        return cls(np.array(parent_list, dtype=dtype), leaf_log_p_array, distance_threshold, gpu)
         
         
     def calculate_gradients(self, S : np.ndarray, sqrt_pi : np.ndarray) -> dict:

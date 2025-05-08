@@ -45,6 +45,9 @@ class FelsensteinTree:
             self.nodes[parent].children.append(self.nodes[i])
             
     def log_likelihood(self, S, sqrt_pi):
+        if S.shape[0] == 1:
+            S = S.expand(300, -1, -1)
+            sqrt_pi = sqrt_pi.expand(300, -1)
         matrices = rate_matrix_from_S(S, sqrt_pi)
         self.root.compute(matrices)
         
@@ -67,7 +70,10 @@ def gradients(tree, S, sqrt_pi):
     sqrt_pi.requires_grad = True
     if S.shape[0] == 1:
         S_expand = S.expand(300, -1, -1)
-        sqrt_pi_expand = sqrt_pi.expand(300, -1) 
+        sqrt_pi_expand = sqrt_pi.expand(300, -1)
+    else:
+        S_expand = S
+        sqrt_pi_expand = sqrt_pi
     logP = tree.log_likelihood(S_expand, sqrt_pi_expand)
     
     logP.sum().backward()
