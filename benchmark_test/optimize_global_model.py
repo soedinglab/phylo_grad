@@ -103,7 +103,7 @@ def rate_matrix(shared, energies, L):
     
     S = S / exp_mutations.sum()
     
-    return S.unsqueeze(0).expand(L, -1, -1), sqrt_pi.unsqueeze(0).expand(L, -1)
+    return S.unsqueeze(0), sqrt_pi.unsqueeze(0)
 
 last_loss = float('inf')
 while True:
