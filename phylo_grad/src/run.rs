@@ -1,3 +1,4 @@
+use rayon::iter::IntoParallelRefMutIterator;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::backward::*;
@@ -212,47 +213,121 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
     tree: &[TreeNode],
     distances: &[F],
 ) -> FelsensteinResult<F, DIM> {
+    let L = leaf_log_p.len();
+    let num_nodes = tree.len();
+    let num_leaves = leaf_log_p[0].len();
 
-
-    let param = match compute_param_data(S.view(), sqrt_pi.view()) {
+    // If lapack fails to diaginalize or the eigenvalues are too extreme, we give -inf as likelihood and zero gradients
+    let param = match compute_param_data(S.as_view(), sqrt_pi.as_view()) {
         Some(param) => param,
         None => {
-            return SingleSideResult::<F, DIM> {
-                log_likelihood: <F as num_traits::Float>::neg_infinity(),
-                grad_s: na::SMatrix::<F, DIM, DIM>::zeros(),
-                grad_sqrt_pi: na::SVector::<F, DIM>::zeros(),
+            return FelsensteinResult::<F, DIM> {
+                log_likelihood: vec![<F as num_traits::Float>::neg_infinity(); L],
+                grad_s: vec![na::SMatrix::<F, DIM, DIM>::zeros()],
+                grad_sqrt_pi: vec![na::SVector::<F, DIM>::zeros()],
             }
         }
     };
 
+    let mut d_trans_matrix = vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L];
+
     let forward_data = forward_data_precompute_param(&param, distances);
 
-    let col_results = (leaf_log_p, S, sqrt_pi)
-        .into_par_iter()
-        .map(|(leaf_log_p, S, sqrt_pi)| {
-            calculate_column(
+    use rayon::iter::{IntoParallelIterator, ParallelIterator, IndexedParallelIterator};
+
+    let result = leaf_log_p
+        .into_par_iter().zip(d_trans_matrix.par_iter_mut())
+        .map(|(leaf_log_p, d_trans)| {
+            cacluate_column_single_S(
                 leaf_log_p.clone(),
-                S.as_view(),
-                sqrt_pi.as_view(),
+                &param,
+                &forward_data,
                 tree,
-                distances,
+                d_trans
             )
-        })
-        .collect::<Vec<_>>();
+        }).collect::<Vec<_>>();
 
-    let mut log_likelihood_total = vec![];
-    let mut grad_delta_total = vec![];
-    let mut grad_sqrt_pi_total = vec![];
+    todo!()
+}
 
-    for col_result in col_results {
-        log_likelihood_total.push(col_result.log_likelihood);
-        grad_delta_total.push(col_result.grad_s);
-        grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
+fn d_rate_matrix_per_edge<F: FloatTrait, const DIM: usize>(d_trans_matrix : &[Vec<na::SMatrix<F, DIM, DIM>>], edge: usize, distance: F, param : &ParamPrecomp<F, DIM>, forward : &LogTransitionForwardData<F, DIM>) -> na::SMatrix<F, DIM, DIM> {
+    let mut sum_d_log_trans = d_trans_matrix.iter().map(|d_trans| {
+        d_trans[edge]
+    }).sum();
+
+    d_ln_vjp(&mut sum_d_log_trans, &forward.matrix_exp);
+    d_expm_vjp(&mut sum_d_log_trans, distance, param, &forward.exp_t_lambda);
+
+    param.V_pi_inv.tr_mul(&sum_d_log_trans) * param.V_pi.transpose()
+}
+
+fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
+    leaf_log_p: Vec<na::SVector<F, DIM>>,
+    param: &ParamPrecomp<F, DIM>,
+    forward_data: &ForwardData<F, DIM>,
+    tree: &[TreeNode],
+    d_trans_matrix: &mut [na::SMatrix<F, DIM, DIM>],
+) -> (F, na::SVector<F, DIM>) {
+    let num_leaves = leaf_log_p.len();
+    let log_p = forward_column(leaf_log_p, tree, forward_data);
+    let log_p_root = log_p.last().unwrap();
+
+    let log_p_prior = param.sqrt_pi.map(num_traits::Float::ln) * <F as FloatTrait>::from_f64(2.0);
+
+    let (log_likelihood, grad_log_p_likelihood) =
+        process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
+    let d_log_prior = grad_log_p_likelihood;
+    let d_log_p_root = grad_log_p_likelihood;
+
+    d_trans_matrix_fn(
+        d_log_p_root.as_view(),
+        tree,
+        &log_p,
+        forward_data,
+        num_leaves,
+        d_trans_matrix);
+
+    return (log_likelihood, d_log_prior);
+}
+
+/// Write the gradient of the transition matrix into d_trans
+/// We sum over all the columns later
+fn d_trans_matrix_fn<F: FloatTrait, const DIM: usize>(
+    grad_log_p_root: na::SVectorView<F, DIM>,
+    tree: &[TreeNode],
+    log_p: &[na::SVector<F, DIM>],
+    forward_data: &ForwardData<F, DIM>,
+    num_leaves: usize,
+    d_trans : &mut [na::SMatrix<F, DIM, DIM>],
+) {
+    /* Notice that child_input values are always added, so the log_p input for children is always the same.
+    We will therefore store their common grad_log_p in the parent node's BackwardData. */
+    /* TODO: it is possible to free grad_log_p's for the previous tree level. */
+    let num_nodes = tree.len();
+    let mut backward_data = Vec::<BackwardData<F, DIM>>::with_capacity(num_nodes - num_leaves);
+    /* root.backward */
+    backward_data.push(BackwardData {
+        grad_log_p: grad_log_p_root.clone_owned(),
+    });
+    /* node.backward for non-terminal nodes */
+    for id in (num_leaves..num_nodes - 1).rev() {
+        let parent_id = tree[id].parent;
+        let parent_backward_id = num_nodes - parent_id as usize - 1;
+        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
+        let log_p_input = log_p[id].as_view();
+        let fwd_data_current = &forward_data.log_transition[id];
+        let grad_log_p = d_log_transition_child_input_vjp(grad_log_p_input, log_p_input, fwd_data_current, true, &mut d_trans[id]);
+        backward_data.push(BackwardData {
+            grad_log_p: grad_log_p.unwrap(),
+        });
     }
-
-    FelsensteinResult {
-        log_likelihood: log_likelihood_total,
-        grad_s: grad_delta_total,
-        grad_sqrt_pi: grad_sqrt_pi_total,
+    /* For leaves, we only compute grad_rate */
+    for id in (0..num_leaves).rev() {
+        let parent_id = tree[id].parent;
+        let parent_backward_id = num_nodes - parent_id as usize - 1;
+        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
+        let log_p_input = log_p[id].as_view();
+        let fwd_data_current = &forward_data.log_transition[id];
+        d_log_transition_child_input_vjp(grad_log_p_input, log_p_input, fwd_data_current, false, &mut d_trans[id]);
     }
 }

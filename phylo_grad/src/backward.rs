@@ -20,7 +20,7 @@ pub fn softmax<F: FloatTrait, const N: usize>(x: &na::SVector<F, N>) -> na::SVec
     result
 }
 
-fn d_ln_vjp<F: FloatTrait, const DIM: usize>(
+pub fn d_ln_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: &mut na::SMatrix<F, DIM, DIM>,
     argument: &na::SMatrix<F, DIM, DIM>,
 ) {
@@ -51,7 +51,7 @@ fn X<F: FloatTrait, const DIM: usize>(
 }
 
 /// Backward pass for expm(distance * 1/sqrt_pi @ S @ sqrt_pi)
-fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
+pub fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: &mut na::SMatrix<F, DIM, DIM>,
     distance: F,
     param: &ParamPrecomp<F, DIM>,
@@ -159,7 +159,7 @@ fn d_broadcast_vjp<F: FloatTrait, const DIM: usize>(
     na::SVector::<F, DIM>::from_iterator(cotangent_vector.column_iter().map(|col| col.sum()))
 }
 
-fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
+pub fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: na::SVectorView<F, DIM>,
     log_p: na::SVectorView<F, DIM>,
     forward: &LogTransitionForwardData<F, DIM>,
