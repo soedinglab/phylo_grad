@@ -12,12 +12,16 @@ rule random_fasta:
     output: "data/random/alignment_{num_leafs}_{L}.fasta"
     shell: "python random_fasta.py {input[0]} {wildcards.L} {output[0]}"
 
-rule sim_fasta:
+rule sim_phy:
     input: "data/random/tree_{num_leafs}.nwk"
-    output: "data/sim/alignment_{num_leafs}_{L}.fasta"
+    output: "data/sim/alignment_{num_leafs}_{L}.phy"
     run:
-      shell(f"iqtree --alisim {output[0][:-6]} -t {input} --length {wildcards.L} -m LG+C20")
-      shell(f"seqret -sequence {output[0][:-6]}.phy -outseq {output[0]}")
+      shell(f"iqtree --alisim {output[0][:-4]} -t {input} --length {wildcards.L} -m LG+C10")
+
+rule phy_to_fasta:
+    input: "data/sim/alignment_{num_leafs}_{L}.phy"
+    output: "data/sim/alignment_{num_leafs}_{L}.fasta"
+    shell: "seqret -sequence {input} -outseq {output}"
 
 def benchmark_input(wildcards):
     num_leafs = [2**n for n in [4,6,8,10,12,14]]
@@ -48,7 +52,7 @@ rule benchmark_iqtree:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "/usr/bin/time ./iqtree3 -s {input.alignment} -nt {threads} -m GTR20+FO --redo -te {input.tree} --show-lh -v -quiet 2> {output[1]}"
+    shell: "/usr/bin/time -o {output[1]} ./iqtree3 -s {input.alignment} -nt {threads} -m GTR20+FO --redo -te {input.tree} --show-lh -v -quiet"
 
 rule benchmark_phylograd:
     input: tree = "data/random/tree_{num_leafs}.nwk",
@@ -62,7 +66,7 @@ rule benchmark_phylograd:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} /usr/bin/time python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --rust --f64 --output {output.result} > {output.log} 2> {output.time}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} /usr/bin/time -o {output.time} python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --rust --f64 --output {output.result} > {output.log}"
 def benchmark_input_gpu(wildcards):
     num_leafs = [2**n for n in [4,6,8]]
     L = [300] * len(num_leafs)
