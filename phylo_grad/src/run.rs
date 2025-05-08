@@ -212,6 +212,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
     sqrt_pi: &na::SVector<F, DIM>,
     tree: &[TreeNode],
     distances: &[F],
+    d_trans_matrix: &mut [Vec<na::SMatrix<F, DIM, DIM>>],
 ) -> FelsensteinResult<F, DIM> {
     let L = leaf_log_p.len();
     let num_nodes = tree.len();
@@ -228,7 +229,6 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
         }
     };
 
-    let mut d_trans_matrix = vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L];
 
     let forward_data = forward_data_precompute_param(&param, distances);
 
