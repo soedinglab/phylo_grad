@@ -103,10 +103,10 @@ pub fn d_param<F: FloatTrait, const DIM: usize>(
             grad_S[i, j] + grad_S[j, i] - grad_S[i, i] * pi_j / pi_i - grad_S[j, j] * pi_i / pi_j if i < j
     */
 
-    let mut grad_delta = na::SMatrix::<F, DIM, DIM>::zeros();
+    let mut grad_s = na::SMatrix::<F, DIM, DIM>::zeros();
     for j in 0..DIM {
         for i in 0..j {
-            grad_delta[(i, j)] = grad_symmetric[(i, j)] + grad_symmetric[(j, i)]
+            grad_s[(i, j)] = grad_symmetric[(i, j)] + grad_symmetric[(j, i)]
                 - grad_symmetric[(i, i)] * sqrt_pi_recip[i] * sqrt_pi[j]
                 - grad_symmetric[(j, j)] * sqrt_pi_recip[j] * sqrt_pi[i]
         }
@@ -136,7 +136,7 @@ pub fn d_param<F: FloatTrait, const DIM: usize>(
         }
     }
 
-    (grad_delta, grad_sqrt_pi)
+    (grad_s, grad_sqrt_pi)
 }
 
 fn child_input_forward_data<F: FloatTrait, const DIM: usize>(

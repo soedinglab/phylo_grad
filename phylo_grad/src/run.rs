@@ -215,7 +215,6 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
 ) -> FelsensteinResult<F, DIM> {
     let L = leaf_log_p.len();
     let num_nodes = tree.len();
-    let num_leaves = leaf_log_p[0].len();
 
     // If lapack fails to diaginalize or the eigenvalues are too extreme, we give -inf as likelihood and zero gradients
     let param = match compute_param_data(S.as_view(), sqrt_pi.as_view()) {
@@ -247,6 +246,9 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
             )
         }).collect::<Vec<_>>();
 
+    let log_likelihood = result.iter().map(|r| r.0).collect::<Vec<_>>();
+
+    let sum_d_log_prior = result.iter().map(|r| r.1).sum::<na::SVector<F, DIM>>();
 
     let d_rate_matrix = forward_data.log_transition.into_par_iter().enumerate().map(|(idx, forward)| {
         d_rate_matrix_per_edge(&d_trans_matrix, idx , distances[idx], &param, &forward)
@@ -258,9 +260,14 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
 
     let mut grad_sqrt_pi_likelihood: na::SMatrix<F, DIM, 1> =
         param.sqrt_pi_recip * <F as FloatTrait>::from_f64(2.0);
-    grad_sqrt_pi_likelihood.component_mul_assign(&grad_log_prior);
+    grad_sqrt_pi_likelihood.component_mul_assign(&sum_d_log_prior);
     grad_sqrt_pi += grad_sqrt_pi_likelihood;
-    todo!()
+    
+    FelsensteinResult::<F, DIM> {
+        log_likelihood,
+        grad_s: vec![grad_s],
+        grad_sqrt_pi: vec![grad_sqrt_pi],
+    }
 }
 
 fn d_rate_matrix_per_edge<F: FloatTrait, const DIM: usize>(d_trans_matrix : &[Vec<na::SMatrix<F, DIM, DIM>>], edge: usize, distance: F, param : &ParamPrecomp<F, DIM>, forward : &LogTransitionForwardData<F, DIM>) -> na::SMatrix<F, DIM, DIM> {

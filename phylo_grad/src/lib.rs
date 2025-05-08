@@ -72,6 +72,9 @@ impl<F: FloatTrait, const DIM : usize> FelsensteinTree<F, DIM> {
     /// 
     /// This function internally parallelizes over the sides in the alignment. You can control the number of threads with the `RAYON_NUM_THREADS` environment variable.
     pub fn calculate_gradients(&self, s: Vec<na::SMatrix<F, DIM, DIM>>, sqrt_pi: Vec<na::SVector<F, DIM>>) -> FelsensteinResult<F, DIM> {
+        if s.len() == 1 && sqrt_pi.len() == 1 {
+            return calculate_column_parallel_single_S(&self.leaf_log_p, &s[0], &sqrt_pi[0], &self.tree, &self.distances);
+        }
         calculate_column_parallel(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
     }
 }

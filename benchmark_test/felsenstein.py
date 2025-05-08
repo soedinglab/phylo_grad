@@ -65,8 +65,10 @@ def rate_matrix_from_S(S, sqrt_pi):
 def gradients(tree, S, sqrt_pi):
     S.requires_grad = True
     sqrt_pi.requires_grad = True
-    
-    logP = tree.log_likelihood(S, sqrt_pi)
+    if S.shape[0] == 1:
+        S_expand = S.expand(300, -1, -1)
+        sqrt_pi_expand = sqrt_pi.expand(300, -1) 
+    logP = tree.log_likelihood(S_expand, sqrt_pi_expand)
     
     logP.sum().backward()
     

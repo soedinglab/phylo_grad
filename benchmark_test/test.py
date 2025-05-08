@@ -24,9 +24,14 @@ def gen_data(t_dtype, dim):
     
     return felsenstein.FelsensteinTree(pytroch_tree), S, sqrt_pi, leaf_log_p, tree_top
     
+def gen_data_single_model(t_dtype, dim):
+    tree, S, sqrt_pi, leaf_log_p, tree_top = gen_data(t_dtype, dim)
+    S = S[0:1]
+    sqrt_pi = sqrt_pi[0:1]
+    return tree, S, sqrt_pi, leaf_log_p, tree_top
 
     
-def helper_test(dtype, dim : int, gradients: bool):
+def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False):
     if dtype == "f32":
         t_dtype = torch.float32
         np_dtype = np.float32
@@ -34,9 +39,15 @@ def helper_test(dtype, dim : int, gradients: bool):
         t_dtype = torch.float64
         np_dtype = np.float64
     
-    torch_tree, S, sqrt_pi, leaf_log_p, tree_top = gen_data(t_dtype, dim)
+    if single_model:
+        torch_tree, S, sqrt_pi, leaf_log_p, tree_top = gen_data_single_model(t_dtype, dim)
+    else:
+        torch_tree, S, sqrt_pi, leaf_log_p, tree_top = gen_data(t_dtype, dim)
     
-    torch_logP = torch_tree.log_likelihood(S, sqrt_pi)
+    if single_model:
+        torch_logP = torch_tree.log_likelihood(S.expand(300,-1,-1), sqrt_pi.expand(300,-1))
+    else:
+        torch_logP = torch_tree.log_likelihood(S, sqrt_pi)
     
     np_tree = np.array(tree_top, dtype=np_dtype)
     rust_tree = phylo_grad.FelsensteinTree(np_tree, leaf_log_p.numpy(), 1e-4)
@@ -84,3 +95,14 @@ def test_grads():
     helper_test("f32", 20, True)
     helper_test("f64", 4, True)
     helper_test("f64", 20, True)
+    
+def test_single_model():
+    helper_test("f32", 4, False, True)
+    helper_test("f32", 20, False, True)
+    helper_test("f64", 4, False, True)
+    helper_test("f64", 20, False, True)
+def test_single_model_grad():
+    helper_test("f32", 4, True, True)
+    helper_test("f32", 20, True, True)
+    helper_test("f64", 4, True, True)
+    helper_test("f64", 20, True, True)

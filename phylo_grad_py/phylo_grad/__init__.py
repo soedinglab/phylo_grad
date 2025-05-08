@@ -99,9 +99,10 @@ class FelsensteinTree:
                  
         """
         assert isinstance(S, np.ndarray), "S must be a numpy array"
-        assert S.shape == (self.L, self.dim, self.dim), "S must have shape [L, DIM, DIM]"
+        assert S.shape == (self.L, self.dim, self.dim) or S.shape == (1, self.dim, self.dim), "S must have shape [L, DIM, DIM] or [1, DIM, DIM]"
         assert isinstance(sqrt_pi, np.ndarray), "sqrt_pi must be a numpy array"
-        assert sqrt_pi.shape == (self.L, self.dim), "sqrt_pi must have shape [L, DIM]"
+        assert sqrt_pi.shape == (self.L, self.dim) or sqrt_pi.shape == (1, self.dim), "sqrt_pi must have shape [L, DIM] or [1, DIM]"
+        assert S.shape[0] == sqrt_pi.shape[0], "S and sqrt_pi must have the same first dimension, either L or 1"
         assert S.dtype == self.dtype, "S must have the same dtype as the tree"
         assert sqrt_pi.dtype == self.dtype, "sqrt_pi must have the same dtype as the tree"
         return self.tree.calculate_gradients(S, sqrt_pi)
