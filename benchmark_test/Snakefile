@@ -52,7 +52,8 @@ rule benchmark_iqtree:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "/usr/bin/time -o {output[1]} ./iqtree3 -s {input.alignment} -nt {threads} -m GTR20+FO --redo -te {input.tree} --show-lh -v -quiet"
+    shell: "/usr/bin/time -o {output[1]} ./iqtree3 -s {input.alignment} -nt {threads} --model-joint GTR20+FO --redo -te {input.tree} --show-lh -v -quiet"
+
 
 rule benchmark_phylograd:
     input: tree = "data/random/tree_{num_leafs}.nwk",
