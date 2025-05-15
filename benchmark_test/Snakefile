@@ -36,13 +36,17 @@ def benchmark_input(wildcards):
 
 rule benchmark:
     input: files = benchmark_input, script = "benchmark.py"
-    output: "data/random/time_{num_t}.pickle"
+    output: "data/random/time_{num_t}_m={method}.pickle"
     threads: lambda w : int(w.num_t)
     resources:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 rust {input.files}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 {wildcards.method} {input.files}"
+
+rule nvidia:
+    output: "nvidia.txt"
+    shell: "nvidia-smi"
 
 rule benchmark_iqtree:
     input: tree = "data/random/tree_{num_leafs}.nwk",
