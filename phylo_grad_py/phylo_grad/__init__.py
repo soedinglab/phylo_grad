@@ -80,6 +80,8 @@ class FelsensteinTree:
         for node in nodes:
             parent_list.append((node.parent_id, node.branch_length))
             if node.is_terminal():
+                if node.name not in leaf_log_p_dict:
+                    raise ValueError(f"Leaf {node.name} from newick not found in leaf_log_p_dict")
                 leaf_log_p.append(leaf_log_p_dict[node.name])
         
         leaf_log_p_array = np.array(leaf_log_p, dtype=dtype).transpose(1, 0, 2)
