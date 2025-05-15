@@ -46,21 +46,33 @@ else:
     
 if args.fasta_amino is not None:
     tree, L = input.read_newick_fasta(args.newick, args.fasta_amino)
+    # Counts amino acids
+    counts = torch.zeros(21, dtype=torch.int64)
+    for _, _, seq in tree:
+        if seq is not None:
+            numeric = [input.amino_mapping[c] for c in seq]
+            for i in numeric:
+                counts[i] += 1
+    
+    initial_energies = torch.log(counts[:-1])
+
     if args.pytorch_gpu:
         tree = [(par, dist, input.amino_to_embedding(seq).cuda() if seq else None) for par, dist, seq in tree]
     else:
         tree = [(par, dist, input.amino_to_embedding(seq)) for par, dist, seq in tree]
+    
+    
 
 
 #Init random parameters
 torch.manual_seed(0)
 
 if args.pytorch_gpu:
-    shared = torch.rand(190, requires_grad=True, dtype=dtype, device="cuda")
-    energies = torch.rand(20, requires_grad=True, dtype=dtype, device="cuda")
+    shared = torch.zeros(190, requires_grad=True, dtype=dtype, device="cuda")
+    energies = torch.tensor(initial_energies, requires_grad=True, dtype=dtype, device="cuda")
 else:
-    shared = torch.rand(190, requires_grad=True, dtype=dtype)
-    energies = torch.rand(20, requires_grad=True, dtype=dtype)
+    shared = torch.zeros(190, requires_grad=True, dtype=dtype)
+    energies = torch.tensor(initial_energies, requires_grad=True, dtype=dtype)
 
 if args.rust:
     leaf_log_p = torch.stack([seq for _,_, seq in tree if seq is not None]).transpose(1,0)
@@ -91,7 +103,7 @@ def rate_matrix(shared, energies, L):
     
     S = S / exp_mutations.sum()
     
-    return S.unsqueeze(0).expand(L, -1, -1), sqrt_pi.unsqueeze(0).expand(L, -1)
+    return S.unsqueeze(0), sqrt_pi.unsqueeze(0)
 
 last_loss = float('inf')
 while True:
@@ -112,8 +124,8 @@ while True:
         loss.backward()
     
     print(loss.item())
-    if loss.item() > last_loss:
-        print("Loss increased, stopping optimization")
+    if last_loss - loss.item() < 1e-1:
+        print("Loss did not decrease by more than 0.1, stopping optimization")
         break
     last_loss = loss.item()
         

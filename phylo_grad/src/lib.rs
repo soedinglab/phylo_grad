@@ -46,6 +46,7 @@ pub struct FelsensteinTree<F, const DIM: usize> {
     tree: Vec<TreeNodeId<u32>>,
     distances: Vec<F>,
     leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
+    tmp_mem: Option<Vec<Vec<na::SMatrix<F, DIM, DIM>>>>
 }
 
 impl<F: FloatTrait, const DIM : usize> FelsensteinTree<F, DIM> {
@@ -62,6 +63,7 @@ impl<F: FloatTrait, const DIM : usize> FelsensteinTree<F, DIM> {
             tree,
             distances,
             leaf_log_p,
+            tmp_mem: None
         }
     }
 
@@ -71,9 +73,15 @@ impl<F: FloatTrait, const DIM : usize> FelsensteinTree<F, DIM> {
     /// The result contains the gradients of `s` and `sqrt_pi` with respect to the log likelihood of the tree. It also gives the log likelihood of the tree.
     /// 
     /// This function internally parallelizes over the sides in the alignment. You can control the number of threads with the `RAYON_NUM_THREADS` environment variable.
-    pub fn calculate_gradients(&self, s: Vec<na::SMatrix<F, DIM, DIM>>, sqrt_pi: Vec<na::SVector<F, DIM>>) -> FelsensteinResult<F, DIM> {
+    pub fn calculate_gradients(&mut self, s: Vec<na::SMatrix<F, DIM, DIM>>, sqrt_pi: Vec<na::SVector<F, DIM>>) -> FelsensteinResult<F, DIM> {
         if s.len() == 1 && sqrt_pi.len() == 1 {
-            return calculate_column_parallel_single_S(&self.leaf_log_p, &s[0], &sqrt_pi[0], &self.tree, &self.distances);
+            let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
+                let num_nodes = self.tree.len();
+                let L = self.leaf_log_p.len();
+                vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
+            });
+
+            return calculate_column_parallel_single_S(&self.leaf_log_p, &s[0], &sqrt_pi[0], &self.tree, &self.distances, d_trans_matrix);
         }
         calculate_column_parallel(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
     }
