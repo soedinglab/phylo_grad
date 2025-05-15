@@ -8,19 +8,11 @@ import re
 import pickle
 
 def run_and_measure(command):
-    # Start time
-    start_time = time.time()
-
+    
     # Start the process
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     
     stdout, stderr = process.communicate()
-    
-    # End time
-    end_time = time.time()
-    
-    # Calculate elapsed time
-    elapsed_time = end_time - start_time
     
     if process.returncode != 0:
         print("Error running command:" + command, file=sys.stderr)
@@ -28,9 +20,11 @@ def run_and_measure(command):
         print(stderr.decode(), file=sys.stderr)
         print("stdout:", file=sys.stderr)
         print(stdout.decode(), file=sys.stderr)
-        return (0.0, 0.0)
+        raise Exception("Command failed with return code: " + str(process.returncode))
     else:
-        return (float(elapsed_time), float(stdout.decode()))
+        output = stdout.decode().split('\n')
+        
+        return (int(output[0]), int(output[1])) # time, memory
     
 output = sys.argv[1]
 

@@ -3,7 +3,8 @@
 """
 
 import sys
-
+import time, itertools
+import resource
 import torch
 
 import input
@@ -72,8 +73,10 @@ else:
     
 optimizer = torch.optim.Adam([shared, energies], lr=0.01)
 
-#with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
-for i in range(100):
+
+start = time.time()
+
+for i in itertools.count():
     optimizer.zero_grad()
     # This is the actual model part, where the parameters are mapped to S and sqrt_pi
     S, sqrt_pi = cat.rate_matrix(shared, energies)
@@ -90,7 +93,10 @@ for i in range(100):
         #print(loss.item())
         loss.backward()
     optimizer.step()
-
-# Print peak memory usage
-import resource
-print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    
+    if time.time() - start > 1 * 60:
+        print(i+1)
+        # Print peak memory usage
+        print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        
+        break
