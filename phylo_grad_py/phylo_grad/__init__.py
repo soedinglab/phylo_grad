@@ -97,8 +97,8 @@ class FelsensteinTree:
         In case one of the symmetric matrices are not diagonalizable, the gradients will be 0.0 and the log likelihood will be -inf.
         This only happens when the matrix has very big or very small eigenvalues (absolute value bigger than 1e5).
 
-        :param S: The symmetric S matrix of the substitution model, shape [L, DIM, DIM]
-        :param sqrt_pi: The square root of the stationary distribution, shape [L, DIM]
+        :param S: The symmetric S matrix of the substitution model, shape [L, DIM, DIM] or [1, DIM, DIM] for broadcasting which will be faster but currently uses more memory
+        :param sqrt_pi: The square root of the stationary distribution, shape [L, DIM] or [1, DIM] for broadcasting which will be faster but currently uses more memory
         
         :return: dict with the keys 'grad_s', 'grad_sqrt_pi' and 'log_likelihood'
                  'grad_s' has the same shape as S, 'grad_sqrt_pi' has the same shape as sqrt_pi and are the gradients
