@@ -94,7 +94,7 @@ for i in itertools.count():
         loss.backward()
     optimizer.step()
     
-    if time.time() - start > 1 * 60:
+    if time.time() - start > 10 * 60:
         print(i+1)
         # Print peak memory usage
         print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
