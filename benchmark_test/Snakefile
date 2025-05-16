@@ -27,7 +27,7 @@ rule phy_to_fasta:
 
 def benchmark_input(wildcards):
     num_leafs = [2**n for n in [4,6,8,10,12,14]]
-    L = [300] * len(num_leafs)
+    L = [wildcards.L] * len(num_leafs)
 
     newick = [f"data/random/tree_{n}.nwk" for n in num_leafs]
     fasta = [f"data/random/alignment_{n}_{l}.fasta" for n,l in zip(num_leafs,L)]
@@ -36,17 +36,17 @@ def benchmark_input(wildcards):
 
 rule benchmark:
     input: files = benchmark_input, script = "benchmark.py"
-    output: "data/random/time_{num_t}_m={method}.pickle"
+    output: "data/random/time_t={num_t}_L={L}_m={method}.pickle"
     threads: lambda w : int(w.num_t)
     resources:
-        slurm_extra="--exclusive",
-        mem_mb=800000,
+        slurm_extra= lambda w: "-G A100:1" if w.method == "jax_gpu" or w.method == "pytorch_gpu" else "--exclusive",
+        mem_mb=100000,
         runtime=1000
     shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 {wildcards.method} {input.files}"
 
 rule nvidia:
     output: "nvidia.txt"
-    shell: "nvidia-smi"
+    shell: "nvidia-smi && echo $CUDA_VISIBLE_DEVICES"
 
 rule benchmark_iqtree:
     input: tree = "data/random/tree_{num_leafs}.nwk",
