@@ -250,7 +250,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
 
     let sum_d_log_prior = result.iter().map(|r| r.1).sum::<na::SVector<F, DIM>>();
 
-    let d_rate_matrix = forward_data.log_transition.into_par_iter().enumerate().map(|(idx, forward)| {
+    let d_rate_matrix = forward_data.log_transition.into_iter().enumerate().map(|(idx, forward)| {
         d_rate_matrix_per_edge(&d_trans_matrix, idx , distances[idx], &param, &forward)
     }).sum::<na::SMatrix<F, DIM, DIM>>();
 
