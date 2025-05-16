@@ -1,3 +1,5 @@
+localrules: random_phylo, unroot, random_fasta, sim_phy, phy_to_fasta, collect_iqtree_benchmark
+
 rule random_phylo:
     output: "data/random/root_tree_{num_leafs}.nwk"
     shell: "phylotree generate -t {wildcards.num_leafs} -b > {output}"
@@ -25,7 +27,7 @@ rule phy_to_fasta:
 
 def benchmark_input(wildcards):
     num_leafs = [2**n for n in [4,6,8,10,12,14]]
-    L = [300] * len(num_leafs)
+    L = [wildcards.L] * len(num_leafs)
 
     newick = [f"data/random/tree_{n}.nwk" for n in num_leafs]
     fasta = [f"data/random/alignment_{n}_{l}.fasta" for n,l in zip(num_leafs,L)]
@@ -34,13 +36,17 @@ def benchmark_input(wildcards):
 
 rule benchmark:
     input: files = benchmark_input, script = "benchmark.py"
-    output: "data/random/time_{num_t}.pickle"
+    output: "data/random/time_t={num_t}_L={L}_m={method}.pickle"
     threads: lambda w : int(w.num_t)
     resources:
-        slurm_extra="--exclusive",
-        mem_mb=800000,
+        slurm_extra= lambda w: "-G A100:1" if w.method == "jax_gpu" or w.method == "pytorch_gpu" else "--exclusive",
+        mem_mb=100000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 rust {input.files}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 {wildcards.method} {input.files}"
+
+rule nvidia:
+    output: "nvidia.txt"
+    shell: "nvidia-smi && echo $CUDA_VISIBLE_DEVICES"
 
 rule benchmark_iqtree:
     input: tree = "data/random/tree_{num_leafs}.nwk",
@@ -52,7 +58,7 @@ rule benchmark_iqtree:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "/usr/bin/time -o {output[1]} ./iqtree3 -s {input.alignment} -nt {threads} --model-joint GTR20+FO --redo -te {input.tree} --show-lh -v -quiet"
+    shell: "/usr/bin/time -o {output[1]} -f '%E %P' ./iqtree3 -s {input.alignment} -nt {threads} --model-joint GTR20+FO --redo -te {input.tree} --show-lh -v -quiet"
 
 
 rule benchmark_phylograd:
@@ -67,7 +73,14 @@ rule benchmark_phylograd:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} /usr/bin/time -o {output.time} python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --rust --f64 --output {output.result} > {output.log}"
+    shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} /usr/bin/time -o {output.time} -f '%E %P' python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --rust --f64 --output {output.result} | tee {output.log}"
+
+rule collect_iqtree_benchmark:
+    input: iqtree = expand("data/sim/alignment_{num_leafs}_{L}.fasta.iqtree.time", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500]),
+           phylograd = expand("data/sim/alignment_{num_leafs}_{L}.fasta.phylograd.time", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500])
+    output: "data/iqtree_benchmark.txt"
+    shell: "tail -n +1 {input.iqtree} {input.phylograd} > {output}"
+
 def benchmark_input_gpu(wildcards):
     num_leafs = [2**n for n in [4,6,8]]
     L = [300] * len(num_leafs)
