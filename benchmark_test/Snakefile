@@ -40,7 +40,7 @@ rule benchmark:
     threads: lambda w : int(w.num_t)
     resources:
         slurm_extra= lambda w: "-G A100:1" if w.method == "jax_gpu" or w.method == "pytorch_gpu" else "--exclusive",
-        mem_mb=100000,
+        mem_mb=450000,
         runtime=1000
     shell: "OMP_NUM_THREADS={threads} RAYON_NUM_THREADS={threads} python benchmark.py {output} f32,f64 {wildcards.method} {input.files}"
 
