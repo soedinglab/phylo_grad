@@ -97,6 +97,8 @@ class FelsensteinTree:
         In case one of the symmetric matrices are not diagonalizable, the gradients will be 0.0 and the log likelihood will be -inf.
         This only happens when the matrix has very big or very small eigenvalues (absolute value bigger than 1e5).
 
+        For S only the upper triangle is used, the lower triangle is ignored in the input and for the gradient output it will be filled with zeros.
+
         :param S: The symmetric S matrix of the substitution model, shape [L, DIM, DIM] or [1, DIM, DIM] for broadcasting which will be faster but currently uses more memory
         :param sqrt_pi: The square root of the stationary distribution, shape [L, DIM] or [1, DIM] for broadcasting which will be faster but currently uses more memory
         
