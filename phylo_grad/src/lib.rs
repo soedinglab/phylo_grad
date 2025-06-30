@@ -10,7 +10,7 @@
 //! # SIMD
 //!
 //! This crate uses the `portable_simd` feature to enable SIMD acceleration. This feature is not stable yet, so you need to use the nightly compiler for now.
-//! It is tested and developed on `rustc 1.84.0-nightly (1e4f10ba6 2024-10-29)`
+//! It is tested on `rustc 1.88.0-nightly (7918c7eb5 2025-04-27)`
 
 /// Export the nalgebra which is used in the library, this can enable using multiple versions of nalgebra in the same project
 pub use nalgebra;
@@ -74,11 +74,15 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     }
 
     /// `s` and `sqrt_pi` have as first dimension the side id in the alignment. `s` gives the state transition matrix for each side, `sqrt_pi` gives the square root of the stationary distribution for each side.
-    /// See the paper for more details.
+    /// See the paper for more details. Especially the `Time symmetric parameterization` section.
     ///
     /// The result contains the gradients of `s` and `sqrt_pi` with respect to the log likelihood of the tree. It also gives the log likelihood of the tree.
     ///
     /// This function internally parallelizes over the sides in the alignment. You can control the number of threads with the `RAYON_NUM_THREADS` environment variable.
+    /// 
+    /// If the length of `s` and `sqrt_pi` is 1, it will use a different code path that is optimized for this case and assumes that they are the same for all columns.
+    /// 
+    /// Only the upper diagonal part of `s` is used. The gradients will only be populated in the upper diagonal and the lower diagonal will be filled with zeros.
     pub fn calculate_gradients(
         &mut self,
         s: Vec<na::SMatrix<F, DIM, DIM>>,

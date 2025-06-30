@@ -67,6 +67,7 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
 
     let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, F::MIN_SQRT_PI)));
 
+    // Read only the upper triangle of S and make it symmetric
     let mut S_symmetric = S.clone_owned();
     for i in 0..DIM {
         for j in 0..i {
