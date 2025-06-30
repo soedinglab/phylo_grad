@@ -14,7 +14,9 @@ pub fn softmax<F: FloatTrait, const N: usize>(x: &na::SVector<F, N>) -> na::SVec
     let mut result = x.add_scalar(-x_max);
 
     unsafe {
-        F::vec_exp(std::mem::transmute::<&mut [[F;N];1], &mut [F; N]>(&mut result.data.0));
+        F::vec_exp(std::mem::transmute::<&mut [[F; N]; 1], &mut [F; N]>(
+            &mut result.data.0,
+        ));
     }
     result /= result.sum();
     result
@@ -34,7 +36,7 @@ pub fn d_ln_vjp<F: FloatTrait, const DIM: usize>(
 fn X<F: FloatTrait, const DIM: usize>(
     eigenvalues: na::SVectorView<F, DIM>,
     t: F,
-    exp_t_lambda: &na::SVector<F, DIM>
+    exp_t_lambda: &na::SVector<F, DIM>,
 ) -> na::SMatrix<F, DIM, DIM> {
     na::SMatrix::<F, DIM, DIM>::from_fn(|i, j| {
         let diff = num_traits::Float::abs(eigenvalues[i] - eigenvalues[j]);
@@ -71,7 +73,7 @@ pub fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
     let B_inv = param.V_pi.transpose();
 
     let X = X(param.eigenvalues.as_view(), distance, exp_t_lambda);
-    
+
     *cotangent_vector *= B;
     *cotangent_vector = B_inv * *cotangent_vector;
 

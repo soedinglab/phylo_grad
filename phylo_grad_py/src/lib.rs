@@ -7,7 +7,8 @@ use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
 use phylo_grad::FloatTrait;
 use pyo3::{
-    pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy, PyObject, PyRefMut, PyResult, Python,
+    pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy, PyObject, PyRefMut, PyResult,
+    Python,
 };
 
 use std::collections::HashMap;
@@ -233,7 +234,6 @@ macro_rules! backend_all {
     };
 }
 
-
 macro_rules! add_class {
     ($mod:expr, $dim:expr) => {
         paste::item! {
@@ -245,7 +245,7 @@ macro_rules! add_class {
 
 macro_rules! add_class_all {
     ($mod:expr, $($dim:expr),*) => {
-        $( 
+        $(
             add_class!($mod, $dim);
         )*
     };

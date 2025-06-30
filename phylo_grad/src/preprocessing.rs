@@ -37,9 +37,7 @@ pub fn topological_preprocess<F: FloatTrait>(
     // Sort the internal nodes by height, make sure the sort is stable in the leaf nodes
     let mut indices = (num_leaves..num_nodes as u32).collect::<Vec<u32>>();
     indices.sort_by_key(|&id| height[id as usize]);
-    let indices = (0..num_leaves)
-        .chain(indices)
-        .collect::<Vec<u32>>();
+    let indices = (0..num_leaves).chain(indices).collect::<Vec<u32>>();
     let rev_mapping = indices
         .iter()
         .enumerate()

@@ -1,7 +1,7 @@
 use std::{iter::Sum, simd::num::SimdFloat};
 
-use nalgebra::{self as na, SMatrix, SVector}; 
 use logsumexp::LogSumExp;
+use nalgebra::{self as na, SMatrix, SVector};
 
 use std::simd;
 

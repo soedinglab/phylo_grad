@@ -113,9 +113,7 @@ fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
 ) -> LogTransitionForwardData<F, DIM> {
     use num_traits::Float;
 
-    let exp_t_lambda = param
-        .eigenvalues
-        .map(|lam| Float::exp(lam * distance));
+    let exp_t_lambda = param.eigenvalues.map(|lam| Float::exp(lam * distance));
 
     let mut matrix_exp = param.V_pi.clone_owned();
     times_diag_assign(matrix_exp.as_view_mut(), exp_t_lambda.iter().copied());
