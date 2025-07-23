@@ -61,10 +61,11 @@ cargo install phylotree
 
 Run Benchmarks
 
-TODO: Update this
 ```
-snakemake -c all data/random/plot_{num_threads}_time.pdf
+snakemake -c all data/random/time_t={num_threads}_L={columns in alignment}_m={method}.pickle"
 ```
+
+`method` can be either `rust`, `pytorch`, `pytorch_gpu` or `jax_gpu`.
 
 ## How to use it
 

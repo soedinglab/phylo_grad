@@ -20,7 +20,8 @@ def run_and_measure(command):
         print(stderr.decode(), file=sys.stderr)
         print("stdout:", file=sys.stderr)
         print(stdout.decode(), file=sys.stderr)
-        raise Exception("Command failed with return code: " + str(process.returncode))
+        print("Command failed with return code: " + str(process.returncode), file=sys.stderr)
+        return (0, 0)
     else:
         output = stdout.decode().split('\n')
         

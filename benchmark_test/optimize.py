@@ -9,7 +9,6 @@ import torch
 
 import input
 import cat
-import phylo_grad
 import felsenstein
 import numpy as np
 import argparse
@@ -64,6 +63,7 @@ else:
     energies = torch.rand(L, 20, requires_grad=True, dtype=dtype)
 
 if args.rust or args.jax_gpu:
+    import phylo_grad
     leaf_log_p = torch.stack([seq for _,_, seq in tree if seq is not None]).transpose(1,0)
     tree = np.array([(par, dist) for par, dist, _ in tree], dtype=np_dtype)
     tree = phylo_grad.FelsensteinTree(tree, leaf_log_p.type(dtype).numpy(), 1e-4, gpu = args.jax_gpu)
