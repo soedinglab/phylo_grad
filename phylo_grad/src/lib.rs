@@ -44,6 +44,7 @@ pub struct FelsensteinTree<F, const DIM: usize> {
     tree: Vec<TreeNodeId<u32>>,
     distances: Vec<F>,
     leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
+    num_leaves: usize,
     tmp_mem: Option<Vec<Vec<na::SMatrix<F, DIM, DIM>>>>,
 }
 
@@ -57,16 +58,23 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     pub fn new(
         parents: Vec<i32>,
         distances: Vec<F>,
-        leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
+        mut leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
     ) -> Self {
+        let num_leaves = leaf_log_p[0].len();
         let (tree, distances) =
-            topological_preprocess::<F>(parents, distances, leaf_log_p[0].len() as u32)
+            topological_preprocess::<F>(parents, distances, num_leaves as u32)
                 .expect("Tree topology is invalid");
+
+        // Resize such that the leaf_log_p has the same enougth space for the internal nodes
+        for log_p in &mut leaf_log_p {
+            log_p.resize(tree.len(), na::SVector::<F, DIM>::zeros());
+        }
 
         FelsensteinTree {
             tree,
             distances,
             leaf_log_p,
+            num_leaves,
             tmp_mem: None,
         }
     }
@@ -94,27 +102,29 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
             });
 
             return calculate_column_parallel_single_S(
-                &self.leaf_log_p,
+                &mut self.leaf_log_p,
                 &s[0],
                 &sqrt_pi[0],
                 &self.tree,
                 &self.distances,
                 d_trans_matrix,
+                self.num_leaves,
             );
         }
-        calculate_column_parallel(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
+        calculate_column_parallel(&mut self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances, self.num_leaves)
     }
 
     /// This function calculates the gradients for a single side in the alignment.
     /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
     pub fn calculate_gradients_single_side(
-        &self,
+        &mut self,
         s: na::SMatrix<F, DIM, DIM>,
         sqrt_pi: na::SVector<F, DIM>,
         side_id: usize,
     ) -> SingleSideResult<F, DIM> {
-        let leaf_log_p = self.leaf_log_p[side_id].clone();
+        let leaf_log_p = self.leaf_log_p.get_mut(side_id)
+            .expect("Leaf log probabilities for the given side id do not exist");
 
-        calculate_column(leaf_log_p, s.as_view(), sqrt_pi.as_view(), &self.tree, &self.distances)
+        calculate_column(leaf_log_p, s.as_view(), sqrt_pi.as_view(), &self.tree, &self.distances, self.num_leaves)
     }
 }
