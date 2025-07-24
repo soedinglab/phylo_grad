@@ -8,25 +8,23 @@ use crate::tree::*;
 
 use nalgebra as na;
 
+/// leaf_log_p should be already big enough to contain log_p for all the nodes, not just the leaves.
+/// We assume it is initialized with the leaf log probabilities.
 fn forward_column<F: FloatTrait, const DIM: usize>(
-    mut leaf_log_p: Vec<na::SVector<F, DIM>>,
+    leaf_log_p: &mut [na::SVector<F, DIM>],
     tree: &[TreeNode],
     forward_data: &ForwardData<F, DIM>,
-) -> Vec<na::SVector<F, DIM>> {
+    num_leaves: usize,
+) {
     let num_nodes = tree.len();
-    let num_leaves = leaf_log_p.len();
 
-    /* TODO remove copy */
     for i in num_leaves..(num_nodes - 1) {
-        let log_p_new = forward_node(i, tree, &leaf_log_p, forward_data);
-        leaf_log_p.push(log_p_new);
+        leaf_log_p[i] = forward_node(i, tree, &leaf_log_p, forward_data);
     }
-    let log_p_root = forward_root(num_nodes - 1, tree, &leaf_log_p, forward_data);
-    leaf_log_p.push(log_p_root);
-    leaf_log_p
+    leaf_log_p[num_nodes - 1] = forward_root(num_nodes - 1, tree, &leaf_log_p, forward_data);
 }
 
-fn process_likelihood<F: FloatTrait, const DIM: usize>(
+fn final_likelihood<F: FloatTrait, const DIM: usize>(
     log_p_root: na::SVectorView<F, DIM>,
     log_p_prior: na::SVectorView<F, DIM>,
 ) -> (F, na::SVector<F, DIM>) {
@@ -100,20 +98,20 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
     param.V_pi_inv.tr_mul(&grad_rate_column) * param.V_pi.transpose()
 }
 
-struct SingleSideResult<F, const DIM: usize> {
+pub struct SingleSideResult<F, const DIM: usize> {
     log_likelihood: F,
     grad_s: na::SMatrix<F, DIM, DIM>,
     grad_sqrt_pi: na::SVector<F, DIM>,
 }
 
-fn calculate_column<F: FloatTrait, const DIM: usize>(
-    leaf_log_p: Vec<na::SVector<F, DIM>>,
+pub fn calculate_column<F: FloatTrait, const DIM: usize>(
+    leaf_log_p: &mut [na::SVector<F, DIM>],
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
     tree: &[TreeNode],
     distances: &[F],
+    num_leaves: usize,
 ) -> SingleSideResult<F, DIM> {
-    let num_leaves = leaf_log_p.len();
     // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
     let param = match compute_param_data(S, sqrt_pi) {
         Some(param) => param,
@@ -128,12 +126,13 @@ fn calculate_column<F: FloatTrait, const DIM: usize>(
 
     let forward_data = forward_data_precompute_param(&param, distances);
 
-    let log_p = forward_column(leaf_log_p, tree, &forward_data);
+    forward_column(leaf_log_p, tree, &forward_data, num_leaves);
+    let log_p = leaf_log_p;
     let log_p_root = log_p.last().unwrap();
 
     let log_p_prior = sqrt_pi.map(num_traits::Float::ln) * <F as FloatTrait>::from_f64(2.0);
     let (log_likelihood, grad_log_p_likelihood): (F, na::SVector<F, DIM>) =
-        process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
+        final_likelihood(log_p_root.as_view(), log_p_prior.as_view());
     let grad_log_prior = grad_log_p_likelihood;
     let grad_log_p_root = grad_log_p_likelihood;
 
@@ -168,21 +167,23 @@ pub struct FelsensteinResult<F, const DIM: usize> {
 }
 
 pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize>(
-    leaf_log_p: &[Vec<na::SVector<F, DIM>>],
+    leaf_log_p: &mut [Vec<na::SVector<F, DIM>>],
     S: &[na::SMatrix<F, DIM, DIM>],
     sqrt_pi: &[na::SVector<F, DIM>],
     tree: &[TreeNode],
     distances: &[F],
+    num_leaves: usize,
 ) -> FelsensteinResult<F, DIM> {
     let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
-        .map(|(leaf_log_p, S, sqrt_pi)| {
+        .map(|(mut leaf_log_p, S, sqrt_pi)| {
             calculate_column(
-                leaf_log_p.clone(),
+                &mut leaf_log_p,
                 S.as_view(),
                 sqrt_pi.as_view(),
                 tree,
                 distances,
+                num_leaves,
             )
         })
         .collect::<Vec<_>>();
@@ -207,12 +208,13 @@ pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize>(
 /// Same as `calculate_column_parallel`, but a single S and sqrt_pi are passed and used for all sides. It still produces a FelsensteinResult with Vec of length 1.
 /// This is significantly faster than calculate_column_parallel.
 pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
-    leaf_log_p: &[Vec<na::SVector<F, DIM>>],
+    leaf_log_p: &mut [Vec<na::SVector<F, DIM>>],
     S: &na::SMatrix<F, DIM, DIM>,
     sqrt_pi: &na::SVector<F, DIM>,
     tree: &[TreeNode],
     distances: &[F],
     d_trans_matrix: &mut [Vec<na::SMatrix<F, DIM, DIM>>],
+    num_leaves: usize,
 ) -> FelsensteinResult<F, DIM> {
     let L = leaf_log_p.len();
 
@@ -236,7 +238,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
         .into_par_iter()
         .zip(d_trans_matrix.par_iter_mut())
         .map(|(leaf_log_p, d_trans)| {
-            cacluate_column_single_S(leaf_log_p.clone(), &param, &forward_data, tree, d_trans)
+            cacluate_column_single_S(leaf_log_p, &param, &forward_data, tree, d_trans, num_leaves)
         })
         .collect::<Vec<_>>();
 
@@ -284,20 +286,21 @@ fn d_rate_matrix_per_edge<F: FloatTrait, const DIM: usize>(
 }
 
 fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
-    leaf_log_p: Vec<na::SVector<F, DIM>>,
+    leaf_log_p: &mut [na::SVector<F, DIM>],
     param: &ParamPrecomp<F, DIM>,
     forward_data: &ForwardData<F, DIM>,
     tree: &[TreeNode],
     d_trans_matrix: &mut [na::SMatrix<F, DIM, DIM>],
+    num_leaves: usize,
 ) -> (F, na::SVector<F, DIM>) {
-    let num_leaves = leaf_log_p.len();
-    let log_p = forward_column(leaf_log_p, tree, forward_data);
+    forward_column(leaf_log_p, tree, forward_data, num_leaves);
+    let log_p = leaf_log_p;
     let log_p_root = log_p.last().unwrap();
 
     let log_p_prior = param.sqrt_pi.map(num_traits::Float::ln) * <F as FloatTrait>::from_f64(2.0);
 
     let (log_likelihood, grad_log_p_likelihood) =
-        process_likelihood(log_p_root.as_view(), log_p_prior.as_view());
+        final_likelihood(log_p_root.as_view(), log_p_prior.as_view());
     let d_log_prior = grad_log_p_likelihood;
     let d_log_p_root = grad_log_p_likelihood;
 

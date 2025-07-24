@@ -165,8 +165,7 @@ fn child_input<F: FloatTrait, const DIM: usize>(
     result
 }
 
-/// forward_node expects that the node tree[id] is non-terminal!
-/// To initialize a leaf node, call Entry::to_log_p().
+/// forward_node expects that the node tree[id] is non-terminal and its children are already computed
 pub fn forward_node<F: FloatTrait, const DIM: usize>(
     id: usize,
     tree: &[TreeNode],

@@ -17,7 +17,7 @@ pub use nalgebra;
 
 use nalgebra as na;
 
-pub use backward::softmax;
+/// Used to abstract over `f32` and `f64` in the crate. It is not supposed to be used outside of this crate except for trait bounds.
 pub use data_types::FloatTrait;
 
 mod backward;
@@ -27,10 +27,8 @@ mod preprocessing;
 mod run;
 mod tree;
 
-use rand::distributions::uniform::SampleUniform;
-use rand::prelude::Distribution;
-use rand::seq::SliceRandom;
 pub use run::FelsensteinResult;
+pub use run::SingleSideResult;
 
 use crate::preprocessing::*;
 use crate::run::*;
@@ -46,6 +44,7 @@ pub struct FelsensteinTree<F, const DIM: usize> {
     tree: Vec<TreeNodeId<u32>>,
     distances: Vec<F>,
     leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
+    num_leaves: usize,
     tmp_mem: Option<Vec<Vec<na::SMatrix<F, DIM, DIM>>>>,
 }
 
@@ -59,16 +58,23 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     pub fn new(
         parents: Vec<i32>,
         distances: Vec<F>,
-        leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
+        mut leaf_log_p: Vec<Vec<na::SVector<F, DIM>>>,
     ) -> Self {
+        let num_leaves = leaf_log_p[0].len();
         let (tree, distances) =
-            topological_preprocess::<F>(parents, distances, leaf_log_p[0].len() as u32)
+            topological_preprocess::<F>(parents, distances, num_leaves as u32)
                 .expect("Tree topology is invalid");
+
+        // Resize such that the leaf_log_p has the same enougth space for the internal nodes
+        for log_p in &mut leaf_log_p {
+            log_p.resize(tree.len(), na::SVector::<F, DIM>::zeros());
+        }
 
         FelsensteinTree {
             tree,
             distances,
             leaf_log_p,
+            num_leaves,
             tmp_mem: None,
         }
     }
@@ -96,59 +102,29 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
             });
 
             return calculate_column_parallel_single_S(
-                &self.leaf_log_p,
+                &mut self.leaf_log_p,
                 &s[0],
                 &sqrt_pi[0],
                 &self.tree,
                 &self.distances,
                 d_trans_matrix,
+                self.num_leaves,
             );
         }
-        calculate_column_parallel(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
-    }
-}
-
-/// Returns a random tree topology in the format required by FelsensteinTree::new
-pub fn random_tree_top(num_leaf: u32) -> Vec<i32> {
-    let mut parents = vec![-2; num_leaf as usize];
-    let mut orphans: Vec<u32> = (0..num_leaf).collect();
-
-    let mut rng = rand::thread_rng();
-
-    while orphans.len() > 3 {
-        // This is inefficient, but it's not a critical part of the pipeline
-        orphans.shuffle(&mut rng);
-        let parent_id = parents.len();
-        parents.push(-2);
-        let sib1 = orphans.pop().unwrap();
-        let sib2 = orphans.pop().unwrap();
-
-        parents[sib1 as usize] = parent_id as i32;
-        parents[sib2 as usize] = parent_id as i32;
-
-        orphans.push(parent_id as u32);
+        calculate_column_parallel(&mut self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances, self.num_leaves)
     }
 
-    let root_id = parents.len();
-    let sib1 = orphans.pop().unwrap();
-    let sib2 = orphans.pop().unwrap();
-    let sib3 = orphans.pop().unwrap();
-    parents[sib1 as usize] = root_id as i32;
-    parents[sib2 as usize] = root_id as i32;
-    parents[sib3 as usize] = root_id as i32;
+    /// This function calculates the gradients for a single side in the alignment.
+    /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
+    pub fn calculate_gradients_single_side(
+        &mut self,
+        s: na::SMatrix<F, DIM, DIM>,
+        sqrt_pi: na::SVector<F, DIM>,
+        side_id: usize,
+    ) -> SingleSideResult<F, DIM> {
+        let leaf_log_p = self.leaf_log_p.get_mut(side_id)
+            .expect("Leaf log probabilities for the given side id do not exist");
 
-    parents.push(-1);
-
-    parents
-}
-
-/// Returns a random distance vector in the format required by FelsensteinTree::new uniformly distributed between 0.1 and 1.0
-pub fn random_dist<F: FloatTrait + SampleUniform>(num_nodes: u32) -> Vec<F> {
-    let dist = rand::distributions::Uniform::new::<F, F>(
-        FloatTrait::from_f64(0.1),
-        FloatTrait::from_f64(1.0),
-    );
-    (0..num_nodes)
-        .map(|_| dist.sample(&mut rand::thread_rng()))
-        .collect()
+        calculate_column(leaf_log_p, s.as_view(), sqrt_pi.as_view(), &self.tree, &self.distances, self.num_leaves)
+    }
 }
