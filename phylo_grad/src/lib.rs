@@ -28,6 +28,7 @@ mod run;
 mod tree;
 
 pub use run::FelsensteinResult;
+pub use run::SingleSideResult;
 
 use crate::preprocessing::*;
 use crate::run::*;
@@ -102,5 +103,18 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
             );
         }
         calculate_column_parallel(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
+    }
+
+    /// This function calculates the gradients for a single side in the alignment.
+    /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
+    pub fn calculate_gradients_single_side(
+        &self,
+        s: na::SMatrix<F, DIM, DIM>,
+        sqrt_pi: na::SVector<F, DIM>,
+        side_id: usize,
+    ) -> SingleSideResult<F, DIM> {
+        let leaf_log_p = self.leaf_log_p[side_id].clone();
+
+        calculate_column(leaf_log_p, s.as_view(), sqrt_pi.as_view(), &self.tree, &self.distances)
     }
 }

@@ -100,13 +100,13 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
     param.V_pi_inv.tr_mul(&grad_rate_column) * param.V_pi.transpose()
 }
 
-struct SingleSideResult<F, const DIM: usize> {
+pub struct SingleSideResult<F, const DIM: usize> {
     log_likelihood: F,
     grad_s: na::SMatrix<F, DIM, DIM>,
     grad_sqrt_pi: na::SVector<F, DIM>,
 }
 
-fn calculate_column<F: FloatTrait, const DIM: usize>(
+pub fn calculate_column<F: FloatTrait, const DIM: usize>(
     leaf_log_p: Vec<na::SVector<F, DIM>>,
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
