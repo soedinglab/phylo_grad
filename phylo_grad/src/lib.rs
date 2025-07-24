@@ -17,7 +17,7 @@ pub use nalgebra;
 
 use nalgebra as na;
 
-pub use backward::softmax;
+/// Used to abstract over `f32` and `f64` in the crate. It is not supposed to be used outside of this crate except for trait bounds.
 pub use data_types::FloatTrait;
 
 mod backward;
@@ -27,9 +27,6 @@ mod preprocessing;
 mod run;
 mod tree;
 
-use rand::distributions::uniform::SampleUniform;
-use rand::prelude::Distribution;
-use rand::seq::SliceRandom;
 pub use run::FelsensteinResult;
 
 use crate::preprocessing::*;
@@ -106,49 +103,4 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         }
         calculate_column_parallel(&self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances)
     }
-}
-
-/// Returns a random tree topology in the format required by FelsensteinTree::new
-pub fn random_tree_top(num_leaf: u32) -> Vec<i32> {
-    let mut parents = vec![-2; num_leaf as usize];
-    let mut orphans: Vec<u32> = (0..num_leaf).collect();
-
-    let mut rng = rand::thread_rng();
-
-    while orphans.len() > 3 {
-        // This is inefficient, but it's not a critical part of the pipeline
-        orphans.shuffle(&mut rng);
-        let parent_id = parents.len();
-        parents.push(-2);
-        let sib1 = orphans.pop().unwrap();
-        let sib2 = orphans.pop().unwrap();
-
-        parents[sib1 as usize] = parent_id as i32;
-        parents[sib2 as usize] = parent_id as i32;
-
-        orphans.push(parent_id as u32);
-    }
-
-    let root_id = parents.len();
-    let sib1 = orphans.pop().unwrap();
-    let sib2 = orphans.pop().unwrap();
-    let sib3 = orphans.pop().unwrap();
-    parents[sib1 as usize] = root_id as i32;
-    parents[sib2 as usize] = root_id as i32;
-    parents[sib3 as usize] = root_id as i32;
-
-    parents.push(-1);
-
-    parents
-}
-
-/// Returns a random distance vector in the format required by FelsensteinTree::new uniformly distributed between 0.1 and 1.0
-pub fn random_dist<F: FloatTrait + SampleUniform>(num_nodes: u32) -> Vec<F> {
-    let dist = rand::distributions::Uniform::new::<F, F>(
-        FloatTrait::from_f64(0.1),
-        FloatTrait::from_f64(1.0),
-    );
-    (0..num_nodes)
-        .map(|_| dist.sample(&mut rand::thread_rng()))
-        .collect()
 }
