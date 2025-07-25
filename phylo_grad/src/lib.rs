@@ -91,8 +91,8 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// Only the upper diagonal part of `s` is used. The gradients will only be populated in the upper diagonal and the lower diagonal will be filled with zeros.
     pub fn calculate_gradients(
         &mut self,
-        s: Vec<na::SMatrix<F, DIM, DIM>>,
-        sqrt_pi: Vec<na::SVector<F, DIM>>,
+        s: &[na::SMatrix<F, DIM, DIM>],
+        sqrt_pi: &[na::SVector<F, DIM>],
     ) -> FelsensteinResult<F, DIM> {
         if s.len() == 1 && sqrt_pi.len() == 1 {
             let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
@@ -111,7 +111,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
                 self.num_leaves,
             );
         }
-        calculate_column_parallel(&mut self.leaf_log_p, &s, &sqrt_pi, &self.tree, &self.distances, self.num_leaves)
+        calculate_column_parallel(&mut self.leaf_log_p, s, sqrt_pi, &self.tree, &self.distances, self.num_leaves)
     }
 
     /// This function calculates the gradients for a single side in the alignment.

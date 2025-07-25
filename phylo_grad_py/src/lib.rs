@@ -36,7 +36,7 @@ pub fn backend_calc_grad_py<F: FloatTrait + numpy::Element, const DIM: usize>(
 ) -> FelsensteinResult<F, DIM> {
     let s = vec_2d_from_python(s);
     let sqrt_pi = vec_1d_from_python(sqrt_pi);
-    backend.calculate_gradients(s, sqrt_pi)
+    backend.calculate_gradients(&s, &sqrt_pi)
 }
 
 fn vec_0d_into_python<T>(vec: Vec<T>, py: Python) -> Bound<PyArray1<T>>
