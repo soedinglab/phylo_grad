@@ -118,8 +118,8 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
     pub fn calculate_gradients_single_side(
         &mut self,
-        s: na::SMatrix<F, DIM, DIM>,
-        sqrt_pi: na::SVector<F, DIM>,
+        s: &na::SMatrix<F, DIM, DIM>,
+        sqrt_pi: &na::SVector<F, DIM>,
         side_id: usize,
     ) -> SingleSideResult<F, DIM> {
         let leaf_log_p = self.leaf_log_p.get_mut(side_id)
