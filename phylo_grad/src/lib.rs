@@ -78,6 +78,24 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         }
     }
 
+    /// Same as `new`, but it does not take the leaf_log_p, so you can only call `calculate_gradients_with_log_p` after this.
+    pub fn new_just_tree(
+        parents: Vec<i32>,
+        distances: Vec<F>,
+        num_leaves: usize,
+    ) -> Self {
+        let (tree, distances) = topological_preprocess::<F>(parents, distances, num_leaves as u32)
+            .expect("Tree topology is invalid");
+
+        FelsensteinTree {
+            tree,
+            distances,
+            leaf_log_p: vec![],
+            num_leaves,
+            tmp_mem: None,
+        }
+    }
+
     /// `s` and `sqrt_pi` have as first dimension the side id in the alignment. `s` gives the state transition matrix for each side, `sqrt_pi` gives the square root of the stationary distribution for each side.
     /// See the paper for more details. Especially the `Time symmetric parameterization` section.
     ///
