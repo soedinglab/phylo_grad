@@ -166,8 +166,8 @@ pub struct FelsensteinResult<F, const DIM: usize> {
     pub grad_sqrt_pi: Vec<na::SVector<F, DIM>>,
 }
 
-pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize>(
-    leaf_log_p: &mut [Vec<na::SVector<F, DIM>>],
+pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize, A : AsMut<[na::SVector<F, DIM>]> + Send>(
+    leaf_log_p: &mut [A],
     S: &[na::SMatrix<F, DIM, DIM>],
     sqrt_pi: &[na::SVector<F, DIM>],
     tree: &[TreeNode],
@@ -176,9 +176,9 @@ pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize>(
 ) -> FelsensteinResult<F, DIM> {
     let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
-        .map(|(mut leaf_log_p, S, sqrt_pi)| {
+        .map(|(leaf_log_p, S, sqrt_pi)| {
             calculate_column(
-                &mut leaf_log_p,
+                leaf_log_p.as_mut(),
                 S.as_view(),
                 sqrt_pi.as_view(),
                 tree,
