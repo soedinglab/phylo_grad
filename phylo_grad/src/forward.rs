@@ -1,5 +1,4 @@
 use crate::data_types::*;
-use crate::tree::*;
 
 use nalgebra as na;
 
@@ -145,77 +144,22 @@ pub fn forward_data_precompute_param<F: FloatTrait, const DIM: usize>(
     );
     forward_data
 }
-#[inline(never)]
-/// Computes p(subtree | parent = a) for all a by taking log_p : p(subtree | child = b) for all b
-fn child_input<F: FloatTrait, const DIM: usize>(
-    log_p: na::SVectorView<F, DIM>,
-    log_transition: &LogTransitionForwardData<F, DIM>,
-) -> na::SVector<F, DIM> {
-    /* result_a = logsumexp_b(log_p(b) + log_transition(rate_matrix, distance)(a, b) ) */
-    let mut result = na::SVector::<F, DIM>::zeros();
+
+/// adds the log_p of the children to the log_p of the parent
+pub fn forward_node<F: FloatTrait, const DIM: usize>(
+    child: usize,
+    parent: usize,
+    log_p: &mut [na::SVector<F, DIM>],
+    forward_data: &ForwardData<F, DIM>,
+) {
+    /* log_p[parent]_a = logsumexp_b(log_p[child](b) + log_transition(rate_matrix, distance)(a, b) ) */
     for a in 0..DIM {
-        let row_a = log_transition.log_transition_T.column(a);
-        let tmp = log_p + row_a;
+        let row_a = forward_data.log_transition[child].log_transition_T.column(a);
+        let tmp = log_p[child] + row_a;
         unsafe {
-            result[a] = F::vec_logsumexp(std::mem::transmute::<&[[F; DIM]; 1], &[F; DIM]>(
+            log_p[parent][a] += F::vec_logsumexp(std::mem::transmute::<&[[F; DIM]; 1], &[F; DIM]>(
                 &tmp.data.0,
             ))
         }
     }
-    result
-}
-
-/// forward_node expects that the node tree[id] is non-terminal and its children are already computed
-pub fn forward_node<F: FloatTrait, const DIM: usize>(
-    id: usize,
-    tree: &[TreeNode],
-    log_p: &[na::SVector<F, DIM>],
-    forward_data: &ForwardData<F, DIM>,
-) -> na::SVector<F, DIM> {
-    let node = &tree[id];
-
-    let mut opt_running_sum: Option<na::SVector<F, DIM>> = None;
-    for child in [node.left, node.right].into_iter().flatten() {
-        let child_input = child_input(
-            log_p[child as usize].as_view(),
-            &forward_data.log_transition[child as usize],
-        );
-        match opt_running_sum {
-            Some(ref mut result) => {
-                *result += child_input;
-            }
-            None => {
-                opt_running_sum = Some(child_input);
-            }
-        }
-    }
-
-    match opt_running_sum {
-        Some(result) => result,
-        None => panic!("Non-terminal node without children"),
-    }
-}
-
-pub fn forward_root<F: FloatTrait, const DIM: usize>(
-    id: usize,
-    tree: &[TreeNode],
-    log_p: &[na::SVector<F, DIM>],
-    forward_data: &ForwardData<F, DIM>,
-) -> na::SVector<F, DIM> {
-    let root = &tree[id];
-
-    let mut result = child_input(
-        //root uses the parent field to store the third child
-        log_p[root.parent as usize].as_view(),
-        &forward_data.log_transition[root.parent as usize],
-    );
-    for child in [root.left, root.right].into_iter().flatten() {
-        let child_input = child_input(
-            log_p[child as usize].as_view(),
-            &forward_data.log_transition[child as usize],
-        );
-        result += child_input;
-    }
-
-    result
 }
