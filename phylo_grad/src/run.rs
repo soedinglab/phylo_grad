@@ -8,22 +8,21 @@ use crate::tree::*;
 
 use nalgebra as na;
 
-/// leaf_log_p should be already big enough to contain log_p for all the nodes, not just the leaves.
-/// We assume it is initialized with the leaf log probabilities.
+/// log_p should have the leaf log_p initialized and all the other nodes set to zero
 fn forward_column<F: FloatTrait, const DIM: usize>(
-    leaf_log_p: &mut [na::SVector<F, DIM>],
-    tree: &[TreeNode],
+    log_p: &mut [na::SVector<F, DIM>],
+    parents: &[i32],
     forward_data: &ForwardData<F, DIM>,
-    num_leaves: usize,
 ) {
-    let num_nodes = tree.len();
-
-    for i in num_leaves..(num_nodes - 1) {
-        leaf_log_p[i] = forward_node(i, tree, &leaf_log_p, forward_data);
+    for (child, &parent) in parents.iter().enumerate() {
+        if parent == -1 {
+            continue; // skip the root
+        }
+        forward_node(child as usize, parent as usize, log_p, forward_data);
     }
-    leaf_log_p[num_nodes - 1] = forward_root(num_nodes - 1, tree, &leaf_log_p, forward_data);
 }
 
+/// final likelihood given the root log_p and the prior distribution
 fn final_likelihood<F: FloatTrait, const DIM: usize>(
     log_p_root: na::SVectorView<F, DIM>,
     log_p_prior: na::SVectorView<F, DIM>,
@@ -36,17 +35,16 @@ fn final_likelihood<F: FloatTrait, const DIM: usize>(
 
 fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
     grad_log_p_root: na::SVectorView<F, DIM>,
-    tree: &[TreeNode],
+    tree: Tree<F>,
     log_p: &[na::SVector<F, DIM>],
-    distances: &[F],
     forward_data: &ForwardData<F, DIM>,
     param: &ParamPrecomp<F, DIM>,
-    num_leaves: usize,
 ) -> na::SMatrix<F, DIM, DIM> {
     /* Notice that child_input values are always added, so the log_p input for children is always the same.
     We will therefore store their common grad_log_p in the parent node's BackwardData. */
     /* TODO: it is possible to free grad_log_p's for the previous tree level. */
-    let num_nodes = tree.len();
+    let num_nodes = tree.parents.len();
+    let num_leaves = tree.num_leaves;
     let mut backward_data = Vec::<BackwardData<F, DIM>>::with_capacity(num_nodes - num_leaves);
     let mut grad_rate_column = na::SMatrix::<F, DIM, DIM>::zeros();
     /* root.backward */
@@ -56,11 +54,11 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
     /* node.backward for non-terminal nodes */
     let mut grad_rate = na::SMatrix::<F, DIM, DIM>::zeros();
     for id in (num_leaves..num_nodes - 1).rev() {
-        let parent_id = tree[id].parent;
+        let parent_id = tree.parents[id];
         let parent_backward_id = num_nodes - parent_id as usize - 1;
         let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
         let log_p_input = log_p[id].as_view();
-        let distance_current = distances[id];
+        let distance_current = tree.distances[id];
         let fwd_data_current = &forward_data.log_transition[id];
         let grad_log_p = d_child_input_param(
             grad_log_p_input,
@@ -78,11 +76,11 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
     }
     /* For leaves, we only compute grad_rate */
     for id in (0..num_leaves).rev() {
-        let parent_id = tree[id].parent;
+        let parent_id = tree.parents[id];
         let parent_backward_id = num_nodes - parent_id as usize - 1;
         let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
         let log_p_input = log_p[id].as_view();
-        let distance_current = distances[id];
+        let distance_current = tree.distances[id];
         let fwd_data_current = &forward_data.log_transition[id];
         d_child_input_param(
             grad_log_p_input,
@@ -105,12 +103,10 @@ pub struct SingleSideResult<F, const DIM: usize> {
 }
 
 pub fn calculate_column<F: FloatTrait, const DIM: usize>(
-    leaf_log_p: &mut [na::SVector<F, DIM>],
+    log_p: &mut [na::SVector<F, DIM>],
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
-    tree: &[TreeNode],
-    distances: &[F],
-    num_leaves: usize,
+    tree: Tree<F>,
 ) -> SingleSideResult<F, DIM> {
     // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
     let param = match compute_param_data(S, sqrt_pi) {
@@ -124,14 +120,13 @@ pub fn calculate_column<F: FloatTrait, const DIM: usize>(
         }
     };
 
-    let forward_data = forward_data_precompute_param(&param, distances);
+    let forward_data = forward_data_precompute_param(&param, tree.distances);
 
-    forward_column(leaf_log_p, tree, &forward_data, num_leaves);
-    let log_p = leaf_log_p;
+    forward_column(log_p, tree.parents, &forward_data);
     let log_p_root = log_p.last().unwrap();
 
     let log_p_prior = sqrt_pi.map(num_traits::Float::ln) * <F as FloatTrait>::from_f64(2.0);
-    let (log_likelihood, grad_log_p_likelihood): (F, na::SVector<F, DIM>) =
+    let (log_likelihood, grad_log_p_likelihood) =
         final_likelihood(log_p_root.as_view(), log_p_prior.as_view());
     let grad_log_prior = grad_log_p_likelihood;
     let grad_log_p_root = grad_log_p_likelihood;
@@ -140,10 +135,8 @@ pub fn calculate_column<F: FloatTrait, const DIM: usize>(
         grad_log_p_root.as_view(),
         tree,
         &log_p,
-        distances,
         &forward_data,
         &param,
-        num_leaves,
     );
 
     let (grad_s, mut grad_sqrt_pi) = d_param(grad_rate.as_view(), &param);
@@ -166,13 +159,15 @@ pub struct FelsensteinResult<F, const DIM: usize> {
     pub grad_sqrt_pi: Vec<na::SVector<F, DIM>>,
 }
 
-pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize, A : AsMut<[na::SVector<F, DIM>]> + Send>(
+pub fn calculate_column_parallel<
+    F: FloatTrait,
+    const DIM: usize,
+    A: AsMut<[na::SVector<F, DIM>]> + Send,
+>(
     leaf_log_p: &mut [A],
     S: &[na::SMatrix<F, DIM, DIM>],
     sqrt_pi: &[na::SVector<F, DIM>],
-    tree: &[TreeNode],
-    distances: &[F],
-    num_leaves: usize,
+    tree: Tree<F>,
 ) -> FelsensteinResult<F, DIM> {
     let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
@@ -181,10 +176,8 @@ pub fn calculate_column_parallel<F: FloatTrait, const DIM: usize, A : AsMut<[na:
                 leaf_log_p.as_mut(),
                 S.as_view(),
                 sqrt_pi.as_view(),
-                tree,
-                distances,
-                num_leaves,
-            )
+                tree.clone(),
+            ) // The clone is shallow, Tree is cheap to clone
         })
         .collect::<Vec<_>>();
 
@@ -211,10 +204,8 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
     leaf_log_p: &mut [Vec<na::SVector<F, DIM>>],
     S: &na::SMatrix<F, DIM, DIM>,
     sqrt_pi: &na::SVector<F, DIM>,
-    tree: &[TreeNode],
-    distances: &[F],
+    tree: Tree<F>,
     d_trans_matrix: &mut [Vec<na::SMatrix<F, DIM, DIM>>],
-    num_leaves: usize,
 ) -> FelsensteinResult<F, DIM> {
     let L = leaf_log_p.len();
 
@@ -230,7 +221,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
         }
     };
 
-    let forward_data = forward_data_precompute_param(&param, distances);
+    let forward_data = forward_data_precompute_param(&param, tree.distances);
 
     use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
@@ -238,7 +229,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
         .into_par_iter()
         .zip(d_trans_matrix.par_iter_mut())
         .map(|(leaf_log_p, d_trans)| {
-            cacluate_column_single_S(leaf_log_p, &param, &forward_data, tree, d_trans, num_leaves)
+            cacluate_column_single_S(leaf_log_p, &param, &forward_data, tree.clone(), d_trans)
         })
         .collect::<Vec<_>>();
 
@@ -251,7 +242,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
         .into_par_iter()
         .enumerate()
         .map(|(idx, forward)| {
-            d_rate_matrix_per_edge(d_trans_matrix, idx, distances[idx], &param, &forward)
+            d_rate_matrix_per_edge(d_trans_matrix, idx, tree.distances[idx], &param, &forward)
         })
         .sum::<na::SMatrix<F, DIM, DIM>>();
 
@@ -289,11 +280,10 @@ fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
     leaf_log_p: &mut [na::SVector<F, DIM>],
     param: &ParamPrecomp<F, DIM>,
     forward_data: &ForwardData<F, DIM>,
-    tree: &[TreeNode],
+    tree: Tree<F>,
     d_trans_matrix: &mut [na::SMatrix<F, DIM, DIM>],
-    num_leaves: usize,
 ) -> (F, na::SVector<F, DIM>) {
-    forward_column(leaf_log_p, tree, forward_data, num_leaves);
+    forward_column(leaf_log_p, tree.parents, forward_data);
     let log_p = leaf_log_p;
     let log_p_root = log_p.last().unwrap();
 
@@ -309,7 +299,6 @@ fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
         tree,
         &log_p,
         forward_data,
-        num_leaves,
         d_trans_matrix,
     );
 
@@ -320,16 +309,16 @@ fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
 /// We sum over all the columns later
 fn d_trans_matrix_fn<F: FloatTrait, const DIM: usize>(
     grad_log_p_root: na::SVectorView<F, DIM>,
-    tree: &[TreeNode],
+    tree: Tree<F>,
     log_p: &[na::SVector<F, DIM>],
     forward_data: &ForwardData<F, DIM>,
-    num_leaves: usize,
     d_trans: &mut [na::SMatrix<F, DIM, DIM>],
 ) {
     /* Notice that child_input values are always added, so the log_p input for children is always the same.
     We will therefore store their common grad_log_p in the parent node's BackwardData. */
     /* TODO: it is possible to free grad_log_p's for the previous tree level. */
-    let num_nodes = tree.len();
+    let num_nodes = tree.parents.len();
+    let num_leaves = tree.num_leaves;
     let mut backward_data = Vec::<BackwardData<F, DIM>>::with_capacity(num_nodes - num_leaves);
     /* root.backward */
     backward_data.push(BackwardData {
@@ -337,7 +326,7 @@ fn d_trans_matrix_fn<F: FloatTrait, const DIM: usize>(
     });
     /* node.backward for non-terminal nodes */
     for id in (num_leaves..num_nodes - 1).rev() {
-        let parent_id = tree[id].parent;
+        let parent_id = tree.parents[id];
         let parent_backward_id = num_nodes - parent_id as usize - 1;
         let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
         let log_p_input = log_p[id].as_view();
@@ -355,7 +344,7 @@ fn d_trans_matrix_fn<F: FloatTrait, const DIM: usize>(
     }
     /* For leaves, we only compute grad_rate */
     for id in (0..num_leaves).rev() {
-        let parent_id = tree[id].parent;
+        let parent_id = tree.parents[id];
         let parent_backward_id = num_nodes - parent_id as usize - 1;
         let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
         let log_p_input = log_p[id].as_view();

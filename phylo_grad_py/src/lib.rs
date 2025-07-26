@@ -26,7 +26,9 @@ pub fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     assert!(DIM == leaf_log_p_shape[2]);
     let leaf_log_p = vec_leaf_p_from_python(leaf_log_p);
 
-    FelsensteinTree::new(parents, distances, leaf_log_p)
+    let mut tree = FelsensteinTree::new(&parents, &distances);
+    tree.bind_leaf_log_p(leaf_log_p);
+    tree
 }
 
 pub fn backend_calc_grad_py<F: FloatTrait + numpy::Element, const DIM: usize>(
