@@ -61,6 +61,8 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         }
     }
 
+    /// Binds the log probabilities of the leaves to the tree.
+    /// This enables usage of the `calculate_gradients` function.
     pub fn bind_leaf_log_p(&mut self, log_p: Vec<Vec<na::SVector<F, DIM>>>) {
         self.log_p = log_p;
         // resize the log_p to the number of all nodes
