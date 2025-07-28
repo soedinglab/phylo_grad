@@ -39,8 +39,9 @@ class FelsensteinTree:
             except AttributeError:
                 raise ValueError(f'Unsupported dim {dim}, see Readme.md for more information')
             
-            self.tree = tree_class(tree, leaf_log_p, distance_threshold)
-        
+            self.tree = tree_class(tree, distance_threshold)
+            self.tree.bind_leaf_log_p(leaf_log_p)
+
     @classmethod
     def from_newick(cls, newick : str | io.TextIOBase, leaf_log_p_dict : dict, dtype: np.floating = np.float64, distance_threshold : float = 1e-4, gpu = False) -> 'FelsensteinTree':
         """

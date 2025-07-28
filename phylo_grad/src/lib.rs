@@ -61,6 +61,8 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         }
     }
 
+    /// Binds the log probabilities of the leaves to the tree.
+    /// This enables usage of the `calculate_gradients` function.
     pub fn bind_leaf_log_p(&mut self, log_p: Vec<Vec<na::SVector<F, DIM>>>) {
         self.log_p = log_p;
         // resize the log_p to the number of all nodes
@@ -68,6 +70,10 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         for log_p in &mut self.log_p {
             log_p.resize(num_nodes, na::SVector::<F, DIM>::zeros());
         }
+    }
+
+    pub fn num_nodes(&self) -> usize {
+        self.parents.len()
     }
 
     /// `s` and `sqrt_pi` have as first dimension the side id in the alignment. `s` gives the state transition matrix for each side, `sqrt_pi` gives the square root of the stationary distribution for each side.
@@ -126,9 +132,9 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// This function calculates the gradients for a single side in the alignment.
     /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
     /// 
-    /// log_p is expected to have enough space to hold the log probabilities for all nodes.
+    /// log_p is expected to have enough space to hold the log probabilities for all nodes and the internal nodes should be initialized to zero.
     pub fn calculate_gradients_single_side(
-        &mut self,
+        &self,
         s: &na::SMatrix<F, DIM, DIM>,
         sqrt_pi: &na::SVector<F, DIM>,
         log_p: &mut [na::SVector<F, DIM>]
