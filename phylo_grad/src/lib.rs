@@ -72,6 +72,10 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         }
     }
 
+    pub fn num_nodes(&self) -> usize {
+        self.parents.len()
+    }
+
     /// `s` and `sqrt_pi` have as first dimension the side id in the alignment. `s` gives the state transition matrix for each side, `sqrt_pi` gives the square root of the stationary distribution for each side.
     /// See the paper for more details. Especially the `Time symmetric parameterization` section.
     ///
@@ -128,7 +132,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// This function calculates the gradients for a single side in the alignment.
     /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
     /// 
-    /// log_p is expected to have enough space to hold the log probabilities for all nodes.
+    /// log_p is expected to have enough space to hold the log probabilities for all nodes and the internal nodes should be initialized to zero.
     pub fn calculate_gradients_single_side(
         &self,
         s: &na::SMatrix<F, DIM, DIM>,

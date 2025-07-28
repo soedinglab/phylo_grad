@@ -41,6 +41,44 @@ fn backend_calc_grad_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     backend.calculate_gradients(&s, &sqrt_pi)
 }
 
+fn backend_calc_grad_with_log_p_py<F: FloatTrait + numpy::Element, const DIM: usize>(
+    backend: &FelsensteinTree<F, DIM>,
+    s: PyReadonlyArray3<'_, F>,
+    sqrt_pi: PyReadonlyArray2<'_, F>,
+    log_p: &mut [&mut [na::SVector<F, DIM>]],
+) -> FelsensteinResult<F, DIM> {
+    let s = vec_2d_from_python(s);
+    let sqrt_pi = vec_1d_from_python(sqrt_pi);
+    backend.calculate_gradients_with_log_p(&s, &sqrt_pi, log_p)
+}
+
+fn copy_leaf_log_p_to_internal_vec<F: FloatTrait + numpy::Element, const DIM: usize>(
+    vec: &mut Vec<Vec<na::SVector<F, DIM>>>,
+    leaf_log_p: PyReadonlyArray3<'_, F>,
+    num_nodes: usize,
+) {
+    let array = leaf_log_p.as_array();
+    let shape = array.shape();
+
+    vec.resize(shape[0], vec![na::SVector::<F, DIM>::zeros(); num_nodes]);
+
+    let num_leaves = shape[1];
+
+    assert!(shape[2] == DIM);
+
+    for (i, log_p) in vec.iter_mut().enumerate() {
+        log_p.resize(num_nodes, na::SVector::<F, DIM>::zeros());
+        for j in 0..num_leaves {
+            for k in 0..DIM {
+                log_p[j][k] = array[[i, j, k]];
+            }
+        }
+        for j in num_leaves..num_nodes {
+            log_p[j] = na::SVector::<F, DIM>::zeros();
+        }
+    }
+}
+
 fn vec_0d_into_python<T>(vec: Vec<T>, py: Python) -> Bound<PyArray1<T>>
 where
     T: numpy::Element,
@@ -194,6 +232,23 @@ macro_rules! backend_both {
                 log_p: Vec<Vec<na::SVector<$float, $dim>>>,
             }
 
+            impl [<Backend_ $float _ $dim>] {
+                fn calc_grad_with_log_p(
+                    &mut self,
+                    s: PyReadonlyArray3<$float>,
+                    sqrt_pi: PyReadonlyArray2<$float>,
+                    leaf_log_p: PyReadonlyArray3<$float>,
+                ) -> FelsensteinResult<$float, $dim> {
+                    copy_leaf_log_p_to_internal_vec(
+                        &mut self.log_p,
+                        leaf_log_p,
+                        self.tree.num_nodes(),
+                    );
+                    let mut log_p = self.log_p.iter_mut().map(|x| x.as_mut_slice()).collect::<Vec<_>>();
+                    backend_calc_grad_with_log_p_py(&self.tree, s, sqrt_pi, &mut log_p)
+                }
+            }
+
             #[pymethods]
             impl [<Backend_ $float _ $dim>] {
                 #[new]
@@ -235,10 +290,8 @@ macro_rules! backend_both {
                     leaf_log_p: PyReadonlyArray3<$float>,
                 ) -> PyObject {
                     let py = self_.py();
-                    let backend = &mut self_.tree;
-                    
 
-                    inference_into_py(backend_calc_grad_py_with_leaf_log_p(backend, s, sqrt_pi, leaf_log_p), py)
+                    inference_into_py(self_.calc_grad_with_log_p(s, sqrt_pi, leaf_log_p), py)
                 }
             }
         }
