@@ -7,8 +7,8 @@ import numpy as np
 
 
 class FelsensteinTree:
-    def __init__(self, tree, leaf_log_p, distance_threshold=1e-4):
-        self.tree = felsenstein_tree.FelsensteinTree(tree, distance_threshold)
+    def __init__(self, parent_list, branch_lengths, leaf_log_p):
+        self.tree = felsenstein_tree.FelsensteinTree(jnp.array(parent_list), jnp.array(branch_lengths))
         self.leaf_log_p = jnp.array(leaf_log_p)
         self.vmap_grad = jax.jit(jax.vmap(self.calculate_gradients_jax, in_axes=(0, 0, 0)))
         

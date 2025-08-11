@@ -2,9 +2,10 @@
 
 extern crate nalgebra as na;
 
-use num_traits::Float;
 use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray2, PyReadonlyArray3};
+use numpy::{
+    IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
+};
 use phylo_grad::FloatTrait;
 use pyo3::{
     pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy, PyObject, PyRefMut, PyResult,
@@ -16,11 +17,13 @@ use std::collections::HashMap;
 use phylo_grad::{FelsensteinResult, FelsensteinTree};
 
 fn backend_from_py<F: FloatTrait + numpy::Element, const DIM: usize>(
-    tree: PyReadonlyArray2<'_, F>,
-    distance_threshold: F,
+    parent_list: PyReadonlyArray1<'_, i32>,
+    branch_lengths: PyReadonlyArray1<'_, F>,
 ) -> FelsensteinTree<F, DIM> {
-    let (parents, distances) = array2tree(tree, distance_threshold);
-    FelsensteinTree::new(&parents, &distances)
+    let parent_list_vec = parent_list.as_array().to_vec();
+    let branch_lengths_vec = branch_lengths.as_array().to_vec();
+
+    FelsensteinTree::new(&parent_list_vec, &branch_lengths_vec)
 }
 
 fn backend_bind_leaf_log_p<F: FloatTrait + numpy::Element, const DIM: usize>(
@@ -200,27 +203,6 @@ fn inference_into_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     result.into_py(py)
 }
 
-fn array2tree<F: FloatTrait + numpy::Element>(
-    tree: PyReadonlyArray2<'_, F>,
-    distance_threshold: F,
-) -> (Vec<i32>, Vec<F>) {
-    let tree = tree.as_array();
-    assert!(tree.shape()[1] == 2);
-    let distances = tree
-        .column(1)
-        .map(|x| Float::max(*x, distance_threshold))
-        .to_vec();
-    let parents = tree
-        .column(0)
-        .map(|x| {
-            x.to_i32()
-                .expect("Tree parent ids should be integers fitting into i32")
-        })
-        .to_vec();
-
-    (parents, distances)
-}
-
 macro_rules! backend_both {
     ($float:ty, $dim:expr) => {
         paste::item! {
@@ -253,11 +235,11 @@ macro_rules! backend_both {
             impl [<Backend_ $float _ $dim>] {
                 #[new]
                 fn py_new(
-                    tree: PyReadonlyArray2<$float>,
-                    distance_threshold: $float,
+                    parent_list: PyReadonlyArray1<i32>,
+                    branch_lengths: PyReadonlyArray1<$float>,
                 ) -> Self {
                     Self {
-                        tree: backend_from_py(tree, distance_threshold),
+                        tree: backend_from_py(parent_list, branch_lengths),
                         log_p: vec![],
                     }
                 }
