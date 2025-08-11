@@ -241,6 +241,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
         .log_transition
         .into_par_iter()
         .enumerate()
+        .filter(|(idx, _)| tree.parents[*idx] != -1) // skip the root edge
         .map(|(idx, forward)| {
             d_rate_matrix_per_edge(d_trans_matrix, idx, tree.distances[idx], &param, &forward)
         })

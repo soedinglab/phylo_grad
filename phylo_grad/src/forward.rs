@@ -14,6 +14,7 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
     }
 }
 
+#[derive(Debug)]
 pub struct LogTransitionForwardData<F, const DIM: usize> {
     pub matrix_exp: na::SMatrix<F, DIM, DIM>,
     pub log_transition_T: na::SMatrix<F, DIM, DIM>,

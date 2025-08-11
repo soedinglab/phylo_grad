@@ -94,6 +94,13 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         sqrt_pi: &[na::SVector<F, DIM>],
     ) -> FelsensteinResult<F, DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
+        // Zero out internal nodes in log_p
+        for log_p in &mut self.log_p {
+            log_p.iter_mut().skip(self.num_leaves).for_each(|p| {
+                *p = na::SVector::<F, DIM>::zeros();
+            });
+        }
+
         if s.len() == 1 && sqrt_pi.len() == 1 {
             let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
                 let num_nodes = self.parents.len();
@@ -113,7 +120,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     }
 
     /// Same as `calculate_gradients`, but it takes also an array of the log_probabilities of the leaves.
-    /// It expects `log_p` to have enough space to the log_p for all the nodes and have them initialized for the leaf nodes.
+    /// It expects `log_p` to have enough space to the log_p for all the nodes with internal nodes initialized to zero and initialized leaf nodes.
     pub fn calculate_gradients_with_log_p(
         &self,
         s: &[na::SMatrix<F, DIM, DIM>],

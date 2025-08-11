@@ -54,8 +54,10 @@ def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, g
 
     rust_tree = phylo_grad.FelsensteinTree(parent_list, branch_lengths.astype(np_dtype), leaf_log_p.numpy(), 1e-4, gpu)
 
-    result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
-    
+    _ignore = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
+    result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())    
+
+
     assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=rtol))
     
     if gradients:
