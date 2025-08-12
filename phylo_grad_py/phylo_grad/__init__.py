@@ -4,19 +4,58 @@ from . import _phylo_grad
 import numpy as np
 from Bio import Phylo
 
+def process_newick(newick: str | io.TextIOBase, leaf_log_p_dict : dict, dtype: np.floating = np.float64) -> dict:
+    tree = Phylo.read(newick, "newick")
+    
+    nodes = tree.get_terminals() + tree.get_nonterminals()
+
+    node_ids = {node: id for id, node in enumerate(nodes)}
+    node_ids[None] = -1
+
+    def traverse(node, parent=None):
+        node.parent_id = node_ids[parent]
+        for child in node.clades:
+            traverse(child, node)
+
+    traverse(tree.root)
+
+    parent_list = []
+    branch_lengths = []
+    leaf_log_p = []
+    
+    for node in nodes:
+        parent_list.append(node.parent_id)
+        branch_lengths.append(node.branch_length)
+        if node.is_terminal():
+            if node.name not in leaf_log_p_dict:
+                raise ValueError(f"Leaf {node.name} from newick not found in leaf_log_p_dict")
+            leaf_log_p.append(leaf_log_p_dict[node.name])
+    
+    leaf_log_p_array = np.array(leaf_log_p, dtype=dtype).transpose(1, 0, 2)
+
+    return {
+        'parent_list': np.array(parent_list, dtype=np.int32),
+        'branch_lengths': np.array(branch_lengths, dtype=dtype),
+        'leaf_log_p': leaf_log_p_array
+    }
+
 class FelsensteinTree:
-    """A class to represent a phylogenetic tree, it contains the tree topology and edge lengths as well as the log probabilities of the leaf nodes"""
-    def __init__(self, tree, leaf_log_p, distance_threshold=1e-4, gpu = False):
+    """A class to represent a phylogenetic tree, it contains the tree topology and edge lengths as well as the log probabilities of the leaf nodes
+       It's easiest to use the from_newick method to create a FelsensteinTree object.
+    """
+    def __init__(self, parent_list, branch_lengths, leaf_log_p, distance_threshold=1e-4, gpu = False):
         """Typically you should prefer to use the from_newick method to create a FelsensteinTree object.
-        For more information see the Rust documentation of phylo_grad
+           For more information see the Rust documentation of phylo_grad
         """
-        assert isinstance(tree, np.ndarray)
+        assert isinstance(parent_list, np.ndarray)
+        assert isinstance(branch_lengths, np.ndarray)
         assert isinstance(leaf_log_p, np.ndarray)
         assert isinstance(distance_threshold, float)
         
         assert len(leaf_log_p.shape) == 3, "leaf_log_p must have shape [L, N, DIM]"
         
         dim = leaf_log_p.shape[2]
+        assert branch_lengths.dtype == leaf_log_p.dtype, "branch_lengths and leaf_log_p must have the same dtype"
         if leaf_log_p.dtype == np.float32:
             dtype = 'f32'
         elif leaf_log_p.dtype == np.float64:
@@ -24,22 +63,22 @@ class FelsensteinTree:
         else:
             raise ValueError('leaf_log_p must be either np.float32 or np.float64')
 
-        assert tree.dtype == leaf_log_p.dtype, "tree and leaf_log_p must have the same dtype"
-        
         self.dtype = leaf_log_p.dtype
         self.L = leaf_log_p.shape[0]
         self.dim = dim
+
+        branch_lengths = np.clip(branch_lengths, distance_threshold, None)
         
         if gpu:
             import phylo_grad_gpu
-            self.tree = phylo_grad_gpu.FelsensteinTree(tree, leaf_log_p, distance_threshold)
+            self.tree = phylo_grad_gpu.FelsensteinTree(parent_list, branch_lengths, leaf_log_p)
         else:
             try:
                 tree_class = getattr(_phylo_grad, f'Backend_{dtype}_{dim}')
             except AttributeError:
                 raise ValueError(f'Unsupported dim {dim}, see Readme.md for more information')
-            
-            self.tree = tree_class(tree, distance_threshold)
+
+            self.tree = tree_class(parent_list.astype(np.int32), branch_lengths)
             self.tree.bind_leaf_log_p(leaf_log_p)
 
     @classmethod
@@ -61,34 +100,9 @@ class FelsensteinTree:
             :param dtype: The desired dtype, either np.float32 or np.float64, arrays in leaf_log_p will be converted to this dtype
             :param float distance_threshold: Every edge of the tree will set to be at least that long because very small edge lengths can lead to numerical unstabilities.
         """
-        tree = Phylo.read(newick, "newick")
-        
-        nodes = tree.get_terminals() + tree.get_nonterminals()
 
-        node_ids = {node: id for id, node in enumerate(nodes)}
-        node_ids[None] = -1
-
-        def traverse(node, parent=None):
-            node.parent_id = node_ids[parent]
-            for child in node.clades:
-                traverse(child, node)
-
-        traverse(tree.root)
-
-        parent_list = []
-        leaf_log_p = []
-        
-        for node in nodes:
-            parent_list.append((node.parent_id, node.branch_length))
-            if node.is_terminal():
-                if node.name not in leaf_log_p_dict:
-                    raise ValueError(f"Leaf {node.name} from newick not found in leaf_log_p_dict")
-                leaf_log_p.append(leaf_log_p_dict[node.name])
-        
-        leaf_log_p_array = np.array(leaf_log_p, dtype=dtype).transpose(1, 0, 2)
-        
-        return cls(np.array(parent_list, dtype=dtype), leaf_log_p_array, distance_threshold, gpu)
-        
+        data = process_newick(newick, leaf_log_p_dict, dtype)
+        return cls(data['parent_list'], data['branch_lengths'], data['leaf_log_p'], distance_threshold, gpu) 
         
     def calculate_gradients(self, S : np.ndarray, sqrt_pi : np.ndarray) -> dict:
         """Calculates the gradients of the log likelihood with respect to the given substitution model.

@@ -114,23 +114,21 @@ def log_p_transformation(t : float, precomp_S_pi : dict, log_p : jnp.ndarray) ->
     return new_log_p
 
 class FelsensteinTree:
-    def __init__(self, parent_list : jnp.ndarray, distance_threshold : float = 1e-4) -> None:
-        
+    def __init__(self, parent_list : jnp.ndarray, branch_lengths : jnp.ndarray) -> None:
+
         self.nodes = [FelsensteinNode(idx) for idx in range(len(parent_list))]
         
         self.root = None
         
-        branch_lengths = []
-        for child_idx, (parent_idx, branch_length) in enumerate(parent_list):
+        for child_idx, parent_idx in enumerate(parent_list):
             if parent_idx == -1:
                 self.root = child_idx
             else:
                 self.nodes[int(parent_idx)].children.append(self.nodes[child_idx])
-            branch_lengths.append(max(branch_length, distance_threshold))
         
         assert(self.root is not None), "Tree has no root"
-        
-        self.branch_lengths = jnp.array(branch_lengths)
+
+        self.branch_lengths = branch_lengths
         plan = self.nodes[self.root].get_computation_plan()
         self.computation_plan = jnp.array(plan, dtype=jnp.int32)     
         

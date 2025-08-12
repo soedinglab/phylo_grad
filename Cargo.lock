@@ -816,7 +816,6 @@ name = "phylo_grad_py"
 version = "1.0.0"
 dependencies = [
  "nalgebra",
- "num-traits",
  "numpy",
  "paste 0.1.2",
  "phylo_grad",
