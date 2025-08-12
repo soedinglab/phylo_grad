@@ -54,6 +54,7 @@ def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, g
 
     rust_tree = phylo_grad.FelsensteinTree(parent_list, branch_lengths.astype(np_dtype), leaf_log_p.numpy(), 1e-4, gpu)
 
+    # There is some internal state in rust, so we test if the second call succeeds, where there might be data from the first call
     _ignore = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
     result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())    
 
