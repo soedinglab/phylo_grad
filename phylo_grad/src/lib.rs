@@ -120,7 +120,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     }
 
     /// Same as `calculate_gradients`, but it takes also an array of the log_probabilities of the leaves.
-    /// It expects `log_p` to have enough space to the log_p for all the nodes with internal nodes initialized to zero and initialized leaf nodes.
+    /// It expects `log_p` to have enough space for all nodes with internal nodes initialized to zero and leaf nodes properly initialized.
     pub fn calculate_gradients_with_log_p(
         &self,
         s: &[na::SMatrix<F, DIM, DIM>],
