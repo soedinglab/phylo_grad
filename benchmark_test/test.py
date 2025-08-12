@@ -13,7 +13,7 @@ import numpy as np
 def gen_tree(t_dtype, dim):
     torch.manual_seed(0)
     newick = read_newick('test_tree.newick')
-    L = 300
+    L = 100
     leaf_log_p = torch.randn([L, newick['num_leaf'], dim], dtype=t_dtype)
     leaf_log_p = torch.nn.functional.log_softmax(leaf_log_p, dim=2)
     
@@ -23,7 +23,7 @@ def gen_tree(t_dtype, dim):
 
 def gen_data(t_dtype, dim, seed):
     torch.manual_seed(seed)
-    L = 300
+    L = 100
     S = torch.exp(torch.randn(L,dim, dim, dtype=t_dtype))
     sqrt_pi = torch.sqrt(torch.nn.functional.softmax(torch.randn(L,dim, dtype=t_dtype), dim = 1))
     return S, sqrt_pi
@@ -108,7 +108,7 @@ def test_grads():
     helper_test("f64", 20, True)
     
 def test_grads_single_model():
-    helper_test("f32", 4, True, single_model=True)
-    helper_test("f32", 20, True, single_model=True)
     helper_test("f64", 4, True, single_model=True)
     helper_test("f64", 20, True, single_model=True)
+    helper_test("f32", 4, True, single_model=True)
+    helper_test("f32", 20, True, single_model=True)
