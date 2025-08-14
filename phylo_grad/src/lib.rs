@@ -142,8 +142,8 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// log_p is expected to have enough space to hold the log probabilities for all nodes and the internal nodes should be initialized to zero.
     pub fn calculate_gradients_single_side(
         &self,
-        s: &na::SMatrix<F, DIM, DIM>,
-        sqrt_pi: &na::SVector<F, DIM>,
+        s: na::SMatrixView<F, DIM, DIM>,
+        sqrt_pi: na::SVectorView<F, DIM>,
         log_p: &mut [na::SVector<F, DIM>]
     ) -> SingleSideResult<F, DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
