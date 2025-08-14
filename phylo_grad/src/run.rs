@@ -97,9 +97,9 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
 }
 
 pub struct SingleSideResult<F, const DIM: usize> {
-    log_likelihood: F,
-    grad_s: na::SMatrix<F, DIM, DIM>,
-    grad_sqrt_pi: na::SVector<F, DIM>,
+    pub log_likelihood: F,
+    pub grad_s: na::SMatrix<F, DIM, DIM>,
+    pub grad_sqrt_pi: na::SVector<F, DIM>,
 }
 
 pub fn calculate_column<F: FloatTrait, const DIM: usize>(
