@@ -139,7 +139,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// This function calculates the gradients for a single side in the alignment.
     /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
     /// 
-    /// log_p is expected to have enough space to hold the log probabilities for all nodes and the internal nodes should be initialized to zero.
+    /// log_p is expected to have enough space to hold the log probabilities for all nodes
     pub fn calculate_gradients_single_side(
         &self,
         s: na::SMatrixView<F, DIM, DIM>,
@@ -147,6 +147,10 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         log_p: &mut [na::SVector<F, DIM>]
     ) -> SingleSideResult<F, DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
+        // zero out internal nodes in log_p
+        log_p[self.num_leaves..].iter_mut().for_each(|p| {
+            *p = na::SVector::<F, DIM>::zeros();
+        });
         calculate_column(
             log_p,
             s.as_view(),
