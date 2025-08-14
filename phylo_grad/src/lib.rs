@@ -50,6 +50,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     ///
     /// The distances are given as a vector of branch lengths with the same order as the parent vector.
     pub fn new(parents: &[i32], distances: &[F]) -> Self {
+        assert!(parents.len() == distances.len());
         let (parents, distances, num_leaves) = tree::topological_sort(parents, distances);
 
         FelsensteinTree {
