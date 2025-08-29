@@ -8,6 +8,8 @@
 
 `phylo_grad_py` contains python bindings for `phylo_grad`
 
+`phylo_grad_gpu` contains a GPU implementation using jax
+
 ## Using from Python
 You need a working Rust compiler, the easiest is to install rustup : https://www.rust-lang.org/tools/install
 We depend on a specific version of the compiler for now to get better performance, rustup will download the correct toolchain for you if you compile from this repository.
@@ -26,6 +28,7 @@ It is recommended to install it into a conda environment, it needs at least pyth
  ```
 `NUM_THREADS` governs the maximum amount of threads that openblas will be able to use. If not set it will use the number of cores of the machine where it is compiled, which can be a problem on a HPC cluster environment.
 
+After publication there will be a precompiled pip package for easy use.
 
 ## Using from Rust
 
@@ -69,9 +72,11 @@ snakemake -c all data/random/time_t={num_threads}_L={columns in alignment}_m={me
 
 ## How to use it
 
-See `examples/train.py` for a simple example usage
+See `examples/train.py` for a simple example usage. There is a pydoc for the complete API, for example accessable with `python -m pydoc phylo_grad` after installation.
 
-## Unsupported DIM in Python
+## Trouble Shooting
+
+### Unsupported DIM in Python
 
 If you use the python bindings you can by default only use 4, 16 and 20 for the number of states in the Felsenstein.
 If you need other numbers you can add them at the end of `phylo_grad_py/src/lib.rs` (needs a change in 2 positions) and compile from source.
