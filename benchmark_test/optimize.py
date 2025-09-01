@@ -69,7 +69,7 @@ else:
     preprocess = phylo_grad.process_newick(args.newick, leaf_log_p, np_dtype)
     
     if args.pytorch_gpu:
-        tree = [(par, dist, torch.tensor(log_p, dtype=dtype, device="cuda") if log_p is not None else None) for par, dist, log_p in itertools.zip_longest(preprocess['parent_list'], preprocess['branch_lengths'], preprocess['leaf_log_p'])]
+        tree = [(par, dist, torch.tensor(log_p, dtype=dtype, device="cuda") if log_p is not None else None) for par, dist, log_p in itertools.zip_longest(preprocess['parent_list'], preprocess['branch_lengths'], preprocess['leaf_log_p'].transpose(1,0,2))]
     else:
         tree = [(par, dist, torch.tensor(log_p, dtype=dtype) if log_p is not None else None) for par, dist, log_p in itertools.zip_longest(preprocess['parent_list'], preprocess['branch_lengths'], preprocess['leaf_log_p'].transpose(1,0,2))]
 
@@ -98,7 +98,7 @@ for i in itertools.count():
         loss.backward()
     optimizer.step()
     
-    if time.time() - start > 20 * 60:
+    if time.time() - start > 0.1 * 60:
         print(i+1)
         # Print peak memory usage
         print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
