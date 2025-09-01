@@ -6,4 +6,4 @@ build-backend = "hatchling.build"
 [project]
 name = "phylo_grad_gpu"
 version = "1.0.0"
-dependencies = ["jax"]
+dependencies = ["jax[cuda12]"]
