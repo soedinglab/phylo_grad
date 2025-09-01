@@ -3,6 +3,7 @@
 """
 
 import Bio.AlignIO as AlignIO
+import Bio.Phylo as Phylo
 from Bio.Align import MultipleSeqAlignment
 import numpy as np
 
@@ -26,3 +27,34 @@ def read_fasta(fasta_file: str) -> dict:
     seq_dict = {seq.id: amino_to_embedding(seq.seq) for seq in alignment}
 
     return seq_dict
+
+def read_newick(newick_file: str) -> dict:
+    """
+        Reads a newick file and returns a parent_list, branch_lengths and number of leaf nodes.
+    """
+    
+    tree = Phylo.read(newick_file, "newick")
+    assert isinstance(tree, Phylo.BaseTree.Tree)
+    
+    num_leaf = len(tree.get_terminals())
+
+    nodes = tree.get_terminals() + tree.get_nonterminals()
+
+    node_ids = {node: id for id, node in enumerate(nodes)}
+    node_ids[None] = -1
+
+    def traverse(node, parent=None):
+        node.parent_id = node_ids[parent]
+        for child in node.clades:
+            traverse(child, node)
+
+    traverse(tree.root)
+
+    parent_list = [node.parent_id for node in nodes]
+    branch_lengths = [node.branch_length for node in nodes]
+
+    return {
+        'parent_list': parent_list,
+        'branch_lengths': branch_lengths,
+        'num_leaf': num_leaf
+    }
