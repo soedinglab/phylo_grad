@@ -12,6 +12,7 @@ import cat
 import felsenstein
 import numpy as np
 import argparse
+import phylo_grad
 
 # Command line parsing, this can be mostly ignored
 
@@ -45,12 +46,11 @@ else:
     np_dtype = np.float32
     
 if args.fasta_amino is not None:
-    tree, L = input.read_newick_fasta(args.newick, args.fasta_amino)
-    if args.pytorch_gpu:
-        tree = [(par, dist, input.amino_to_embedding(seq).cuda() if seq else None) for par, dist, seq in tree]
-    else:
-        tree = [(par, dist, input.amino_to_embedding(seq)) for par, dist, seq in tree]
+    leaf_log_p = input.read_fasta(args.fasta_amino)
+else:
+    raise ValueError("You must provide a fasta file with amino acid sequences")
 
+L = len(next(iter(leaf_log_p.values())))
 
 #Init random parameters
 torch.manual_seed(0)
@@ -63,12 +63,16 @@ else:
     energies = torch.rand(L, 20, requires_grad=True, dtype=dtype)
 
 if args.rust or args.jax_gpu:
-    import phylo_grad
-    leaf_log_p = torch.stack([seq for _,_, seq in tree if seq is not None]).transpose(1,0)
-    tree = np.array([(par, dist) for par, dist, _ in tree], dtype=np_dtype)
-    tree = phylo_grad.FelsensteinTree(tree, leaf_log_p.type(dtype).numpy(), 1e-4, gpu = args.jax_gpu)
-    
+    tree = phylo_grad.FelsensteinTree.from_newick(args.newick, leaf_log_p, np_dtype, 1e-4, gpu = args.jax_gpu)
 else:
+    # Prepare the tree for pytorch
+    preprocess = phylo_grad.process_newick(args.newick, leaf_log_p, np_dtype)
+    
+    if args.pytorch_gpu:
+        tree = [(par, dist, torch.tensor(log_p, dtype=dtype, device="cuda") if log_p is not None else None) for par, dist, log_p in itertools.zip_longest(preprocess['parent_list'], preprocess['branch_lengths'], preprocess['leaf_log_p'])]
+    else:
+        tree = [(par, dist, torch.tensor(log_p, dtype=dtype) if log_p is not None else None) for par, dist, log_p in itertools.zip_longest(preprocess['parent_list'], preprocess['branch_lengths'], preprocess['leaf_log_p'].transpose(1,0,2))]
+
     tree = felsenstein.FelsensteinTree(tree)
     
 optimizer = torch.optim.Adam([shared, energies], lr=0.01)
