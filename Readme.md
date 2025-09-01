@@ -66,7 +66,7 @@ cargo install phylotree
 Run Benchmarks
 
 ```
-snakemake -c all data/random/time_t={num_threads}_L={columns in alignment}_m={method}.pickle"
+snakemake -c all data/random/time_t={num_threads}_L={columns in alignment}_m={method}.pickle
 ```
 
 `method` can be either `rust`, `pytorch`, `pytorch_gpu` or `jax_gpu`.
