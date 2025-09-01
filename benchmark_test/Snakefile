@@ -1,13 +1,9 @@
-localrules: random_phylo, unroot, random_fasta, sim_phy, phy_to_fasta, collect_iqtree_benchmark
+localrules: random_phylo, random_fasta, sim_phy, phy_to_fasta, collect_iqtree_benchmark
 
 rule random_phylo:
-    output: "data/random/root_tree_{num_leafs}.nwk"
-    shell: "phylotree generate -t {wildcards.num_leafs} -b > {output}"
-
-rule unroot:
-    input: "data/random/root_tree_{num_leafs}.nwk"
-    output: "data/random/tree_{num_leafs}.nwk"
-    shell: "nw_reroot -d {input} > {output}"
+    output: ensure("data/random/tree_{num_leafs}.nwk", non_empty=True)
+    retries: 5
+    shell: "nw_reroot -d <(phylotree generate -t {wildcards.num_leafs} -b) > {output}"
 
 rule random_fasta:
     input: "data/random/tree_{num_leafs}.nwk"
