@@ -53,6 +53,8 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         assert!(parents.len() == distances.len());
         let (parents, distances, num_leaves) = tree::topological_sort(parents, distances);
 
+        assert_eq!(parents.last().unwrap(), &-1); // root node is the last node
+
         FelsensteinTree {
             parents,
             distances,

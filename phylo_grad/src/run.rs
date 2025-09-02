@@ -237,15 +237,16 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
 
     let sum_d_log_prior = result.iter().map(|r| r.1).sum::<na::SVector<F, DIM>>();
 
-    let d_rate_matrix = forward_data
-        .log_transition
+    // We need to skip the root edge, as it does not exist and it will always be the last edge
+    let log_transitions_without_root = &forward_data.log_transition[..forward_data.log_transition.len() - 1];
+
+    let d_rate_matrix = log_transitions_without_root
         .into_par_iter()
         .enumerate()
-        .filter(|(idx, _)| tree.parents[*idx] != -1) // skip the root edge
         .map(|(idx, forward)| {
             d_rate_matrix_per_edge(d_trans_matrix, idx, tree.distances[idx], &param, &forward)
         })
-        .sum::<na::SMatrix<F, DIM, DIM>>();
+        .reduce(|| na::SMatrix::<F, DIM, DIM>::zeros(), |a, b| a + b);
 
     let d_rate_matrix = param.V_pi_inv.tr_mul(&d_rate_matrix) * param.V_pi.transpose();
 
