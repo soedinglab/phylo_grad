@@ -22,7 +22,10 @@ It is recommended to install it into a conda environment, it needs at least pyth
  ```
  conda create -n phylo_grad python=3.11
  source activate phylo_grad
+ # Maximum number of threads supported by openblas, it defaults to the number of cores of the machine
  export NUM_THREADS="256"
+ # target-cpu=native can improve performance on the machine it is compiled for
+ # linker-features=-lld makes rust use the default system linker
  export RUSTFLAGS="-C target-cpu=native -Z linker-features=-lld"
  pip install ./phylo_grad_py
  ```
