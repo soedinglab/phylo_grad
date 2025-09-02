@@ -1,14 +1,9 @@
-"""
-    This script is the benchmark, it supports the phylo_grad gradients and pytorch gradients.
-"""
-
 import sys
 
 import torch
 
 import input
 import phylo_grad
-import felsenstein
 import numpy as np
 import argparse
 
@@ -27,8 +22,6 @@ parser.add_argument('--output', help='Output file with parameters')
 backend = parser.add_argument_group('Backend')
 exclusive_group = backend.add_mutually_exclusive_group(required=True)
 exclusive_group.add_argument('--rust', action='store_true')
-exclusive_group.add_argument('--pytorch', action='store_true')
-exclusive_group.add_argument('--pytorch_gpu', action='store_true')
 
 fp_precision = parser.add_argument_group('fp precision')
 exclusive_group = fp_precision.add_mutually_exclusive_group(required=True)
@@ -45,42 +38,27 @@ else:
     np_dtype = np.float32
     
 if args.fasta_amino is not None:
-    tree, L = input.read_newick_fasta(args.newick, args.fasta_amino)
+    alignment = input.read_fasta_numeric(args.fasta_amino)
     # Counts amino acids
     counts = torch.zeros(21, dtype=torch.int64)
-    for _, _, seq in tree:
-        if seq is not None:
-            numeric = [input.amino_mapping[c] for c in seq]
-            for i in numeric:
-                counts[i] += 1
+    for seq in alignment.values():
+        L = len(seq)
+        for i in seq:
+            counts[i] += 1
     
     initial_energies = torch.log(counts[:-1])
-
-    if args.pytorch_gpu:
-        tree = [(par, dist, input.amino_to_embedding(seq).cuda() if seq else None) for par, dist, seq in tree]
-    else:
-        tree = [(par, dist, input.amino_to_embedding(seq)) for par, dist, seq in tree]
-    
     
 
 
 #Init random parameters
 torch.manual_seed(0)
 
-if args.pytorch_gpu:
-    shared = torch.zeros(190, requires_grad=True, dtype=dtype, device="cuda")
-    energies = torch.tensor(initial_energies, requires_grad=True, dtype=dtype, device="cuda")
-else:
-    shared = torch.zeros(190, requires_grad=True, dtype=dtype)
-    energies = torch.tensor(initial_energies, requires_grad=True, dtype=dtype)
+shared = torch.zeros(190, requires_grad=True, dtype=dtype)
+energies = initial_energies.clone().to( dtype=dtype).requires_grad_(True)
 
 if args.rust:
-    leaf_log_p = torch.stack([seq for _,_, seq in tree if seq is not None]).transpose(1,0)
-    tree = np.array([(par, dist) for par, dist, _ in tree], dtype=np_dtype)
-    tree = phylo_grad.FelsensteinTree(tree, leaf_log_p.type(dtype).numpy(), 1e-4)
-    
-else:
-    tree = felsenstein.FelsensteinTree(tree)
+    leaf_log_p = input.read_fasta(args.fasta_amino)
+    tree = phylo_grad.FelsensteinTree.from_newick(args.newick, leaf_log_p, np_dtype, 1e-4, gpu = False)
     
 optimizer = torch.optim.Adam([shared, energies], lr=0.1)
 
@@ -133,7 +111,7 @@ while True:
 
 S, sqrt_pi = rate_matrix(shared, energies, L)
 
-np.savez(args.output, S=S.detach().cpu().numpy()[0], sqrt_pi=sqrt_pi.detach().cpu().numpy()[0], shared=shared.detach().cpu().numpy(), energies=energies.detach().cpu().numpy())
+np.savez(args.output, S=S.detach().numpy()[0], sqrt_pi=sqrt_pi.detach().numpy()[0], shared=shared.detach().numpy(), energies=energies.detach().numpy())
 
 # Print peak memory usage
 import resource

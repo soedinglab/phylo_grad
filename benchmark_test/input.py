@@ -28,6 +28,14 @@ def read_fasta(fasta_file: str) -> dict:
 
     return seq_dict
 
+def read_fasta_numeric(fasta_file: str) -> dict:
+    alignment = AlignIO.read(fasta_file, "fasta")
+    assert isinstance(alignment, MultipleSeqAlignment)
+
+    seq_dict = {seq.id: np.array([amino_mapping[c] for c in seq.seq], dtype=np.int32) for seq in alignment}
+
+    return seq_dict
+
 def read_newick(newick_file: str) -> dict:
     """
         Reads a newick file and returns a parent_list, branch_lengths and number of leaf nodes.

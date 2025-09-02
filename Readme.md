@@ -39,7 +39,7 @@ Just `cargo add phylo_grad` (will work after publishing)
 Create and activate a conda environment:
 
 ```
-conda env create -n phylo_grad -c conda-forge python=3.11 pytorch bioconda::snakemake pytest bioconda::newick_utils
+conda env create -n phylo_grad -c conda-forge python=3.11 
 source activate phylo_grad
 ```
 
@@ -50,17 +50,17 @@ pip install ./phylo_grad_py
 pip install ./phylo_grad_gpu
 ```
 
+Install other dependecies:
+```
+conda install -c conda-forge pytorch bioconda::snakemake pytest bioconda::newick_utils bioconda::iqtree bioconda::emboss
+cargo install phylotree
+```
+
 Run Tests
 
 ```
 cd benchmark_test
 pytest test.py
-```
-
-Install phylotree (to generate random trees)
-
-```
-cargo install phylotree
 ```
 
 Run Benchmarks
