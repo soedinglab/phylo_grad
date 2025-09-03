@@ -11,17 +11,11 @@ import argparse
 
 parser = argparse.ArgumentParser(prog='optimize_benchmark')
 
-group = parser.add_argument_group('Leaf data', 'Alginment or distribution of leaf data')
-exclusive_group = group.add_mutually_exclusive_group(required=True)
-exclusive_group.add_argument('--fasta_amino', help='Fasta file with amino acid sequences')
+parser.add_argument('--fasta_amino', help='Fasta file with amino acid sequences')
 
 parser.add_argument('--newick', help='Newick file with tree structure')
 
 parser.add_argument('--output', help='Output file with parameters')
-
-backend = parser.add_argument_group('Backend')
-exclusive_group = backend.add_mutually_exclusive_group(required=True)
-exclusive_group.add_argument('--rust', action='store_true')
 
 fp_precision = parser.add_argument_group('fp precision')
 exclusive_group = fp_precision.add_mutually_exclusive_group(required=True)
@@ -37,28 +31,26 @@ else:
     dtype = torch.float32
     np_dtype = np.float32
     
-if args.fasta_amino is not None:
-    alignment = input.read_fasta_numeric(args.fasta_amino)
-    # Counts amino acids
-    counts = torch.zeros(21, dtype=torch.int64)
-    for seq in alignment.values():
-        L = len(seq)
-        for i in seq:
-            counts[i] += 1
-    
-    initial_energies = torch.log(counts[:-1])
-    
 
+alignment = input.read_fasta_numeric(args.fasta_amino)
+# Counts amino acids
+counts = torch.zeros(21, dtype=torch.int64)
+for seq in alignment.values():
+    L = len(seq)
+    for i in seq:
+        counts[i] += 1
 
+initial_energies = torch.log(counts[:-1])
+    
 #Init random parameters
 torch.manual_seed(0)
 
 shared = torch.zeros(190, requires_grad=True, dtype=dtype)
 energies = initial_energies.clone().to( dtype=dtype).requires_grad_(True)
 
-if args.rust:
-    leaf_log_p = input.read_fasta(args.fasta_amino)
-    tree = phylo_grad.FelsensteinTree.from_newick(args.newick, leaf_log_p, np_dtype, 1e-4, gpu = False)
+
+leaf_log_p = input.read_fasta(args.fasta_amino)
+tree = phylo_grad.FelsensteinTree.from_newick(args.newick, leaf_log_p, np_dtype, 1e-4, gpu = False)
     
 optimizer = torch.optim.Adam([shared, energies], lr=0.1)
 
@@ -89,17 +81,11 @@ while True:
     # This is the actual model part, where the parameters are mapped to S and sqrt_pi
     S, sqrt_pi = rate_matrix(shared, energies, L)
     
-    if args.rust:
-        result = tree.calculate_gradients(S.detach().numpy(), sqrt_pi.detach().numpy())
-        S.backward(-torch.tensor(result['grad_s'], dtype=dtype), retain_graph=True)
-        sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi'], dtype=dtype))
-        loss = -result['log_likelihood'].sum()
-        
-    else:
-        log_p = tree.log_likelihood(S, sqrt_pi).sum()
-        loss = -log_p
-        #print(loss.item())
-        loss.backward()
+    
+    result = tree.calculate_gradients(S.detach().numpy(), sqrt_pi.detach().numpy())
+    S.backward(-torch.tensor(result['grad_s'], dtype=dtype), retain_graph=True)
+    sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi'], dtype=dtype))
+    loss = -result['log_likelihood'].sum()
     
     print(loss.item())
     if last_loss - loss.item() < 1e-1:
@@ -111,7 +97,7 @@ while True:
 
 S, sqrt_pi = rate_matrix(shared, energies, L)
 
-np.savez(args.output, S=S.detach().numpy()[0], sqrt_pi=sqrt_pi.detach().numpy()[0], shared=shared.detach().numpy(), energies=energies.detach().numpy())
+np.savez(args.output, log_p = -last_loss ,S=S.detach().numpy()[0], sqrt_pi=sqrt_pi.detach().numpy()[0], shared=shared.detach().numpy(), energies=energies.detach().numpy())
 
 # Print peak memory usage
 import resource

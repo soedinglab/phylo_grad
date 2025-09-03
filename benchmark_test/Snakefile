@@ -62,10 +62,25 @@ rule benchmark_phylograd:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "/usr/bin/time -o {output[1]} -f '%E %P' python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --rust --f64 --output {output[0]}"
+    shell: "/usr/bin/time -o {output[1]} -f '%E %P' python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --f64 --output {output[0]}"
 
 rule collect_iqtree_benchmark:
     input: iqtree = expand("data/sim/alignment_{num_leafs}_{L}.fasta.iqtree.time", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500]),
            phylograd = expand("data/sim/alignment_{num_leafs}_{L}.fasta.phylograd.time", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500])
     output: "data/iqtree_benchmark.txt"
     shell: "tail -n +1 {input.iqtree} {input.phylograd} > {output}"
+
+rule collect_iqtree_likelihoods:
+    input: iqtree = expand("data/sim/alignment_{num_leafs}_{L}.fasta.iqtree", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500])
+    output: "data/iqtree_likelihoods.txt"
+    shell: "grep -H 'Log-likelihood of the tree' {input.iqtree} > {output}"
+
+rule collect_phylograd_likelihoods:
+    input: phylograd = expand("data/sim/alignment_{num_leafs}_{L}.fasta.phylograd.npz", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500])
+    output: "data/phylograd_likelihoods.txt"
+    run:
+        import numpy as np
+        with open(output[0], "w") as out:
+            for f in input.phylograd:
+                data = np.load(f)
+                out.write(f"{f}: {data['log_p']}\n")
