@@ -159,6 +159,28 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
             s.as_view(),
             sqrt_pi.as_view(),
             tree,
+            false,
         )
+    }
+
+    pub fn calculate_likelihood_single_side(
+        &self,
+        s: na::SMatrixView<F, DIM, DIM>,
+        sqrt_pi: na::SVectorView<F, DIM>,
+        log_p: &mut [na::SVector<F, DIM>]
+    ) -> F {
+        let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
+        // zero out internal nodes in log_p
+        log_p[self.num_leaves..].iter_mut().for_each(|p| {
+            *p = na::SVector::<F, DIM>::zeros();
+        });
+        let result = calculate_column(
+            log_p,
+            s.as_view(),
+            sqrt_pi.as_view(),
+            tree,
+            true,
+        );
+        result.log_likelihood
     }
 }

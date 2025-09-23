@@ -107,6 +107,7 @@ pub fn calculate_column<F: FloatTrait, const DIM: usize>(
     S: na::SMatrixView<F, DIM, DIM>,
     sqrt_pi: na::SVectorView<F, DIM>,
     tree: Tree<F>,
+    only_likelihood: bool,
 ) -> SingleSideResult<F, DIM> {
     // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
     let param = match compute_param_data(S, sqrt_pi) {
@@ -128,6 +129,15 @@ pub fn calculate_column<F: FloatTrait, const DIM: usize>(
     let log_p_prior = sqrt_pi.map(num_traits::Float::ln) * <F as FloatTrait>::from_f64(2.0);
     let (log_likelihood, grad_log_p_likelihood) =
         final_likelihood(log_p_root.as_view(), log_p_prior.as_view());
+
+    if only_likelihood {
+        return SingleSideResult::<F, DIM> {
+            log_likelihood,
+            grad_s: na::SMatrix::<F, DIM, DIM>::zeros(),
+            grad_sqrt_pi: na::SVector::<F, DIM>::zeros(),
+        };
+    }
+    
     let grad_log_prior = grad_log_p_likelihood;
     let grad_log_p_root = grad_log_p_likelihood;
 
@@ -177,6 +187,7 @@ pub fn calculate_column_parallel<
                 S.as_view(),
                 sqrt_pi.as_view(),
                 tree.clone(),
+                false,
             ) // The clone is shallow, Tree is cheap to clone
         })
         .collect::<Vec<_>>();
