@@ -89,7 +89,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// If the length of `s` and `sqrt_pi` is 1, it will use a different code path that is optimized for this case and assumes that they are the same for all columns.
     ///
     /// Only the upper diagonal part of `s` is used. The gradients will only be populated in the upper diagonal and the lower diagonal will be filled with zeros.
-    /// 
+    ///
     /// This functions assumes you have already called `bind_leaf_log_p` to bind the log probabilities of the leaves.
     pub fn calculate_gradients(
         &mut self,
@@ -117,9 +117,42 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
                 &sqrt_pi[0],
                 tree,
                 d_trans_matrix,
+                false,
             );
         }
-        calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree)
+        calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, false)
+    }
+
+    /// Same as `calculate_gradients`, but only calculates the log likelihoods for each side in the alignment.
+    pub fn calculate_likelihoods(
+        &mut self,
+        s: &[na::SMatrix<F, DIM, DIM>],
+        sqrt_pi: &[na::SVector<F, DIM>],
+    ) -> Vec<F> {
+        let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
+        // Zero out internal nodes in log_p
+        for log_p in &mut self.log_p {
+            log_p.iter_mut().skip(self.num_leaves).for_each(|p| {
+                *p = na::SVector::<F, DIM>::zeros();
+            });
+        }
+
+        let result = if s.len() == 1 && sqrt_pi.len() == 1 {
+            let mut d_trans_matrix = Vec::new(); // not used in this case
+
+            calculate_column_parallel_single_S(
+                &mut self.log_p,
+                &s[0],
+                &sqrt_pi[0],
+                tree,
+                &mut d_trans_matrix,
+                true,
+            )
+        } else {
+            calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, true)
+        };
+
+        return result.log_likelihood;
     }
 
     /// Same as `calculate_gradients`, but it takes also an array of the log_probabilities of the leaves.
@@ -131,56 +164,39 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         log_p: &mut [&mut [na::SVector<F, DIM>]],
     ) -> FelsensteinResult<F, DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        calculate_column_parallel(
-            log_p,
-            s,
-            sqrt_pi,
-            tree,
-        )
+        calculate_column_parallel(log_p, s, sqrt_pi, tree, false)
     }
 
     /// This function calculates the gradients for a single side in the alignment.
     /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
-    /// 
+    ///
     /// log_p is expected to have enough space to hold the log probabilities for all nodes
     pub fn calculate_gradients_single_side(
         &self,
         s: na::SMatrixView<F, DIM, DIM>,
         sqrt_pi: na::SVectorView<F, DIM>,
-        log_p: &mut [na::SVector<F, DIM>]
+        log_p: &mut [na::SVector<F, DIM>],
     ) -> SingleSideResult<F, DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
         // zero out internal nodes in log_p
         log_p[self.num_leaves..].iter_mut().for_each(|p| {
             *p = na::SVector::<F, DIM>::zeros();
         });
-        calculate_column(
-            log_p,
-            s.as_view(),
-            sqrt_pi.as_view(),
-            tree,
-            false,
-        )
+        calculate_column(log_p, s.as_view(), sqrt_pi.as_view(), tree, false)
     }
 
     pub fn calculate_likelihood_single_side(
         &self,
         s: na::SMatrixView<F, DIM, DIM>,
         sqrt_pi: na::SVectorView<F, DIM>,
-        log_p: &mut [na::SVector<F, DIM>]
+        log_p: &mut [na::SVector<F, DIM>],
     ) -> F {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
         // zero out internal nodes in log_p
         log_p[self.num_leaves..].iter_mut().for_each(|p| {
             *p = na::SVector::<F, DIM>::zeros();
         });
-        let result = calculate_column(
-            log_p,
-            s.as_view(),
-            sqrt_pi.as_view(),
-            tree,
-            true,
-        );
+        let result = calculate_column(log_p, s.as_view(), sqrt_pi.as_view(), tree, true);
         result.log_likelihood
     }
 }

@@ -178,6 +178,7 @@ pub fn calculate_column_parallel<
     S: &[na::SMatrix<F, DIM, DIM>],
     sqrt_pi: &[na::SVector<F, DIM>],
     tree: Tree<F>,
+    only_likelihood: bool,
 ) -> FelsensteinResult<F, DIM> {
     let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
@@ -187,7 +188,7 @@ pub fn calculate_column_parallel<
                 S.as_view(),
                 sqrt_pi.as_view(),
                 tree.clone(),
-                false,
+                only_likelihood,
             ) // The clone is shallow, Tree is cheap to clone
         })
         .collect::<Vec<_>>();
@@ -217,6 +218,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
     sqrt_pi: &na::SVector<F, DIM>,
     tree: Tree<F>,
     d_trans_matrix: &mut [Vec<na::SMatrix<F, DIM, DIM>>],
+    only_likelihood: bool
 ) -> FelsensteinResult<F, DIM> {
     let L = leaf_log_p.len();
 
@@ -240,11 +242,19 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
         .into_par_iter()
         .zip(d_trans_matrix.par_iter_mut())
         .map(|(leaf_log_p, d_trans)| {
-            cacluate_column_single_S(leaf_log_p, &param, &forward_data, tree.clone(), d_trans)
+            cacluate_column_single_S(leaf_log_p, &param, &forward_data, tree.clone(), d_trans, only_likelihood)
         })
         .collect::<Vec<_>>();
 
     let log_likelihood = result.iter().map(|r| r.0).collect::<Vec<_>>();
+
+    if only_likelihood {
+        return FelsensteinResult::<F, DIM> {
+            log_likelihood,
+            grad_s: vec![na::SMatrix::<F, DIM, DIM>::zeros()],
+            grad_sqrt_pi: vec![na::SVector::<F, DIM>::zeros()],
+        };
+    }
 
     let sum_d_log_prior = result.iter().map(|r| r.1).sum::<na::SVector<F, DIM>>();
 
@@ -289,12 +299,14 @@ fn d_rate_matrix_per_edge<F: FloatTrait, const DIM: usize>(
     sum_d_log_trans
 }
 
+/// In case of only_likelihood=true, d_trans_matrix will not be used
 fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
     leaf_log_p: &mut [na::SVector<F, DIM>],
     param: &ParamPrecomp<F, DIM>,
     forward_data: &ForwardData<F, DIM>,
     tree: Tree<F>,
     d_trans_matrix: &mut [na::SMatrix<F, DIM, DIM>],
+    only_likelihood: bool
 ) -> (F, na::SVector<F, DIM>) {
     forward_column(leaf_log_p, tree.parents, forward_data);
     let log_p = leaf_log_p;
@@ -304,6 +316,10 @@ fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
 
     let (log_likelihood, grad_log_p_likelihood) =
         final_likelihood(log_p_root.as_view(), log_p_prior.as_view());
+
+    if only_likelihood {
+        return (log_likelihood, na::SVector::<F, DIM>::zeros());
+    }
     let d_log_prior = grad_log_p_likelihood;
     let d_log_p_root = grad_log_p_likelihood;
 
