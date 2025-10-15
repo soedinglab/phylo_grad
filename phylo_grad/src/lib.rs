@@ -138,14 +138,18 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            let mut d_trans_matrix = Vec::new(); // not used in this case
+            let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
+                let num_nodes = self.parents.len();
+                let L = self.log_p.len();
+                vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
+            });
 
             calculate_column_parallel_single_S(
                 &mut self.log_p,
                 &s[0],
                 &sqrt_pi[0],
                 tree,
-                &mut d_trans_matrix,
+                d_trans_matrix,
                 true,
             )
         } else {

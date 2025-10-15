@@ -251,8 +251,8 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
     if only_likelihood {
         return FelsensteinResult::<F, DIM> {
             log_likelihood,
-            grad_s: vec![na::SMatrix::<F, DIM, DIM>::zeros()],
-            grad_sqrt_pi: vec![na::SVector::<F, DIM>::zeros()],
+            grad_s: Vec::new(),
+            grad_sqrt_pi: Vec::new(),
         };
     }
 
