@@ -264,6 +264,20 @@ macro_rules! backend_both {
                     inference_into_py(backend_calc_grad_py(backend, s, sqrt_pi), py)
                 }
 
+                #[pyo3(signature=(s, sqrt_pi))]
+                fn calculate_log_likelihoods<'py>(
+                    mut self_: PyRefMut<'py, Self>,
+                    s: PyReadonlyArray3<$float>,
+                    sqrt_pi: PyReadonlyArray2<$float>,
+                ) -> Bound<'py, PyArray1<$float>> {
+                    let backend = &mut self_.tree;
+                    let s = vec_2d_from_python(s);
+                    let sqrt_pi = vec_1d_from_python(sqrt_pi);
+                    let result = backend.calculate_likelihoods(&s, &sqrt_pi);
+                    use numpy::ToPyArray;
+                    result.to_pyarray_bound(self_.py())
+                }
+
                 #[pyo3(signature=(s, sqrt_pi, leaf_log_p))]
                 fn calculate_gradients_with_leaf_log_p(
                     mut self_: PyRefMut<'_, Self>,
