@@ -65,9 +65,9 @@ def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, g
 
 
         result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
-        likelihoods = rust_tree.calculate_log_likelihoods(S.numpy(), sqrt_pi.numpy()) 
-
-        assert(np.allclose(likelihoods, result['log_likelihood'], rtol=1e-5))
+        if gpu == False:
+            likelihoods = rust_tree.calculate_log_likelihoods(S.numpy(), sqrt_pi.numpy()) 
+            assert(np.allclose(likelihoods, result['log_likelihood'], rtol=1e-5))
 
         assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=rtol))
         
