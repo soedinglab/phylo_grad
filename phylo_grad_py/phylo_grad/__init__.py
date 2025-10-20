@@ -144,6 +144,18 @@ class FelsensteinTree:
         assert sqrt_pi.dtype == self.dtype, "sqrt_pi must have the same dtype as the tree"
         return self.tree.calculate_log_likelihoods(S, sqrt_pi)
 
+    def calculate_gradients_branches(self, S : np.ndarray, sqrt_pi : np.ndarray) -> np.ndarray:
+        """
+            Same as calculate_gradients but only returns the log likelihoods and does not compute gradients.
+        """
+        assert isinstance(S, np.ndarray), "S must be a numpy array"
+        assert S.shape == (1, self.dim, self.dim), "S must have shape [1, DIM, DIM]"
+        assert isinstance(sqrt_pi, np.ndarray), "sqrt_pi must be a numpy array"
+        assert sqrt_pi.shape == (1, self.dim), "sqrt_pi must have shape [1, DIM]"
+        assert S.dtype == self.dtype, "S must have the same dtype as the tree"
+        assert sqrt_pi.dtype == self.dtype, "sqrt_pi must have the same dtype as the tree"
+        return self.tree.calculate_gradients_edges(S, sqrt_pi)
+        
     def get_sequence_length(self) -> int:
         """Returns L, the length of the sequences"""
         return self.L

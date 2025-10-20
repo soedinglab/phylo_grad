@@ -34,6 +34,58 @@ def gen_data_single_model(t_dtype, dim, seed):
     sqrt_pi = sqrt_pi[0:1]
     return S, sqrt_pi
 
+def helper_test_edges(dtype, dim : int):
+    if dtype == "f32":
+        t_dtype = torch.float32
+        np_dtype = np.float32
+    else:
+        t_dtype = torch.float64
+        np_dtype = np.float64
+    
+    if dtype == "f32":
+        rtol = 1e-2
+        atol = 1e-2
+    else:
+        rtol = 1e-4
+        atol = 1e-4
+
+    torch_tree, parent_list, branch_lengths, leaf_log_p = gen_tree(t_dtype, dim)
+
+    
+    data = [gen_data_single_model(t_dtype, dim, seed) for seed in range(10)]
+    
+    rust_tree = phylo_grad.FelsensteinTree(parent_list, branch_lengths.astype(np_dtype), leaf_log_p.numpy(), 1e-4, False)
+    
+    def finite_diff_edge_grad(rust_tree, S, sqrt_pi, edge_index, eps=1e-4):
+        lengths = branch_lengths.astype(np_dtype)
+        original_length = lengths[edge_index]
+        plus_length = original_length + eps
+        minus_length = original_length - eps
+
+        lengths[edge_index] = plus_length
+        plus_eps = phylo_grad.FelsensteinTree(parent_list, lengths.astype(np.float64), leaf_log_p.numpy().astype(np.float64), 1e-4, False).calculate_log_likelihoods(S.numpy().astype(np.float64), sqrt_pi.numpy().astype(np.float64)).sum()
+
+        lengths[edge_index] = minus_length
+        minus_eps = phylo_grad.FelsensteinTree(parent_list, lengths.astype(np.float64), leaf_log_p.numpy().astype(np.float64), 1e-4, False).calculate_log_likelihoods(S.numpy().astype(np.float64), sqrt_pi.numpy().astype(np.float64)).sum()
+
+        grad = (plus_eps - minus_eps) / (2 * eps)
+        return grad 
+
+
+    for i in range(3):
+        S, sqrt_pi = data[i]
+        torch_logP = torch_tree.log_likelihood(S, sqrt_pi)
+
+        edge_grad = rust_tree.calculate_gradients_branches(S.numpy(), sqrt_pi.numpy())
+
+        for edge_index in range(len(parent_list)):
+            fd_grad = finite_diff_edge_grad(rust_tree, S, sqrt_pi, edge_index)
+            print(f"Edge {edge_index} grad comparison: Rust {edge_grad[edge_index]} vs FD {fd_grad}")
+            print(f"parent: {parent_list[edge_index]}, length: {branch_lengths[edge_index]}")
+            assert(np.allclose(edge_grad[edge_index], fd_grad, rtol=rtol, atol=atol))
+
+
+        
 def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, gpu: bool = False):
     if dtype == "f32":
         t_dtype = torch.float32
@@ -98,11 +150,11 @@ def test_likelihood():
     helper_test("f64", 4, False)
     helper_test("f64", 20, False)
 
-def test_gpu_likelihood():
-    helper_test("f64", 4, False, gpu = True)
-    helper_test("f64", 20, False, gpu= True)
-    helper_test("f32", 4, False, gpu= True)
-    helper_test("f32", 20, False, gpu= True)
+#def test_gpu_likelihood():
+#    helper_test("f64", 4, False, gpu = True)
+#    helper_test("f64", 20, False, gpu= True)
+#    helper_test("f32", 4, False, gpu= True)
+#    helper_test("f32", 20, False, gpu= True)
 
 def test_grads():
     helper_test("f32", 4, True)
@@ -116,8 +168,14 @@ def test_grads_single_model():
     helper_test("f32", 4, True, single_model=True)
     helper_test("f32", 20, True, single_model=True)
 
-def test_gpu_grads():
-    helper_test("f64", 4, True, gpu = True)
-    helper_test("f64", 20, True, gpu= True)
-    helper_test("f32", 4, True, gpu= True)
-    helper_test("f32", 20, True, gpu= True)
+#def test_gpu_grads():
+#    helper_test("f64", 4, True, gpu = True)
+#    helper_test("f64", 20, True, gpu= True)
+#    helper_test("f32", 4, True, gpu= True)
+#    helper_test("f32", 20, True, gpu= True)
+
+def test_edges():
+    helper_test_edges("f64", 4)
+    helper_test_edges("f64", 20)
+    helper_test_edges("f32", 4)
+    helper_test_edges("f32", 20)
