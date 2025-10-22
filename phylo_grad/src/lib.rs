@@ -12,6 +12,7 @@
 //! This crate uses the `portable_simd` feature to enable SIMD acceleration. This feature is not stable yet, so you need to use the nightly compiler for now.
 //! It is tested on `rustc 1.88.0-nightly (7918c7eb5 2025-04-27)`
 
+
 /// Export the nalgebra which is used in the library, this can enable using multiple versions of nalgebra in the same project
 pub use nalgebra;
 
@@ -24,10 +25,13 @@ mod data_types;
 mod forward;
 mod run;
 mod tree;
+pub mod tree_opt;
 
 pub use run::FelsensteinResult;
 pub use run::SingleSideResult;
 
+use crate::forward::compute_param_data;
+use crate::forward::ParamPrecomp;
 use crate::run::*;
 
 /// Represents a tree topology with branch lengths
@@ -63,6 +67,19 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
             num_leaves,
             tmp_mem: None,
             sorting,
+        }
+    }
+
+    pub fn new_no_sort(parents: &[i32], num_leaves: usize) -> Self {
+        assert_eq!(parents.last().unwrap(), &-1); // root node is the last node
+
+        FelsensteinTree {
+            parents: parents.to_vec(),
+            distances: vec![],
+            log_p: vec![],
+            num_leaves,
+            tmp_mem: None,
+            sorting: vec![],
         }
     }
 
@@ -113,10 +130,11 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
                 vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
             });
 
+            let param = compute_param_data(s[0].as_view(), sqrt_pi[0].as_view()).expect("Could not diagonalize S or eigenvalues are too big");
+
             return calculate_column_parallel_single_S(
                 &mut self.log_p,
-                &s[0],
-                &sqrt_pi[0],
+                &param,
                 tree,
                 d_trans_matrix,
                 false,
@@ -126,12 +144,17 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, false)
     }
 
-    pub fn calculate_edge_gradients(
+    /// returns gradients and log_likelihoods per column
+    pub fn calculate_branch_gradients(
         &mut self,
-        s: &na::SMatrix<F, DIM, DIM>,
-        sqrt_pi: &na::SVector<F, DIM>,
-    ) -> Vec<F> {
-        let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
+        log_branch_lengths: &[F],
+        q : &ParamPrecomp<F, DIM>
+    ) -> (Vec<F>, Vec<F>) {
+        assert!(self.sorting.is_empty(), "branch lengts only works when construction with new_no_sort");
+
+        let branch_lengths: Vec<F> = log_branch_lengths.iter().map(|x| F::scalar_exp(*x)).collect();
+
+        let tree = tree::Tree::new(&self.parents, &branch_lengths, self.num_leaves);
         // Zero out internal nodes in log_p
         for log_p in &mut self.log_p {
             log_p.iter_mut().skip(self.num_leaves).for_each(|p| {
@@ -145,28 +168,24 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
                 vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
         });
 
-        let mut grad_edges = vec![F::zero(); self.distances.len()];
+        let mut grad_edges = vec![F::zero(); branch_lengths.len()];
 
-        calculate_column_parallel_single_S(
+        let result = calculate_column_parallel_single_S(
             &mut self.log_p,
-            s,
-            sqrt_pi,
+            q,
             tree,
             d_trans_matrix,
             false,
             Some(&mut grad_edges)
         );
 
-        // reorder gradients to original order
-        let grad_edges_reordered = {
-            let mut g = vec![F::zero(); grad_edges.len()];
-            for (new_idx, &old_idx) in self.sorting.iter().enumerate() {
-                g[old_idx] = grad_edges[new_idx];
-            }
-            g
-        };
+        // backward thorugh exp
 
-        grad_edges_reordered
+        for i in 0..grad_edges.len() {
+            grad_edges[i] *= branch_lengths[i];
+        }
+
+        (grad_edges, result.log_likelihood)
     }
 
     /// Same as `calculate_gradients`, but only calculates the log likelihoods for each side in the alignment.
@@ -189,11 +208,11 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
                 let L = self.log_p.len();
                 vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
             });
+            let param = compute_param_data(s[0].as_view(), sqrt_pi[0].as_view()).expect("Could not diagonalize S or eigenvalues are too big");
 
             calculate_column_parallel_single_S(
                 &mut self.log_p,
-                &s[0],
-                &sqrt_pi[0],
+                &param,
                 tree,
                 d_trans_matrix,
                 true,

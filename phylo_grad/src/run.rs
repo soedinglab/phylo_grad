@@ -214,28 +214,13 @@ pub fn calculate_column_parallel<
 /// This is significantly faster than calculate_column_parallel.
 pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
     leaf_log_p: &mut [Vec<na::SVector<F, DIM>>],
-    S: &na::SMatrix<F, DIM, DIM>,
-    sqrt_pi: &na::SVector<F, DIM>,
+    param: &ParamPrecomp<F, DIM>,
     tree: Tree<F>,
     d_trans_matrix: &mut [Vec<na::SMatrix<F, DIM, DIM>>],
     only_likelihood: bool,
     grad_edges: Option<&mut [F]>,
 ) -> FelsensteinResult<F, DIM> {
-    let L = leaf_log_p.len();
-
-    // If lapack fails to diaginalize or the eigenvalues are too extreme, we give -inf as likelihood and zero gradients
-    let param = match compute_param_data(S.as_view(), sqrt_pi.as_view()) {
-        Some(param) => param,
-        None => {
-            return FelsensteinResult::<F, DIM> {
-                log_likelihood: vec![<F as num_traits::Float>::neg_infinity(); L],
-                grad_s: vec![na::SMatrix::<F, DIM, DIM>::zeros()],
-                grad_sqrt_pi: vec![na::SVector::<F, DIM>::zeros()],
-            }
-        }
-    };
-
-    let forward_data = forward_data_precompute_param(&param, tree.distances);
+    let forward_data = forward_data_precompute_param(param, tree.distances);
 
     use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
