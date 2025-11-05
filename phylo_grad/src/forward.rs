@@ -23,7 +23,6 @@ pub struct LogTransitionForwardData<F, const DIM: usize> {
 
 #[derive(Debug)]
 pub struct ParamPrecomp<F, const DIM: usize> {
-    pub q: na::SMatrix<F, DIM, DIM>,
     pub symmetric_matrix: na::SMatrix<F, DIM, DIM>,
     pub sqrt_pi: na::SVector<F, DIM>,
     pub sqrt_pi_recip: na::SVector<F, DIM>,
@@ -99,13 +98,7 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
     let mut V_pi_inv = eigenvectors.transpose();
     times_diag_assign(V_pi_inv.as_view_mut(), sqrt_pi.iter().copied());
 
-    let mut q = S_symmetric.clone_owned();
-
-    diag_times_assign(q.as_view_mut(), sqrt_pi_recip.iter().copied());
-    times_diag_assign(q.as_view_mut(), sqrt_pi.iter().copied());
-
     Some(ParamPrecomp {
-        q,
         symmetric_matrix: S_symmetric,
         sqrt_pi: sqrt_pi.clone_owned(),
         sqrt_pi_recip,

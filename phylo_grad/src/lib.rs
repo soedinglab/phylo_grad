@@ -42,7 +42,6 @@ pub struct FelsensteinTree<F, const DIM: usize> {
     num_leaves: usize,
     log_p: Vec<Vec<na::SVector<F, DIM>>>,
     tmp_mem: Option<Vec<Vec<na::SMatrix<F, DIM, DIM>>>>,
-    sorting: Vec<usize>,
 }
 
 impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
@@ -52,7 +51,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// The distances are given as a vector of branch lengths with the same order as the parent vector.
     pub fn new(parents: &[i32], distances: &[F]) -> Self {
         assert!(parents.len() == distances.len());
-        let (parents, distances, num_leaves, sorting) = tree::topological_sort(parents, distances);
+        let (parents, distances, num_leaves) = tree::topological_sort(parents, distances);
 
         assert_eq!(parents.last().unwrap(), &-1); // root node is the last node
 
@@ -62,7 +61,6 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
             log_p: vec![],
             num_leaves,
             tmp_mem: None,
-            sorting,
         }
     }
 
@@ -121,8 +119,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
                 &sqrt_pi[0],
                 tree,
                 d_trans_matrix,
-                false,
-                None,
+                false
             )
         } else {
             calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, false)
@@ -130,49 +127,6 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         let elapsed = now.elapsed();
         println!("GradientTime={}", elapsed.as_micros());
         result
-    }
-
-    pub fn calculate_edge_gradients(
-        &mut self,
-        s: &na::SMatrix<F, DIM, DIM>,
-        sqrt_pi: &na::SVector<F, DIM>,
-    ) -> Vec<F> {
-        let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // Zero out internal nodes in log_p
-        for log_p in &mut self.log_p {
-            log_p.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<F, DIM>::zeros();
-            });
-        }
-
-        let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
-            let num_nodes = self.parents.len();
-            let L = self.log_p.len();
-            vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
-        });
-
-        let mut grad_edges = vec![F::zero(); self.distances.len()];
-
-        calculate_column_parallel_single_S(
-            &mut self.log_p,
-            s,
-            sqrt_pi,
-            tree,
-            d_trans_matrix,
-            false,
-            Some(&mut grad_edges),
-        );
-
-        // reorder gradients to original order
-        let grad_edges_reordered = {
-            let mut g = vec![F::zero(); grad_edges.len()];
-            for (new_idx, &old_idx) in self.sorting.iter().enumerate() {
-                g[old_idx] = grad_edges[new_idx];
-            }
-            g
-        };
-
-        grad_edges_reordered
     }
 
     /// Same as `calculate_gradients`, but only calculates the log likelihoods for each side in the alignment.
@@ -203,7 +157,6 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
                 tree,
                 d_trans_matrix,
                 true,
-                None,
             )
         } else {
             calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, true)

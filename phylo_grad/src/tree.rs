@@ -24,12 +24,11 @@ impl<'a, F: FloatTrait> Tree<'a, F> {
         }
     }
 }
-/// Topologically sorts the tree given by parents and distances.
-/// Returns the new sorted parent vec, the sorted distances, the number of leaves, and the mapping from old to new indices.
+
 pub fn topological_sort<F: FloatTrait>(
     parents: &[i32],
     distances: &[F],
-) -> (Vec<i32>, Vec<F>, usize, Vec<usize>) {
+) -> (Vec<i32>, Vec<F>, usize) {
     // Leaves have height 0, the parents of leaves have height 1, the root will have the maximum height.
     let mut heights = vec![0; parents.len()];
 
@@ -80,7 +79,7 @@ pub fn topological_sort<F: FloatTrait>(
         .map(|&x| distances[x as usize])
         .collect::<Vec<F>>();
 
-    (new_parents, new_dist, num_leaves, indices)
+    (new_parents, new_dist, num_leaves)
 }
 
 fn dfs(node: usize, childs: &[Vec<usize>], heights: &mut [u32]) -> u32 {
