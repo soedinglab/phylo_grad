@@ -19,20 +19,10 @@ parser.add_argument('--newick', help='Newick file with tree structure')
 
 parser.add_argument('--output', help='Output file with parameters')
 
-fp_precision = parser.add_argument_group('fp precision')
-exclusive_group = fp_precision.add_mutually_exclusive_group(required=True)
-exclusive_group.add_argument('--f32', action='store_true')
-exclusive_group.add_argument('--f64', action='store_true')
-
 args = parser.parse_args(sys.argv[1:])
 
-if args.f64:
-    dtype = torch.float64
-    np_dtype = np.float64
-else:
-    dtype = torch.float32
-    np_dtype = np.float32
-    
+dtype = torch.float64
+np_dtype = np.float64
 
 alignment = input.read_fasta_numeric(args.fasta_amino)
 # Counts amino acids
@@ -43,9 +33,6 @@ for seq in alignment.values():
         counts[i] += 1
 
 initial_energies = torch.log(counts[:-1])
-    
-#Init random parameters
-torch.manual_seed(0)
 
 shared = torch.zeros(190, requires_grad=True, dtype=dtype)
 energies = initial_energies.clone().to( dtype=dtype).requires_grad_(True)
@@ -56,14 +43,75 @@ tree = phylo_grad.FelsensteinTree.from_newick(args.newick, leaf_log_p, np_dtype,
     
 optimizer = torch.optim.LBFGS([shared, energies], tolerance_change=0.01, lr=0.1)
 
+
+def rate_matrix2(log_R : torch.Tensor, log_pi : torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+
+    log_pi = log_pi - torch.logsumexp(log_pi, dim=0)
+
+    log_pi.retain_grad()
+
+    log_R_mat = torch.zeros((20,20), dtype=log_R.dtype, device=log_R.device)
+    log_R_mat[*torch.tril_indices(20,20, offset=-1)] = log_R
+    log_R_mat = log_R_mat + log_R_mat.transpose(0,1)
+    torch.diagonal(log_R_mat).fill_(float('-inf'))
+    log_R_mat.retain_grad()
+
+
+    piRpi = log_pi.unsqueeze(0) + log_R_mat + log_pi.unsqueeze(1)
+    piRpi.retain_grad()
+
+    logM = torch.logsumexp(piRpi, dim=(0,1))
+    logM.retain_grad()
+
+    logS = 0.5 * (log_pi.unsqueeze(0) + log_pi.unsqueeze(1)) + log_R_mat - logM
+    logS.retain_grad()
+
+    return torch.exp(logS).unsqueeze(0), torch.exp(0.5 * log_pi).unsqueeze(0), logM, logS, piRpi, log_R_mat, log_pi
+
+def rate_matrix_backward(log_R : torch.Tensor, log_pi_orig : torch.Tensor, tangent_S, tangent_sqrt_pi) -> tuple[torch.Tensor, torch.Tensor]:
+    log_pi = log_pi_orig - torch.logsumexp(log_pi_orig, dim=0)
+
+    log_R_mat = torch.zeros((20,20), dtype=log_R.dtype, device=log_R.device)
+    log_R_mat[*torch.tril_indices(20,20, offset=-1)] = log_R
+    log_R_mat = log_R_mat + log_R_mat.transpose(0,1)
+    torch.diagonal(log_R_mat).fill_(float('-inf'))
+
+
+    piRpi = log_pi.unsqueeze(0) + log_R_mat + log_pi.unsqueeze(1)
+
+    logM = torch.logsumexp(piRpi, dim=(0,1))
+
+    logS = 0.5 * (log_pi.unsqueeze(0) + log_pi.unsqueeze(1)) + log_R_mat - logM
+
+
+    d_logS = tangent_S * torch.exp(logS)
+
+    torch.diagonal(d_logS).fill_(0.0)
+
+    d_logM = - d_logS.sum()
+
+    d_piRpi = torch.softmax(piRpi.flatten(), dim=0).reshape(20, 20) * d_logM
+
+    d_log_R_mat = d_logS + d_piRpi
+
+    d_log_R = d_log_R_mat[*torch.tril_indices(20,20, offset=-1)] + d_log_R_mat.transpose(0,1)[*torch.tril_indices(20,20, offset=-1)]
+
+    d_log_pi = (d_logS * 0.5).sum(dim=0) + (d_logS * 0.5).sum(dim=1) + d_piRpi.sum(dim=0) + d_piRpi.sum(dim=1)
+
+    d_log_pi = d_log_pi + tangent_sqrt_pi * 0.5 * (torch.exp(0.5 * log_pi))
+
+    d_log_pi_orig = d_log_pi - torch.softmax(log_pi_orig, dim=0) * d_log_pi.sum()
+
+    return d_log_R, d_log_pi_orig
+
 def rate_matrix(log_R : torch.Tensor, log_pi : torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """
+        S and sqrt_pi for the GTR20 model like in IQ-TREE
         log_R is a vector with lower diagonal of log rate matrix R of shape (190)
         log_pi is a vector of shape (20)
     """
 
     pi = torch.softmax(log_pi, dim = 0)
-    print(pi, file=sys.stderr)
     R = torch.zeros((20,20), dtype=log_R.dtype, device=log_R.device)
     R[*torch.tril_indices(20,20, offset=-1)] = torch.exp(log_R)
     R = R + R.transpose(0,1)
@@ -78,40 +126,20 @@ def rate_matrix(log_R : torch.Tensor, log_pi : torch.Tensor) -> tuple[torch.Tens
     S = torch.diag(sqrt_pi) @ Q @ torch.diag(1/sqrt_pi)
     return S.unsqueeze(0), sqrt_pi.unsqueeze(0)
 
-def rate_matrix_old(shared, energies, L):
-    """
-        shared is a [190] tensor representing the upper diagonal of the log(S) matrix
-        energies is a [20] tensor representing the energy of each amino acid at each side. The distribution is given by the softmax of the energies
-    """
-    dtype = shared.dtype
-    S = torch.zeros((20,20), dtype=dtype, device=shared.device)
-    S[*torch.triu_indices(20,20, offset= 1)] = shared
-    S = S + S.transpose(0,1)
-    S = torch.exp(S)
-    
-    sqrt_pi = torch.sqrt(torch.nn.functional.softmax(energies, dim = 0))
-    
-    # Normalize to have expected PAM=1
-    Q = torch.diag(1/sqrt_pi) @ S @ torch.diag(sqrt_pi)
-    Q.fill_diagonal_(0)
-    exp_mutations = sqrt_pi ** 2 * Q.sum(dim=1)
-    
-    S = S / exp_mutations.sum()
-    
-    return S.unsqueeze(0), sqrt_pi.unsqueeze(0)
-
 
 last_loss = float('inf')
 
 def closure():
     optimizer.zero_grad()
     # This is the actual model part, where the parameters are mapped to S and sqrt_pi
-    S, sqrt_pi = rate_matrix(shared, energies)
-    
+    S, sqrt_pi= rate_matrix(shared, energies)
+
     
     result = tree.calculate_gradients(S.detach().numpy(), sqrt_pi.detach().numpy())
     S.backward(-torch.tensor(result['grad_s'], dtype=dtype), retain_graph=True)
     sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi'], dtype=dtype))
+
+
     loss = -result['log_likelihood'].sum()
     
     return loss
@@ -126,17 +154,17 @@ for i in range(100):
 
 S, sqrt_pi = rate_matrix(shared, energies)
 
+final_result = tree.calculate_log_likelihoods(S.detach().numpy(), sqrt_pi.detach().numpy())
+print(f"BEST SCORE FOUND : {final_result.sum()}")
+
+
 S = S[0]
 sqrt_pi = sqrt_pi[0]
-
-print(S, sqrt_pi, file=sys.stderr)
 
 # Save the parameters as PAML file
 
 with open(args.output, 'w') as f:
     R = torch.diag(1/sqrt_pi) @ S @ torch.diag(1/sqrt_pi)
-
-    print(R, file=sys.stderr)
 
     row, col = torch.tril_indices(20,20, offset=-1)
 
@@ -151,6 +179,3 @@ with open(args.output, 'w') as f:
 
 end = timeit.default_timer()
 print(f"Total wall-clock time used: {end - start} sec")
-# Print peak memory usage
-import resource
-print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
