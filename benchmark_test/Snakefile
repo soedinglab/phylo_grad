@@ -2,6 +2,7 @@ localrules: random_phylo, random_fasta, sim_phy, phy_to_fasta, collect_iqtree_be
 
 rule random_phylo:
     output: ensure("data/random/tree_{num_leafs}.nwk", non_empty=True)
+    # There is a chance reroot fails because it cannot find a suitable root, we just try again, because we just want a random tree
     retries: 5
     shell: "nw_reroot -d <(phylotree generate -t {wildcards.num_leafs} -b) > {output}"
 
@@ -14,7 +15,7 @@ rule sim_phy:
     input: "data/random/tree_{num_leafs}.nwk"
     output: "data/sim/alignment_{num_leafs}_{L}.phy"
     run:
-      shell(f"iqtree --alisim {output[0][:-4]} -t {input} --length {wildcards.L} -m LG+C10")
+      shell(f"iqtree --alisim {output[0][:-4]} -t {input} --length {wildcards.L} -m LG")
 
 rule phy_to_fasta:
     input: "data/sim/alignment_{num_leafs}_{L}.phy"
@@ -43,26 +44,37 @@ rule benchmark:
 rule benchmark_iqtree:
     input: tree = "data/random/tree_{num_leafs}.nwk",
            alignment = "data/sim/alignment_{num_leafs}_{L}.fasta"
-    output: "data/sim/alignment_{num_leafs}_{L}.fasta.iqtree",
-            "data/sim/alignment_{num_leafs}_{L}.fasta.iqtree.time",
-    threads: 64
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.fasta.log",
+    threads: lambda w: int(w.num_t)
+    params: pre = "data/sim/alignment_{num_leafs}_{L}_{num_t}.fasta"
     resources:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "/usr/bin/time -o {output[1]} -f '%E %P' iqtree -s {input.alignment} -nt {threads} --model-joint GTR20+FO --redo -te {input.tree} --show-lh -v -quiet"
+    shell: "./iqtree3 -s {input.alignment} -nt {wildcards.num_t} --model GTR20+FO --redo -te {input.tree} -blfix -pre {params.pre}"
 
-rule benchmark_phylograd:
+rule benchmark_raxml:
     input: tree = "data/random/tree_{num_leafs}.nwk",
            alignment = "data/sim/alignment_{num_leafs}_{L}.fasta"
-    output: "data/sim/alignment_{num_leafs}_{L}.fasta.phylograd.npz",
-            "data/sim/alignment_{num_leafs}_{L}.fasta.phylograd.time",
-    threads: 64
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.raxml.log",
+    threads: lambda w: int(w.num_t)
     resources:
         slurm_extra="--exclusive",
         mem_mb=800000,
         runtime=1000
-    shell: "/usr/bin/time -o {output[1]} -f '%E %P' python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --f64 --output {output[0]}"
+    shell: "./raxml-ng --msa {input.alignment} --model PROTGTR+FO --tree {input.tree} --evaluate --opt-branches off --threads {wildcards.num_t} --redo > {output}"
+rule benchmark_phylograd:
+    input: tree = "data/random/tree_{num_leafs}.nwk",
+           alignment = "data/sim/alignment_{num_leafs}_{L}.fasta",
+           script = "optimize_global_model.py"
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.phylograd.paml",
+            "data/sim/alignment_{num_leafs}_{L}_{num_t}.phylograd.log",
+    threads: lambda w: int(w.num_t)
+    resources:
+        slurm_extra="--exclusive",
+        mem_mb=800000,
+        runtime=1000
+    shell: "RAYON_NUM_THREADS={wildcards.num_t} python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --output {output[0]} > {output[1]}"
 
 rule collect_iqtree_benchmark:
     input: iqtree = expand("data/sim/alignment_{num_leafs}_{L}.fasta.iqtree.time", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500]),
