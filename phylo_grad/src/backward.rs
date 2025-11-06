@@ -162,7 +162,7 @@ pub fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
     // Does the softmax, which is the gradient of the logsumexp
     for a in 0..DIM {
         for b in 0..DIM {
-            forward_exp_save_data[a][b] /= forward_sum_save[b];
+            forward_exp_save_data[a][b] /= forward_sum_save[a];
         }
     }
     
