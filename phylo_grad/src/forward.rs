@@ -2,8 +2,30 @@ use crate::data_types::*;
 
 use nalgebra as na;
 
+/// Forward data precomputed before the forward pass
 pub struct ForwardData<F, const DIM: usize> {
     pub log_transition: Vec<LogTransitionForwardData<F, DIM>>,
+}
+
+/// Forward data which is saved during the forward pass
+pub struct ForwardDataSave<F, const DIM: usize> {
+    pub logsumexp_exp_save: Vec<na::SMatrix<F, DIM, DIM>>,
+    pub logsumexp_sum_save: Vec<na::SVector<F, DIM>>,
+}
+
+impl<F : FloatTrait, const DIM: usize> ForwardDataSave<F, DIM> {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            logsumexp_exp_save: vec![
+                na::SMatrix::<F, DIM, DIM>::zeros();
+                capacity
+            ],
+            logsumexp_sum_save: vec![
+                na::SVector::<F, DIM>::zeros();
+                capacity
+            ],
+        }
+    }
 }
 
 impl<F, const DIM: usize> ForwardData<F, DIM> {
@@ -152,15 +174,17 @@ pub fn forward_node<F: FloatTrait, const DIM: usize>(
     parent: usize,
     log_p: &mut [na::SVector<F, DIM>],
     forward_data: &ForwardData<F, DIM>,
+    forward_data_save: &mut ForwardDataSave<F, DIM>,
 ) {
+    let logsumexp_exp_save = &mut forward_data_save.logsumexp_exp_save[child].data.0;
+    let logsumexp_sum_save = forward_data_save.logsumexp_sum_save[child].as_mut_slice();
     /* log_p[parent]_a = logsumexp_b(log_p[child](b) + log_transition(rate_matrix, distance)(a, b) ) */
     for a in 0..DIM {
         let row_a = forward_data.log_transition[child].log_transition_T.column(a);
         let tmp = log_p[child] + row_a;
         unsafe {
-            log_p[parent][a] += F::vec_logsumexp(std::mem::transmute::<&[[F; DIM]; 1], &[F; DIM]>(
-                &tmp.data.0,
-            ))
+            log_p[parent][a] += F::vec_logsumexp_save(std::mem::transmute::<&[[F; DIM]; 1], &[F; DIM]>(
+                &tmp.data.0), &mut logsumexp_exp_save[a], &mut logsumexp_sum_save[a]);
         }
     }
 }
