@@ -63,11 +63,11 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
     for id in (num_leaves..num_nodes - 1).rev() {
         let parent_id = tree.parents[id];
         let parent_backward_id = num_nodes - parent_id as usize - 1;
-        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
+        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
         let distance_current = tree.distances[id];
         let fwd_data_current = &forward_data.log_transition[id];
         let grad_log_p = d_child_input_param(
-            grad_log_p_input,
+            &grad_log_p_input,
             distance_current,
             param,
             fwd_data_current,
@@ -84,11 +84,11 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
     for id in (0..num_leaves).rev() {
         let parent_id = tree.parents[id];
         let parent_backward_id = num_nodes - parent_id as usize - 1;
-        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
+        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
         let distance_current = tree.distances[id];
         let fwd_data_current = &forward_data.log_transition[id];
         d_child_input_param(
-            grad_log_p_input,
+            &grad_log_p_input,
             distance_current,
             param,
             fwd_data_current,
@@ -308,7 +308,7 @@ fn d_rate_matrix_per_edge<F: FloatTrait, const DIM: usize>(
 ) -> na::SMatrix<F, DIM, DIM> {
     let mut sum_d_log_trans = d_trans_matrix.iter().map(|d_trans| d_trans[edge]).sum();
 
-    d_ln_vjp(&mut sum_d_log_trans, &forward.matrix_exp);
+    d_ln_vjp(&mut sum_d_log_trans, &forward.matrix_exp_recip);
 
     d_expm_vjp(&mut sum_d_log_trans, distance, param, &forward.exp_t_lambda);
 
@@ -373,9 +373,9 @@ fn d_trans_matrix_fn<F: FloatTrait, const DIM: usize>(
     for id in (num_leaves..num_nodes - 1).rev() {
         let parent_id = tree.parents[id];
         let parent_backward_id = num_nodes - parent_id as usize - 1;
-        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
+        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
         let grad_log_p = d_log_transition_child_input_vjp(
-            grad_log_p_input,
+            &grad_log_p_input,
             &mut forward_data_save.logsumexp_exp_save[id],
             &mut forward_data_save.logsumexp_sum_save[id],
             true,
@@ -388,9 +388,9 @@ fn d_trans_matrix_fn<F: FloatTrait, const DIM: usize>(
     for id in (0..num_leaves).rev() {
         let parent_id = tree.parents[id];
         let parent_backward_id = num_nodes - parent_id as usize - 1;
-        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p.as_view();
+        let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
         d_log_transition_child_input_vjp(
-            grad_log_p_input,
+            &grad_log_p_input,
             &mut forward_data_save.logsumexp_exp_save[id],
             &mut forward_data_save.logsumexp_sum_save[id],
             false,

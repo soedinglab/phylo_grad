@@ -24,11 +24,11 @@ pub fn softmax<F: FloatTrait, const N: usize>(x: &na::SVector<F, N>) -> na::SVec
 
 pub fn d_ln_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: &mut na::SMatrix<F, DIM, DIM>,
-    argument: &na::SMatrix<F, DIM, DIM>,
+    argument_recip: &na::SMatrix<F, DIM, DIM>,
 ) {
     for i in 0..DIM {
         for j in 0..DIM {
-            cotangent_vector[(i, j)] /= argument[(i, j)];
+            cotangent_vector[(i, j)] *= argument_recip[(i, j)];
         }
     }
 }
@@ -149,9 +149,9 @@ fn d_broadcast_vjp<F: FloatTrait, const DIM: usize>(
 }
 
 /// Main part of the backward where we go back through one Felsenstein step, it takes the cotangent of the parent log_p and calculates the cotangent of the child log_p and the parameters
-/// forward_exp_save will be the output cojangend for the log_transition matrix
+/// forward_exp_save will be the output cotangent for the log_transition matrix
 pub fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
-    cotangent_vector: na::SVectorView<F, DIM>,
+    cotangent_vector: & na::SVector<F, DIM>,
     forward_exp_save: &mut na::SMatrix<F, DIM, DIM>,
     forward_sum_save: &mut na::SVector<F, DIM>,
     compute_grad_log_p: bool,
@@ -159,16 +159,16 @@ pub fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
     
     let forward_exp_save_data = &mut forward_exp_save.data.0;
     
-    // Does the softmax, which is the gradient of the logsumexp
+    // Does the softmax, which is the gradient of the logsumexp and multiply with the cotangent_vector
     for a in 0..DIM {
+        let denominator = num_traits::Float::recip(forward_sum_save[a]);
         for b in 0..DIM {
-            forward_exp_save_data[a][b] /= forward_sum_save[a];
+            forward_exp_save_data[a][b] *= cotangent_vector[a];
+            forward_exp_save_data[a][b] *= denominator;
         }
     }
     
     forward_exp_save.transpose_mut();
-    
-    diag_times_assign(forward_exp_save.as_view_mut(), cotangent_vector.iter().copied());
 
     let grad_log_p = if compute_grad_log_p {
         Some(d_broadcast_vjp(forward_exp_save.as_view()))
@@ -181,7 +181,7 @@ pub fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
 
 /// forward_exp_save will be the output cotangent for Q
 pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
-    cotangent_vector: na::SVectorView<F, DIM>,
+    cotangent_vector: &na::SVector<F, DIM>,
     distance: F,
     param: &ParamPrecomp<F, DIM>,
     forward: &LogTransitionForwardData<F, DIM>,
@@ -195,7 +195,7 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
         forward_sum_save,
         compute_grad_log_p
     );
-    d_ln_vjp(forward_exp_save, &forward.matrix_exp);
+    d_ln_vjp(forward_exp_save, &forward.matrix_exp_recip);
 
     d_expm_vjp(forward_exp_save, distance, param, &forward.exp_t_lambda);
 
