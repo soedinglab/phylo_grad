@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "phylo_grad",
-    "phylo_grad_py"
+    "phylo_grad_py",
+    "gtr_optimize"
 ]
 
 [profile.release]

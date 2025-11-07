@@ -1,0 +1,20 @@
+[package]
+name = "gtr_optimize"
+version = "1.0.0"
+edition = "2021"
+authors = ["Benjamin Lieser <benjamin.lieser@mpinat.mpg.de>"]
+description = "GTR optimization for benchmark and demonstration"
+repository = "https://github.com/soedinglab/phylo_grad"
+license = "MIT OR Apache-2.0"
+keywords = ["math", "felsenstein", "machine-learning", "bioinformatics"]
+categories = ["mathematics", "science::bioinformatics"]
+
+[dependencies]
+phylo_grad = {path = "../phylo_grad"}
+phylotree = "0.1.3"
+lazy_static = "1.5.0"
+gosh-lbfgs = "0.1.0"
+seq_io = "0.3.4"
+nalgebra = "0.33.2"
+num-traits = {version="0.2.19", default-features=false, features = ["libm"]}
+rayon = "1.11.0"

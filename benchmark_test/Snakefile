@@ -44,14 +44,13 @@ rule benchmark:
 rule benchmark_iqtree:
     input: tree = "data/random/tree_{num_leafs}.nwk",
            alignment = "data/sim/alignment_{num_leafs}_{L}.fasta"
-    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.fasta.log",
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.iqtree.log",
     threads: lambda w: int(w.num_t)
-    params: pre = "data/sim/alignment_{num_leafs}_{L}_{num_t}.fasta"
     resources:
         slurm_extra="--exclusive",
-        mem_mb=800000,
-        runtime=1000
-    shell: "./iqtree3 -s {input.alignment} -nt {wildcards.num_t} --model GTR20+FO --redo -te {input.tree} -blfix -pre {params.pre}"
+        mem_mb=210000,
+        runtime=10000
+    shell: "/bin/time -v ./iqtree3 -s {input.alignment} -nt {wildcards.num_t} --model GTR20+FO --redo -te {input.tree} -blfix -pre {output} &> {output}"
 
 rule benchmark_raxml:
     input: tree = "data/random/tree_{num_leafs}.nwk",
@@ -60,21 +59,34 @@ rule benchmark_raxml:
     threads: lambda w: int(w.num_t)
     resources:
         slurm_extra="--exclusive",
-        mem_mb=800000,
-        runtime=1000
-    shell: "./raxml-ng --msa {input.alignment} --model PROTGTR+FO --tree {input.tree} --evaluate --opt-branches off --threads {wildcards.num_t} --redo > {output}"
-rule benchmark_phylograd:
+        mem_mb=210000,
+        runtime=10000
+    shell: "/bin/time -v ./raxml-ng --msa {input.alignment} --model PROTGTR+FO --tree {input.tree} --evaluate --opt-branches off --threads {wildcards.num_t} --redo --prefix {output} &> {output}"
+
+# Rule to the the optimized PAML file using phylograd to check that is matches iqtree/raxml
+rule benchmark_phylograd_paml:
     input: tree = "data/random/tree_{num_leafs}.nwk",
            alignment = "data/sim/alignment_{num_leafs}_{L}.fasta",
            script = "optimize_global_model.py"
-    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.phylograd.paml",
-            "data/sim/alignment_{num_leafs}_{L}_{num_t}.phylograd.log",
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.phylograd.paml"
     threads: lambda w: int(w.num_t)
     resources:
         slurm_extra="--exclusive",
-        mem_mb=800000,
+        mem_mb=210000,
         runtime=1000
-    shell: "RAYON_NUM_THREADS={wildcards.num_t} python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --output {output[0]} > {output[1]}"
+    shell: "RAYON_NUM_THREADS={wildcards.num_t} python optimize_global_model.py --fasta_amino {input.alignment} --newick {input.tree} --output {output}"
+
+rule benchmark_phylograd:
+    input: tree = "data/random/tree_{num_leafs}.nwk",
+           alignment = "data/sim/alignment_{num_leafs}_{L}.fasta",
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.phylograd.log"
+    threads: lambda w: int(w.num_t)
+    resources:
+        slurm_extra="--exclusive",
+        mem_mb=210000,
+        runtime=1000
+    shell: "RAYON_NUM_THREADS={wildcards.num_t} /bin/time -v ../target/release/gtr_optimize {input.tree} {input.alignment} global &> {output}"
+
 
 rule collect_iqtree_benchmark:
     input: iqtree = expand("data/sim/alignment_{num_leafs}_{L}.fasta.iqtree.time", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500]),

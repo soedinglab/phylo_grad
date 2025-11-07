@@ -133,12 +133,10 @@ def closure():
     optimizer.zero_grad()
     # This is the actual model part, where the parameters are mapped to S and sqrt_pi
     S, sqrt_pi= rate_matrix(shared, energies)
-
     
     result = tree.calculate_gradients(S.detach().numpy(), sqrt_pi.detach().numpy())
     S.backward(-torch.tensor(result['grad_s'], dtype=dtype), retain_graph=True)
     sqrt_pi.backward(-torch.tensor(result['grad_sqrt_pi'], dtype=dtype))
-
 
     loss = -result['log_likelihood'].sum()
     
