@@ -1,4 +1,4 @@
-localrules: random_phylo, random_fasta, sim_phy, phy_to_fasta, collect_iqtree_benchmark
+localrules: random_phylo, random_fasta, sim_phy, phy_to_fasta, collect_iqtree_benchmark, partition_file, parse_benchmark
 
 rule random_phylo:
     output: ensure("data/random/tree_{num_leafs}.nwk", non_empty=True)
@@ -52,6 +52,28 @@ rule benchmark_iqtree:
         runtime=10000
     shell: "/bin/time -v ./iqtree3 -s {input.alignment} -nt {wildcards.num_t} --model GTR20+FO --redo -te {input.tree} -blfix -pre {output} &> {output}"
 
+rule benchmark_iqtree_single:
+    input: tree = "data/random/tree_{num_leafs}.nwk",
+           alignment = "data/sim/alignment_{num_leafs}_{L}.fasta",
+           partition_file = "data/partition_{L}_iqtree.txt"
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.single_iqtree.log",
+    threads: lambda w: int(w.num_t)
+    resources:
+        slurm_extra="--exclusive",
+        mem_mb=210000,
+        runtime=10000
+    shell: "/bin/time -v ./iqtree3 -s {input.alignment} -nt {wildcards.num_t} -q {input.partition_file} --redo -te {input.tree} -blfix -pre {output} &> {output}"
+rule benchmark_raxml_single_side:
+    input: tree = "data/random/tree_{num_leafs}.nwk",
+           alignment = "data/sim/alignment_{num_leafs}_{L}.fasta",
+           partition_file = "data/partition_{L}_raxml.txt"
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.single_raxml.log",
+    threads: lambda w: int(w.num_t)
+    resources:
+        slurm_extra="--exclusive",
+        mem_mb=210000,
+        runtime=10000
+    shell: "/bin/time -v raxml-ng --msa {input.alignment} --model {input.partition_file} --brlen linked --tree {input.tree} --evaluate --opt-branches off --threads {wildcards.num_t} --redo --prefix {output} --force &> {output}"
 rule benchmark_raxml:
     input: tree = "data/random/tree_{num_leafs}.nwk",
            alignment = "data/sim/alignment_{num_leafs}_{L}.fasta"
@@ -61,8 +83,10 @@ rule benchmark_raxml:
         slurm_extra="--exclusive",
         mem_mb=210000,
         runtime=10000
-    shell: "/bin/time -v ./raxml-ng --msa {input.alignment} --model PROTGTR+FO --tree {input.tree} --evaluate --opt-branches off --threads {wildcards.num_t} --redo --prefix {output} &> {output}"
-
+    shell: "/bin/time -v raxml-ng --msa {input.alignment} --model PROTGTR+FO --tree {input.tree} --evaluate --opt-branches off --threads {wildcards.num_t} --redo --prefix {output} &> {output}"
+rule partition_file:
+    output: "data/partition_{L}_{format}.txt"
+    shell: "python partition_file.py {wildcards.L} {wildcards.format} {output}"
 # Rule to the the optimized PAML file using phylograd to check that is matches iqtree/raxml
 rule benchmark_phylograd_paml:
     input: tree = "data/random/tree_{num_leafs}.nwk",
@@ -87,14 +111,36 @@ rule benchmark_phylograd:
         runtime=1000
     shell: "RAYON_NUM_THREADS={wildcards.num_t} /bin/time -v ../target/release/gtr_optimize {input.tree} {input.alignment} global &> {output}"
 
+rule benchmark_phylograd_single:
+    input: tree = "data/random/tree_{num_leafs}.nwk",
+           alignment = "data/sim/alignment_{num_leafs}_{L}.fasta",
+    output: "data/sim/alignment_{num_leafs}_{L}_{num_t}.single_phylograd.log"
+    threads: lambda w: int(w.num_t)
+    resources:
+        slurm_extra="--exclusive",
+        mem_mb=210000,
+        runtime=1000
+    shell: "RAYON_NUM_THREADS={wildcards.num_t} /bin/time -v ../target/release/gtr_optimize {input.tree} {input.alignment} local &> {output}"
+
+rule parse_benchmark:
+    input: "data/sim/alignment_{num_leafs}_{L}_{T}.{method}.log",
+           "parse_gradient_time.py"
+    output: "data/result/alignment_{num_leafs}_{L}_{T}.{method}.txt"
+    shell: "python parse_gradient_time.py {input[0]} > {output}"
 
 rule collect_iqtree_benchmark:
-    input: iqtree = expand("data/sim/alignment_{num_leafs}_{L}_{T}.iqtree.log", num_leafs=[2**n for n in [4,6,8,10,12]], L=[50,200], T=[1,32]),
-           phylograd = expand("data/sim/alignment_{num_leafs}_{L}_{T}.phylograd.log", num_leafs=[2**n for n in [4,6,8,10,12]], L=[50,200], T=[1,32]),
-           raxml = expand("data/sim/alignment_{num_leafs}_{L}_{T}.raxml.log", num_leafs=[2**n for n in [4,6,8,10,12]], L=[50,200], T=[1,32])
+    input: iqtree = expand("data/result/alignment_{num_leafs}_{L}_{T}.iqtree.txt", num_leafs=[2**n for n in [4,6,8,10,12]], L=[50,200], T=[1,32]),
+           phylograd = expand("data/result/alignment_{num_leafs}_{L}_{T}.phylograd.txt", num_leafs=[2**n for n in [4,6,8,10,12]], L=[50,200], T=[1,32]),
+           raxml = expand("data/result/alignment_{num_leafs}_{L}_{T}.raxml.txt", num_leafs=[2**n for n in [4,6,8,10,12]], L=[50,200], T=[1,32])
     output: "data/iqtree_benchmark.txt"
-    shell: "tail -n +1 {input.iqtree} {input.phylograd} > {output}"
+    shell: "tail -n +1 {input.iqtree} {input.phylograd} {input.raxml} > {output}"
 
+rule collect_iqtree_benchmark_single:
+    input: iqtree = expand("data/result/alignment_{num_leafs}_{L}_{T}.single_iqtree.txt", num_leafs=[2**n for n in [4,6,8]], L=[10,20,50], T=[1,5]),
+           phylograd = expand("data/result/alignment_{num_leafs}_{L}_{T}.single_phylograd.txt", num_leafs=[2**n for n in [4,6,8]], L=[10,20,50], T=[1,5]),
+           raxml = expand("data/result/alignment_{num_leafs}_{L}_{T}.single_raxml.txt", num_leafs=[2**n for n in [4,6,8]], L=[10,20,50], T=[1,5])
+    output: "data/iqtree_benchmark_single.txt"
+    shell: "tail -n +1 {input.iqtree} {input.phylograd} {input.raxml} > {output}"
 rule collect_iqtree_likelihoods:
     input: iqtree = expand("data/sim/alignment_{num_leafs}_{L}.fasta.iqtree", num_leafs=[2**n for n in [4,6,8,10,12]], L=[100,500])
     output: "data/iqtree_likelihoods.txt"
