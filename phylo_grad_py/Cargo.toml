@@ -15,7 +15,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 phylo_grad = {path = "../phylo_grad"}
-numpy = { version = "0.21.0"}
-pyo3 = { version = "0.21.2", features = ["extension-module"] }
+numpy = { version = "0.27.1"}
+pyo3 = { version = "0.27.2", features = ["extension-module"] }
 nalgebra = "0.33.2"
 paste = "=0.1.2"

@@ -7,10 +7,9 @@ use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
 };
 use phylo_grad::FloatTrait;
-use pyo3::{
-    pyclass, pymethods, pymodule, types::PyModule, Bound, IntoPy, PyObject, PyRefMut, PyResult,
-    Python,
-};
+
+use pyo3::prelude::*;
+use pyo3::types::{IntoPyDict, PyDict};
 
 use std::collections::HashMap;
 
@@ -88,7 +87,7 @@ where
 {
     Array::<T, _>::from_shape_vec((vec.len(),), vec)
         .unwrap()
-        .into_pyarray_bound(py)
+        .into_pyarray(py)
 }
 
 fn na_1d_from_python<T, const N: usize>(py_array1: ArrayView1<'_, T>) -> na::SVector<T, N>
@@ -123,7 +122,7 @@ where
             .collect::<Vec<T>>(),
     )
     .unwrap()
-    .into_pyarray_bound(py)
+    .into_pyarray(py)
 }
 
 fn na_2d_from_python<T, const R: usize, const C: usize>(
@@ -161,7 +160,7 @@ where
             .collect::<Vec<T>>(),
     )
     .unwrap()
-    .into_pyarray_bound(py)
+    .into_pyarray(py)
 }
 
 fn to_vec_DIM<F: FloatTrait + numpy::Element, const DIM: usize>(
@@ -184,15 +183,15 @@ fn vec_leaf_p_from_python<F: FloatTrait + numpy::Element, const DIM: usize>(
     vec
 }
 
-fn inference_into_py<F: FloatTrait + numpy::Element, const DIM: usize>(
+fn inference_into_py<'py, F: FloatTrait + numpy::Element, const DIM: usize>(
     result: FelsensteinResult<F, DIM>,
-    py: Python<'_>,
-) -> PyObject {
+    py: Python<'py>,
+) -> Bound<'py, PyDict> {
     let log_likelihood_total_py = vec_0d_into_python(result.log_likelihood, py);
     let grad_s_total_py = vec_2d_into_python(result.grad_s, py);
     let grad_sqrt_pi_total_py = vec_1d_into_python(result.grad_sqrt_pi, py);
 
-    let result: HashMap<String, PyObject> = [
+    let result: HashMap<String, Py<PyAny>> = [
         ("log_likelihood".to_string(), log_likelihood_total_py.into()),
         ("grad_s".to_string(), grad_s_total_py.into()),
         ("grad_sqrt_pi".to_string(), grad_sqrt_pi_total_py.into()),
@@ -200,7 +199,7 @@ fn inference_into_py<F: FloatTrait + numpy::Element, const DIM: usize>(
     .into_iter()
     .collect();
 
-    result.into_py(py)
+    result.into_py_dict(py).unwrap()
 }
 
 macro_rules! backend_both {
@@ -253,11 +252,11 @@ macro_rules! backend_both {
                 }
 
                 #[pyo3(signature=(s, sqrt_pi))]
-                fn calculate_gradients(
-                    mut self_: PyRefMut<'_, Self>,
+                fn calculate_gradients<'py>(
+                    mut self_: PyRefMut<'py, Self>,
                     s: PyReadonlyArray3<$float>,
                     sqrt_pi: PyReadonlyArray2<$float>,
-                ) -> PyObject {
+                ) -> Bound<'py,PyDict> {
                     let py = self_.py();
                     let backend = &mut self_.tree;
 
@@ -275,16 +274,16 @@ macro_rules! backend_both {
                     let sqrt_pi = vec_1d_from_python(sqrt_pi);
                     let result = backend.calculate_likelihoods(&s, &sqrt_pi);
                     use numpy::ToPyArray;
-                    result.to_pyarray_bound(self_.py())
+                    result.to_pyarray(self_.py())
                 }
 
                 #[pyo3(signature=(s, sqrt_pi, leaf_log_p))]
-                fn calculate_gradients_with_leaf_log_p(
-                    mut self_: PyRefMut<'_, Self>,
+                fn calculate_gradients_with_leaf_log_p<'py>(
+                    mut self_: PyRefMut<'py, Self>,
                     s: PyReadonlyArray3<$float>,
                     sqrt_pi: PyReadonlyArray2<$float>,
                     leaf_log_p: PyReadonlyArray3<$float>,
-                ) -> PyObject {
+                ) -> Bound<'py, PyDict> {
                     let py = self_.py();
 
                     inference_into_py(self_.calc_grad_with_log_p(s, sqrt_pi, leaf_log_p), py)
@@ -326,11 +325,11 @@ macro_rules! add_class_all {
     };
 }
 
-backend_all!(4, 16, 20);
+backend_all!(4, 16, 20, 64);
 
 #[pymodule]
 #[pyo3(name = "_phylo_grad")]
 fn phylo_grad_mod<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
-    add_class_all!(m, 4, 16, 20);
+    add_class_all!(m, 4, 16, 20, 64);
     Ok(())
 }
