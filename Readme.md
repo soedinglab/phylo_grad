@@ -22,7 +22,7 @@ We depend on a specific version of the compiler for now to get better performanc
 
 You also have to have `cmake`, `gcc`, and `gfortran` available on the system.
 
-It is recommended to install it into a conda environment, it needs at least python 3.7
+It is recommended to install it into a conda environment, it needs at least python 3.11
 
  To install the package into your current environment, run
  ```
