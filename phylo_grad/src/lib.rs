@@ -97,8 +97,6 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         s: &[na::SMatrix<F, DIM, DIM>],
         sqrt_pi: &[na::SVector<F, DIM>],
     ) -> FelsensteinResult<F, DIM> {
-        let now = std::time::Instant::now();
-
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
         // Zero out internal nodes in log_p
         for log_p in &mut self.log_p {
@@ -125,8 +123,6 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         } else {
             calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, false)
         };
-        let elapsed = now.elapsed();
-        println!("GradientTime={}", elapsed.as_micros());
         result
     }
 
