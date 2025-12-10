@@ -1,4 +1,8 @@
 #![allow(non_snake_case)]
+
+//! This code is used in the RaxML IQ-TREE benchmark for optimizing GTR parameters
+//! It has a global matrix mode a per column matrix mode, caled "local" here.
+
 use lazy_static::lazy_static;
 use nalgebra as na;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};

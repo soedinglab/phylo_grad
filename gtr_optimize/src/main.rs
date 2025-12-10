@@ -2,6 +2,11 @@ use std::collections::HashMap;
 
 use seq_io::fasta::Record;
 
+/// Simple command line interface for gtr_optimize library
+/// # Arguments
+/// * `args[1]` - Newick file path
+/// * `args[2]` - Fasta file path
+/// * `args[3]` - "global" or "local" to select optimization mode
 pub fn main() {
     let args: Vec<String> = std::env::args().collect();
     let newick = std::fs::read_to_string(&args[1]).expect("Could not read newick file");
