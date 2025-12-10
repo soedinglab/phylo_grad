@@ -4,11 +4,13 @@
 
 `benchmark_test` contains python code to benchmark on random data and test the gradients against a pytorch implementation. It also contains a snakemake pipeline to generate the plots in the paper.
 
-`phylo_grad` contains the pure Rust code usage from Rust without any python dependencies
+`phylo_grad` contains the Rust code for use in Rust without any python dependecies.
 
-`phylo_grad_py` contains python bindings for `phylo_grad`
+`phylo_grad_py` contains python bindings for `phylo_grad`.
 
-`phylo_grad_gpu` contains a GPU implementation using jax
+`phylo_grad_gpu` contains a GPU implementation using jax.
+
+`gtr_optimize` contains the Rust optimization code used in the RaxML/IQ-TREE benchmark of the paper.
 
 ## Using from Python
 You need a working Rust compiler, the easiest is to install rustup : https://www.rust-lang.org/tools/install
@@ -22,7 +24,7 @@ It is recommended to install it into a conda environment, it needs at least pyth
  ```
  conda create -n phylo_grad python=3.11
  source activate phylo_grad
- # Disable mulithreading inside of openblas
+ # Disable mulithreading inside of openblas (this can lead to problems and does not give better performance)
  export USE_LOCKING=1
  export USE_THREAD=0
  export USE_OPENMP=0
@@ -30,7 +32,6 @@ It is recommended to install it into a conda environment, it needs at least pyth
  export RUSTFLAGS="-C target-cpu=native"
  pip install ./phylo_grad_py
  ```
-`NUM_THREADS` governs the maximum amount of threads that openblas will be able to use. If not set it will use the number of cores of the machine where it is compiled, which can be a problem on a HPC cluster environment.
 
 After publication there will be a precompiled pip package for easy use.
 
