@@ -7,7 +7,7 @@ module-name = "phylo_grad._phylo_grad"
 
 [project]
 name = "phylo_grad"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = ["numpy", "biopython"]
 
 [project.urls]
