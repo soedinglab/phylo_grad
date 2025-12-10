@@ -9,3 +9,6 @@ module-name = "phylo_grad._phylo_grad"
 name = "phylo_grad"
 version = "1.0.0"
 dependencies = ["numpy", "biopython"]
+
+[project.urls]
+Repository = "https://github.com/soedinglab/phylo_grad"
