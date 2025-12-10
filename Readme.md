@@ -12,7 +12,11 @@
 
 `gtr_optimize` contains the Rust optimization code used in the RaxML/IQ-TREE benchmark of the paper.
 
-## Using from Python
+## Using in Python
+
+We provide a pip package `phylo_grad`, it contains precompiled wheels for python 3.11, 3.12, 3.13 and 3.14 for manylinux_2_28 on x86_64 with AVX2. If you need to install on another plattform you can still do it with pip, but you need to fullfill the requirements of the Compiling from source section. This means having a rust toolchain, cmake, gcc, gfortran and the environment variables set.
+
+## Compiling from source
 You need a working Rust compiler, the easiest is to install rustup : https://www.rust-lang.org/tools/install
 We depend on a specific version of the compiler for now to get better performance, rustup will download the correct toolchain for you if you compile from this repository.
 
@@ -33,11 +37,18 @@ It is recommended to install it into a conda environment, it needs at least pyth
  pip install ./phylo_grad_py
  ```
 
-After publication there will be a precompiled pip package for easy use.
-
 ## Using from Rust
 
-Just `cargo add phylo_grad` (will work after publishing)
+Just `cargo add phylo_grad`.
+
+For compiling you need `cmake`, `gcc` and `gfortran` available on the system.
+We strongly recommend to set these environment variables during compilation:
+```
+ export USE_LOCKING=1
+ export USE_THREAD=0
+ export USE_OPENMP=0
+```
+For more detail see `phylo_grad/Readme.md`.
 
 ## Running benchmarks/tests
 
