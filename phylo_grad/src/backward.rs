@@ -150,12 +150,15 @@ fn d_broadcast_vjp<F: FloatTrait, const DIM: usize>(
 
 /// Main part of the backward where we go back through one Felsenstein step, it takes the cotangent of the parent log_p and calculates the cotangent of the child log_p and the parameters
 /// forward_exp_save will be the output cotangent for the log_transition matrix
+/// This is the backward function (vjp) for forward_node
 pub fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
     cotangent_vector: & na::SVector<F, DIM>,
     forward_exp_save: &mut na::SMatrix<F, DIM, DIM>,
     forward_sum_save: &mut na::SVector<F, DIM>,
     compute_grad_log_p: bool,
 ) -> Option<na::SVector<F, DIM>> {
+
+    // This function will change the most
     
     let forward_exp_save_data = &mut forward_exp_save.data.0;
     
@@ -195,6 +198,8 @@ pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
         forward_sum_save,
         compute_grad_log_p
     );
+
+    // likley to be removed
     d_ln_vjp(forward_exp_save, &forward.matrix_exp_recip);
 
     d_expm_vjp(forward_exp_save, distance, param, &forward.exp_t_lambda);
