@@ -36,20 +36,31 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
     }
 }
 
+/// Data precomputed for each edge. Depends only on the Q matrix and the edge length
 #[derive(Debug)]
 pub struct LogTransitionForwardData<F, const DIM: usize> {
+    /// 1 / e^(t Q) (matrix exponential) and then element wise reciprical
     pub matrix_exp_recip: na::SMatrix<F, DIM, DIM>,
+    /// log(matrix_exp) transposed
     pub log_transition_T: na::SMatrix<F, DIM, DIM>,
+    /// exp(t * lambda_i) for the DIM many eigenvalues of Q 
     pub exp_t_lambda: na::SVector<F, DIM>,
 }
 
+/// Precomputed values from the model (S and sqrt_pi)
 #[derive(Debug)]
 pub struct ParamPrecomp<F, const DIM: usize> {
+    /// S
     pub symmetric_matrix: na::SMatrix<F, DIM, DIM>,
+    /// sqrt_pi
     pub sqrt_pi: na::SVector<F, DIM>,
+    /// 1/sqrt_pi
     pub sqrt_pi_recip: na::SVector<F, DIM>,
+    /// Eigenvalues of S
     pub eigenvalues: na::SVector<F, DIM>,
+    /// A in the paper
     pub V_pi: na::SMatrix<F, DIM, DIM>,
+    /// A^-1 in the paper
     pub V_pi_inv: na::SMatrix<F, DIM, DIM>,
 }
 
@@ -171,6 +182,9 @@ pub fn forward_data_precompute_param<F: FloatTrait, const DIM: usize>(
 }
 
 /// adds the log_p of the children to the log_p of the parent
+/// Main part of the Felsenstein in Forward
+/// log_p are the partial log likelihoods, they start with the leave nodes initialized. This function takes 2 computed log_p vectors
+/// and writes the compbined result in the parent log_p vector
 pub fn forward_node<F: FloatTrait, const DIM: usize>(
     child: usize,
     parent: usize,
@@ -181,6 +195,7 @@ pub fn forward_node<F: FloatTrait, const DIM: usize>(
     let logsumexp_exp_save = &mut forward_data_save.logsumexp_exp_save[child].data.0;
     let logsumexp_sum_save = forward_data_save.logsumexp_sum_save[child].as_mut_slice();
     /* log_p[parent]_a = logsumexp_b(log_p[child](b) + log_transition(rate_matrix, distance)(a, b) ) */
+    // In linspace log_p[parent]_a = sum_b (log_p[child](b) * transiton(rate_matrix, distance)(a,b) )
     for a in 0..DIM {
         let row_a = forward_data.log_transition[child].log_transition_T.column(a);
         let tmp = log_p[child] + row_a;
