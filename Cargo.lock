@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "phylo_grad"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "faer",
  "itertools 0.13.0",
@@ -1318,7 +1318,7 @@ dependencies = [
 
 [[package]]
 name = "phylo_grad_py"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "nalgebra",
  "numpy",

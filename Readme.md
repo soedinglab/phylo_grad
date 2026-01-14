@@ -14,13 +14,11 @@
 
 ## Using in Python
 
-We provide a pip package `phylo_grad`, it contains precompiled wheels for python 3.11, 3.12, 3.13 and 3.14 for manylinux_2_28 on x86_64 with AVX2. If you need to install on another plattform you can still do it with pip, but you need to fullfill the requirements of the Compiling from source section. This means having a rust toolchain, cmake, gcc, gfortran and the environment variables set.
+We provide a pip package `phylo_grad`, it contains precompiled wheels for python 3.11, 3.12, 3.13 and 3.14 for manylinux_2_28 on x86_64 with AVX2. If you need to install on another plattform you can still do it with pip, but you need working rust toolchain : https://www.rust-lang.org/tools/install
 
 ## Compiling from source
 You need a working Rust compiler, the easiest is to install rustup : https://www.rust-lang.org/tools/install
 We depend on a specific version of the compiler for now to get better performance, rustup will download the correct toolchain for you if you compile from this repository.
-
-You also have to have `cmake`, `gcc`, and `gfortran` available on the system.
 
 It is recommended to install it into a conda environment, it needs at least python 3.11
 
@@ -28,27 +26,17 @@ It is recommended to install it into a conda environment, it needs at least pyth
  ```
  conda create -n phylo_grad python=3.11
  source activate phylo_grad
- # Disable mulithreading inside of openblas (this can lead to problems and does not give better performance)
- export USE_LOCKING=1
- export USE_THREAD=0
- export USE_OPENMP=0
- # target-cpu=native can improve performance on the machine it is compiled for
+
+ # target-cpu=native can improve performance on the machine it is compiled on,
+ # but might make the binary unportable to a different machine
  export RUSTFLAGS="-C target-cpu=native"
+ 
  pip install ./phylo_grad_py
  ```
 
 ## Using from Rust
 
 Just `cargo add phylo_grad`.
-
-For compiling you need `cmake`, `gcc` and `gfortran` available on the system.
-We strongly recommend to set these environment variables during compilation:
-```
- export USE_LOCKING=1
- export USE_THREAD=0
- export USE_OPENMP=0
-```
-For more detail see `phylo_grad/Readme.md`.
 
 ## Running benchmarks/tests
 
