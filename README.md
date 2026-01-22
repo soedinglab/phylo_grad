@@ -1,4 +1,4 @@
-# Efficient and Parallel gradients of substitution models for Phylogenetic trees
+# Phylograd: fast column-specific calculation of substitution model gradients
 
 ## Repository structure
 
@@ -14,10 +14,10 @@
 
 ## Using in Python
 
-We provide a pip package `phylo_grad`, it contains precompiled wheels for python 3.11, 3.12, 3.13 and 3.14 for manylinux_2_28 on x86_64 with AVX2. If you need to install on another plattform you can still do it with pip, but you need working rust toolchain : https://www.rust-lang.org/tools/install
+We provide a pip package `phylo_grad`, it contains precompiled wheels for python `3.11`, `3.12`, `3.13` and `3.14` for `manylinux_2_28` on `x86_64` with `AVX2`. If you need to install on another plattform you can still do it with pip, but you need a working Rust toolchain: https://www.rust-lang.org/tools/install
 
 ## Compiling from source
-You need a working Rust compiler, the easiest is to install rustup : https://www.rust-lang.org/tools/install
+You need a working Rust compiler, the easiest is to install rustup: https://www.rust-lang.org/tools/install
 We depend on a specific version of the compiler for now to get better performance, rustup will download the correct toolchain for you if you compile from this repository.
 
 It is recommended to install it into a conda environment, it needs at least python 3.11
@@ -78,6 +78,10 @@ snakemake -c all data/random/time_t={num_threads}_L={columns in alignment}_m={me
 ## How to use it
 
 See `examples/train.py` for a simple example usage. There is a pydoc for the complete API, for example accessable with `python -m pydoc phylo_grad` after installation.
+
+## Paper
+
+This is part of an article published here: https://link.springer.com/article/10.1186/s12859-025-06353-4
 
 ## Trouble Shooting
 
