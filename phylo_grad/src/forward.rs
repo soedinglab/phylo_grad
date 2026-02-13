@@ -7,26 +7,6 @@ pub struct ForwardData<F, const DIM: usize> {
     pub model_edge_data: Vec<ModelEdgeData<F, DIM>>,
 }
 
-/// Forward data which is saved during the forward pass
-pub struct ForwardDataSave<F, const DIM: usize> {
-    pub logsumexp_exp_save: Vec<na::SMatrix<F, DIM, DIM>>,
-    pub logsumexp_sum_save: Vec<na::SVector<F, DIM>>,
-}
-
-impl<F : FloatTrait, const DIM: usize> ForwardDataSave<F, DIM> {
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            logsumexp_exp_save: vec![
-                na::SMatrix::<F, DIM, DIM>::zeros();
-                capacity
-            ],
-            logsumexp_sum_save: vec![
-                na::SVector::<F, DIM>::zeros();
-                capacity
-            ],
-        }
-    }
-}
 
 impl<F, const DIM: usize> ForwardData<F, DIM> {
     pub fn with_capacity(capacity: usize) -> Self {

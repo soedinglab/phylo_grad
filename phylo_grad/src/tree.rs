@@ -25,7 +25,7 @@ impl<'a, F: FloatTrait> Tree<'a, F> {
     }
 }
 
-/// middle is -1 for bifurcations, only at the root node it is one of the children. parent is then also -1
+/// middle is -1 for bifurcations, only at the root node it is one of the children.
 #[derive(Debug, Clone)]
 pub struct Bifurcation {
     pub left: i32,
@@ -35,13 +35,10 @@ pub struct Bifurcation {
 }
 
 pub fn get_topological_bifurcations<F: FloatTrait>(tree: &Tree<F>) -> Vec<Bifurcation> {
-    // The root is the last entry in this vector
-    let mut childs = vec![Vec::new(); tree.parents.len() + 1];
+    let mut childs = vec![Vec::new(); tree.parents.len()];
     for (child, &parent) in tree.parents.iter().enumerate() {
         if parent >= 0 {
             childs[parent as usize].push(child as i32);
-        } else {
-            childs[tree.parents.len()].push(child as i32); // root
         }
     }
 
@@ -50,34 +47,34 @@ pub fn get_topological_bifurcations<F: FloatTrait>(tree: &Tree<F>) -> Vec<Bifurc
     for node in tree.num_leaves..tree.parents.len() {
         let children = &childs[node];
         assert!(children.len() > 0, "Interior Node {} has no children", node);
-        assert!(
-            children.len() == 2,
-            "Node {} does not have 2 children, but has {}",
-            node,
-            children.len()
-        );
-        let left = children[0];
-        let right = children[1];
-        bifurcations.push(Bifurcation {
-            left,
-            right,
-            parent : node as i32,
-            middle: -1,
-        });
+        
+        if children.len() == 2 {
+            // bifurcation case
+            let left = children[0];
+            let right = children[1];
+            bifurcations.push(Bifurcation {
+                left,
+                right,
+                parent : node as i32,
+                middle: -1,
+            });
+        } else if children.len() == 3 {
+            // trifurcation case, only at the root node
+            assert!(node == tree.parents.len() - 1, "Only the root node can have three children, but node {} has three children", node);
+            let left = children[0];
+            let right = children[1];
+            let middle = children[2];
+            bifurcations.push(Bifurcation {
+                left,
+                right,
+                middle,
+                parent : node as i32,
+            });
+        } else if children.len() > 3 {
+            panic!("Node {} has {} children, but only bifurcations with 2 or 3 children are supported", node, children.len());
+        }
     }
 
-    // Handle root
-    let root_children = &childs[tree.parents.len()];
-    assert!(
-        root_children.len() == 3, "Needs to be an unrooted tree with 3 children at the root, but got {}", root_children.len()
-    );
-
-    bifurcations.push(Bifurcation {
-        left: root_children[0],
-        right: root_children[1],
-        middle: root_children[2],
-        parent: -1,
-    });
 
     bifurcations
 }

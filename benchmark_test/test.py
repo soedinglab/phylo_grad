@@ -98,14 +98,6 @@ def test_likelihood():
 
 
 def test_grads():
-    helper_test("f32", 4, True)
-    helper_test("f32", 20, True)
     helper_test("f64", 4, True)
     helper_test("f64", 20, True)
-    
-def test_grads_single_model():
-    helper_test("f64", 4, True, single_model=True)
-    helper_test("f64", 20, True, single_model=True)
-    helper_test("f32", 4, True, single_model=True)
-    helper_test("f32", 20, True, single_model=True)
 

@@ -42,7 +42,7 @@ pub struct FelsensteinTree<F, const DIM: usize> {
     distances: Vec<F>,
     num_leaves: usize,
     log_p: Vec<Vec<na::SVector<F, DIM>>>,
-    tmp_mem: Option<Vec<Vec<na::SMatrix<F, DIM, DIM>>>>,
+    _tmp_mem: Option<Vec<Vec<na::SMatrix<F, DIM, DIM>>>>,
 }
 
 impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
@@ -61,7 +61,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
             distances,
             log_p: vec![],
             num_leaves,
-            tmp_mem: None,
+            _tmp_mem: None,
         }
     }
 
@@ -111,20 +111,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
-                let num_nodes = self.parents.len();
-                let L = self.log_p.len();
-                vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
-            });
-
-            calculate_column_parallel_single_S(
-                &mut self.log_p,
-                &s[0],
-                &sqrt_pi[0],
-                tree,
-                d_trans_matrix,
-                false,
-            )
+            todo!();
         } else {
             calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, false)
         };
@@ -146,20 +133,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
-                let num_nodes = self.parents.len();
-                let L = self.log_p.len();
-                vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
-            });
-
-            calculate_column_parallel_single_S(
-                &mut self.log_p,
-                &s[0],
-                &sqrt_pi[0],
-                tree,
-                d_trans_matrix,
-                true,
-            )
+            todo!();
         } else {
             calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, true)
         };
