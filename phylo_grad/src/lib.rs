@@ -103,10 +103,10 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         sqrt_pi: &[na::SVector<F, DIM>],
     ) -> FelsensteinResult<F, DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // Zero out internal nodes in log_p
+        // One out internal nodes in log_p
         for log_p in &mut self.log_p {
             log_p.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<F, DIM>::zeros();
+                *p = na::SVector::<F, DIM>::from_element(F::one());
             });
         }
 
@@ -138,10 +138,10 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         sqrt_pi: &[na::SVector<F, DIM>],
     ) -> Vec<F> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // Zero out internal nodes in log_p
+        // One out internal nodes in log_p
         for log_p in &mut self.log_p {
             log_p.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<F, DIM>::zeros();
+                *p = na::SVector::<F, DIM>::from_element(F::one());
             });
         }
 

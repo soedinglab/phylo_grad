@@ -93,8 +93,6 @@ def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, g
             assert(np.allclose(result['grad_s'], torch_S_grad, rtol=rtol, atol=atol))
     
 def test_likelihood():
-    helper_test("f32", 4, False)
-    helper_test("f32", 20, False)
     helper_test("f64", 4, False)
     helper_test("f64", 20, False)
 

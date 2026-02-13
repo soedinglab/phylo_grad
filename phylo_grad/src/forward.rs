@@ -41,8 +41,8 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
 pub struct ModelEdgeData<F, const DIM: usize> {
     /// 1 / e^(t Q) (matrix exponential) and then element wise reciprical
     pub matrix_exp_recip: na::SMatrix<F, DIM, DIM>,
-    /// log(matrix_exp) transposed
-    pub log_transition_T: na::SMatrix<F, DIM, DIM>,
+    /// matrix_exp transposed
+    pub transition_T: na::SMatrix<F, DIM, DIM>,
     /// exp(t * lambda_i) for the DIM many eigenvalues of Q 
     pub exp_t_lambda: na::SVector<F, DIM>,
 }
@@ -155,13 +155,13 @@ fn precompute_model_edge_data<F: FloatTrait, const DIM: usize>(
 
     matrix_exp.apply(|x| *x = Float::max(*x, F::MIN_SQRT_PI));
 
-    let log_transition = matrix_exp.map(Float::ln);
+    let transition = matrix_exp;
 
     matrix_exp.apply(|x| *x = Float::recip(*x));
 
     ModelEdgeData {
         matrix_exp_recip: matrix_exp,
-        log_transition_T: log_transition.transpose(),
+        transition_T: transition.transpose(),
         exp_t_lambda,
     }
 }
@@ -196,8 +196,8 @@ pub fn forward_node<F: FloatTrait, const DIM: usize>(
         let mut sum = F::zero();
         for b in 0..DIM {
             sum += lin_partial_likelihoods[child][b]
-                * forward_data.model_edge_data[child].log_transition_T[(b, a)];
+                * forward_data.model_edge_data[child].transition_T[(b, a)];
         }
-        lin_partial_likelihoods[parent][a] = sum;
+        lin_partial_likelihoods[parent][a] *= sum;
     }
 }

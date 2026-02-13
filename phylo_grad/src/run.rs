@@ -127,11 +127,11 @@ pub fn calculate_column<F: FloatTrait, const DIM: usize>(
     let forward_data = forward_data_precompute_param(&param, tree.distances);
     let mut forward_data_save = ForwardDataSave::<F, DIM>::new(log_p.len());
     forward_column(log_p, tree.parents, &forward_data);
-    let log_p_root = log_p.last().unwrap();
+    let lin_p_root = log_p.last().unwrap();
 
     let log_p_prior = sqrt_pi.map(num_traits::Float::ln) * <F as FloatTrait>::from_f64(2.0);
     let (log_likelihood, grad_log_p_likelihood) =
-        final_likelihood(log_p_root.as_view(), log_p_prior.as_view());
+        final_likelihood(lin_p_root.as_view(), log_p_prior.as_view());
 
     if only_likelihood {
         return SingleSideResult::<F, DIM> {
