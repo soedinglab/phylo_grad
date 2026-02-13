@@ -1,5 +1,6 @@
 use crate::data_types::*;
 use crate::forward::*;
+use crate::tree::Bifurcation;
 
 use nalgebra as na;
 
@@ -182,12 +183,47 @@ pub fn d_log_transition_child_input_vjp<F: FloatTrait, const DIM: usize>(
     grad_log_p
 }
 
+pub fn d_log_transition_bifurcation_vjp<F: FloatTrait, const DIM: usize>(
+    cotangents: &mut[na::SVector<F, DIM>],
+    pll: &[na::SVector<F, DIM>],
+    forward: &[ModelEdgeData<F, DIM>],
+    param: &ParamPrecomp<F, DIM>,
+    d_Q_output: &mut na::SMatrix<F, DIM, DIM>,
+    bifurcation: &Bifurcation,
+) {
+    let childs = if bifurcation.middle == -1 {
+        vec![bifurcation.left as usize, bifurcation.right as usize]
+    } else {
+        vec![
+            bifurcation.left as usize,
+            bifurcation.middle as usize,
+            bifurcation.right as usize,
+        ]
+    };
+
+    let mut d_Q = na::SMatrix::<F, DIM, DIM>::zeros();
+
+    for child in childs {
+        let pll = &pll[child];
+        let cotangent_vector = if bifurcation.parent == -1 {
+            &cotangents[cotangents.len() - 1]
+        } else {
+            &cotangents[bifurcation.parent as usize]
+        };
+
+        
+
+
+
+    }
+    
+}
 /// forward_exp_save will be the output cotangent for Q
 pub fn d_child_input_param<F: FloatTrait, const DIM: usize>(
     cotangent_vector: &na::SVector<F, DIM>,
     distance: F,
     param: &ParamPrecomp<F, DIM>,
-    forward: &LogTransitionForwardData<F, DIM>,
+    forward: &ModelEdgeData<F, DIM>,
     forward_exp_save: &mut na::SMatrix<F, DIM, DIM>,
     forward_sum_save: &mut na::SVector<F, DIM>,
     compute_grad_log_p: bool,

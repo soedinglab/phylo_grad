@@ -4,7 +4,7 @@ use nalgebra as na;
 
 /// Forward data precomputed before the forward pass
 pub struct ForwardData<F, const DIM: usize> {
-    pub log_transition: Vec<LogTransitionForwardData<F, DIM>>,
+    pub model_edge_data: Vec<ModelEdgeData<F, DIM>>,
 }
 
 /// Forward data which is saved during the forward pass
@@ -31,14 +31,14 @@ impl<F : FloatTrait, const DIM: usize> ForwardDataSave<F, DIM> {
 impl<F, const DIM: usize> ForwardData<F, DIM> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            log_transition: Vec::with_capacity(capacity),
+            model_edge_data: Vec::with_capacity(capacity),
         }
     }
 }
 
 /// Data precomputed for each edge. Depends only on the Q matrix and the edge length
 #[derive(Debug)]
-pub struct LogTransitionForwardData<F, const DIM: usize> {
+pub struct ModelEdgeData<F, const DIM: usize> {
     /// 1 / e^(t Q) (matrix exponential) and then element wise reciprical
     pub matrix_exp_recip: na::SMatrix<F, DIM, DIM>,
     /// log(matrix_exp) transposed
@@ -141,10 +141,10 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
     })
 }
 
-fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
+fn precompute_model_edge_data<F: FloatTrait, const DIM: usize>(
     param: &ParamPrecomp<F, DIM>,
     distance: F,
-) -> LogTransitionForwardData<F, DIM> {
+) -> ModelEdgeData<F, DIM> {
     use num_traits::Float;
 
     let exp_t_lambda = param.eigenvalues.map(|lam| Float::exp(lam * distance));
@@ -159,7 +159,7 @@ fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
 
     matrix_exp.apply(|x| *x = Float::recip(*x));
 
-    LogTransitionForwardData {
+    ModelEdgeData {
         matrix_exp_recip: matrix_exp,
         log_transition_T: log_transition.transpose(),
         exp_t_lambda,
@@ -173,10 +173,10 @@ pub fn forward_data_precompute_param<F: FloatTrait, const DIM: usize>(
     let num_nodes = distances.len();
     let mut forward_data = ForwardData::<F, DIM>::with_capacity(num_nodes);
 
-    forward_data.log_transition.extend(
+    forward_data.model_edge_data.extend(
         distances
             .iter()
-            .map(|dist| log_transition_precompute_param(param, *dist)),
+            .map(|dist| precompute_model_edge_data(param, *dist)),
     );
     forward_data
 }
@@ -188,20 +188,16 @@ pub fn forward_data_precompute_param<F: FloatTrait, const DIM: usize>(
 pub fn forward_node<F: FloatTrait, const DIM: usize>(
     child: usize,
     parent: usize,
-    log_p: &mut [na::SVector<F, DIM>],
-    forward_data: &ForwardData<F, DIM>,
-    forward_data_save: &mut ForwardDataSave<F, DIM>,
+    lin_partial_likelihoods: &mut [na::SVector<F, DIM>],
+    forward_data: &ForwardData<F, DIM>
 ) {
-    let logsumexp_exp_save = &mut forward_data_save.logsumexp_exp_save[child].data.0;
-    let logsumexp_sum_save = forward_data_save.logsumexp_sum_save[child].as_mut_slice();
-    /* log_p[parent]_a = logsumexp_b(log_p[child](b) + log_transition(rate_matrix, distance)(a, b) ) */
     // In linspace log_p[parent]_a = sum_b (log_p[child](b) * transiton(rate_matrix, distance)(a,b) )
     for a in 0..DIM {
-        let row_a = forward_data.log_transition[child].log_transition_T.column(a);
-        let tmp = log_p[child] + row_a;
-        unsafe {
-            log_p[parent][a] += F::vec_logsumexp_save(std::mem::transmute::<&[[F; DIM]; 1], &[F; DIM]>(
-                &tmp.data.0), &mut logsumexp_exp_save[a], &mut logsumexp_sum_save[a]);
+        let mut sum = F::zero();
+        for b in 0..DIM {
+            sum += lin_partial_likelihoods[child][b]
+                * forward_data.model_edge_data[child].log_transition_T[(b, a)];
         }
+        lin_partial_likelihoods[parent][a] = sum;
     }
 }

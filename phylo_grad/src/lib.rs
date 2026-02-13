@@ -17,8 +17,8 @@ pub use nalgebra;
 
 use nalgebra as na;
 
-pub use data_types::FloatTrait;
 pub use backward::softmax;
+pub use data_types::FloatTrait;
 
 mod backward;
 mod data_types;
@@ -69,6 +69,11 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// This enables usage of the `calculate_gradients` function.
     pub fn bind_leaf_log_p(&mut self, log_p: Vec<Vec<na::SVector<F, DIM>>>) {
         self.log_p = log_p;
+        // Go from log space to lin space
+        self.log_p.iter_mut().for_each(|x| {
+            x.iter_mut()
+                .for_each(|x| x.iter_mut().for_each(|y| *y = num_traits::Float::exp(*y)))
+        });
         // resize the log_p to the number of all nodes
         let num_nodes = self.parents.len();
         for log_p in &mut self.log_p {
@@ -118,7 +123,7 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
                 &sqrt_pi[0],
                 tree,
                 d_trans_matrix,
-                false
+                false,
             )
         } else {
             calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, false)

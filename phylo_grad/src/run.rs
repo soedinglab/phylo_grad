@@ -10,10 +10,9 @@ use nalgebra as na;
 
 /// log_p should have the leaf log_p initialized and all the other nodes set to zero
 fn forward_column<F: FloatTrait, const DIM: usize>(
-    log_p: &mut [na::SVector<F, DIM>],
+    lin_partial_likelihoods: &mut [na::SVector<F, DIM>],
     parents: &[i32],
     forward_data: &ForwardData<F, DIM>,
-    forward_data_save: &mut ForwardDataSave<F, DIM>,
 ) {
     for (child, &parent) in parents.iter().enumerate() {
         if parent == -1 {
@@ -22,19 +21,18 @@ fn forward_column<F: FloatTrait, const DIM: usize>(
         forward_node(
             child as usize,
             parent as usize,
-            log_p,
+            lin_partial_likelihoods,
             forward_data,
-            forward_data_save,
         );
     }
 }
 
 /// final likelihood given the root log_p and the prior distribution
 fn final_likelihood<F: FloatTrait, const DIM: usize>(
-    log_p_root: na::SVectorView<F, DIM>,
+    lin_pl_root: na::SVectorView<F, DIM>,
     log_p_prior: na::SVectorView<F, DIM>,
 ) -> (F, na::SVector<F, DIM>) {
-    let lse_arg = log_p_root + log_p_prior;
+    let lse_arg = lin_pl_root.map(|x| num_traits::Float::ln(x)) + log_p_prior;
     let log_likelihood_column = F::logsumexp(lse_arg.iter());
     let grad_log_p_outgoing = softmax(&lse_arg);
     (log_likelihood_column, grad_log_p_outgoing)
@@ -65,7 +63,7 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
         let parent_backward_id = num_nodes - parent_id as usize - 1;
         let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
         let distance_current = tree.distances[id];
-        let fwd_data_current = &forward_data.log_transition[id];
+        let fwd_data_current = &forward_data.model_edge_data[id];
         let grad_log_p = d_child_input_param(
             &grad_log_p_input,
             distance_current,
@@ -86,7 +84,7 @@ fn d_rate_matrix<F: FloatTrait, const DIM: usize>(
         let parent_backward_id = num_nodes - parent_id as usize - 1;
         let grad_log_p_input = backward_data[parent_backward_id].grad_log_p;
         let distance_current = tree.distances[id];
-        let fwd_data_current = &forward_data.log_transition[id];
+        let fwd_data_current = &forward_data.model_edge_data[id];
         d_child_input_param(
             &grad_log_p_input,
             distance_current,
@@ -128,7 +126,7 @@ pub fn calculate_column<F: FloatTrait, const DIM: usize>(
 
     let forward_data = forward_data_precompute_param(&param, tree.distances);
     let mut forward_data_save = ForwardDataSave::<F, DIM>::new(log_p.len());
-    forward_column(log_p, tree.parents, &forward_data, &mut forward_data_save);
+    forward_column(log_p, tree.parents, &forward_data);
     let log_p_root = log_p.last().unwrap();
 
     let log_p_prior = sqrt_pi.map(num_traits::Float::ln) * <F as FloatTrait>::from_f64(2.0);
@@ -272,7 +270,7 @@ pub fn calculate_column_parallel_single_S<F: FloatTrait, const DIM: usize>(
 
     // We need to skip the root edge, as it does not exist and it will always be the last edge
     let log_transitions_without_root =
-        &forward_data.log_transition[..forward_data.log_transition.len() - 1];
+        &forward_data.model_edge_data[..forward_data.model_edge_data.len() - 1];
 
     let d_rate_matrix = log_transitions_without_root
         .into_par_iter()
@@ -304,7 +302,7 @@ fn d_rate_matrix_per_edge<F: FloatTrait, const DIM: usize>(
     edge: usize,
     distance: F,
     param: &ParamPrecomp<F, DIM>,
-    forward: &LogTransitionForwardData<F, DIM>,
+    forward: &ModelEdgeData<F, DIM>,
 ) -> na::SMatrix<F, DIM, DIM> {
     let mut sum_d_log_trans = d_trans_matrix.iter().map(|d_trans| d_trans[edge]).sum();
 
@@ -329,7 +327,6 @@ fn cacluate_column_single_S<F: FloatTrait, const DIM: usize>(
         leaf_log_p,
         tree.parents,
         forward_data,
-        &mut forward_data_save,
     );
     let log_p = leaf_log_p;
     let log_p_root = log_p.last().unwrap();
