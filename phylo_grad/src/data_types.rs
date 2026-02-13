@@ -1,9 +1,6 @@
-use std::{iter::Sum, simd::num::SimdFloat};
-
+use std::iter::Sum;
 use logsumexp::LogSumExp;
 use nalgebra::{self as na, SMatrix, SVector};
-
-use std::simd;
 
 /// This Trait is used to abstract over `f32` and `f64` in the codebase.
 /// You can use this in trait bounds to write generic code.
@@ -23,11 +20,6 @@ where
     const MIN_SQRT_PI: Self;
     fn logsumexp<'a, I: Iterator<Item = &'a Self>>(iter: I) -> Self;
     fn from_f64(f: f64) -> Self;
-    fn scalar_exp(self) -> Self;
-    fn vec_exp<const N: usize>(x: &mut [Self; N]);
-    fn vec_logsumexp<const N: usize>(x: &[Self; N]) -> Self;
-    // Saves exp(x - max) into exp_save to avoid recomputation for the softmax in the backward pass
-    fn vec_logsumexp_save<const N: usize>(x: &[Self; N], exp_save: &mut [Self; N], exp_sum: &mut Self) -> Self;
     fn symmetric_eigen<const N: usize>(
         matrix: na::SMatrix<Self, N, N>,
     ) -> Option<(SVector<Self, N>, SMatrix<Self, N, N>)>;
@@ -42,89 +34,6 @@ impl FloatTrait for f32 {
     }
     const EPS_LOG: Self = 1e-20;
     const MIN_SQRT_PI: Self = 1e-10;
-    fn scalar_exp(self) -> Self {
-        sleef::f32::exp_u10(self)
-    }
-    fn vec_exp<const N: usize>(x: &mut [Self; N]) {
-        let blocks = N / 8;
-
-        for i in 0..blocks {
-            let a = simd::f32x8::from_slice(&x[i * 8..]);
-            let b = sleef::f32x::exp_u10(a);
-            simd::f32x8::copy_to_slice(b, &mut x[i * 8..]);
-        }
-
-        #[allow(clippy::needless_range_loop)]
-        for i in blocks * 8..N {
-            x[i] = x[i].scalar_exp();
-        }
-    }
-    fn vec_logsumexp_save<const N: usize>(x: &[Self; N], exp_save: &mut [Self; N], exp_sum: &mut Self) -> Self {
-        let blocks = N / 8;
-
-        let mut max = simd::f32x8::splat(f32::NEG_INFINITY);
-        for i in 0..blocks {
-            let a = simd::f32x8::from_slice(&x[i * 8..]);
-            max = max.simd_max(a);
-        }
-
-        if N % 8 != 0 {
-            let last_elements =
-                simd::f32x8::load_or(&x[blocks * 8..], simd::f32x8::splat(f32::NEG_INFINITY));
-            max = max.simd_max(last_elements);
-        }
-        let max = max.reduce_max();
-
-        let mut sum = simd::f32x8::splat(0.0);
-        for i in 0..blocks {
-            let a = simd::f32x8::from_slice(&x[i * 8..]);
-            let b = a - simd::f32x8::splat(max);
-            let c = sleef::f32x::exp_u10(b);
-            simd::f32x8::copy_to_slice(c, &mut exp_save[i * 8..]);
-            sum += c;
-        }
-        if N % 8 != 0 {
-            let last_elements =
-                simd::f32x8::load_or(&x[blocks * 8..], simd::f32x8::splat(f32::NEG_INFINITY));
-            let c = sleef::f32x::exp_u10(last_elements - simd::f32x8::splat(max));
-            simd::f32x8::store_select(c, &mut exp_save[blocks * 8..], std::simd::Mask::splat(true));
-            sum += c;
-        }
-        let sum = sum.reduce_sum();
-        *exp_sum = sum;
-        max + (sum).ln()
-    }
-    fn vec_logsumexp<const N: usize>(x: &[Self; N]) -> Self {
-        let blocks = N / 8;
-
-        let mut max = simd::f32x8::splat(f32::NEG_INFINITY);
-        for i in 0..blocks {
-            let a = simd::f32x8::from_slice(&x[i * 8..]);
-            max = max.simd_max(a);
-        }
-
-        if N % 8 != 0 {
-            let last_elements =
-                simd::f32x8::load_or(&x[blocks * 8..], simd::f32x8::splat(f32::NEG_INFINITY));
-            max = max.simd_max(last_elements);
-        }
-        let max = max.reduce_max();
-
-        let mut sum = simd::f32x8::splat(0.0);
-        for i in 0..blocks {
-            let a = simd::f32x8::from_slice(&x[i * 8..]);
-            let b = a - simd::f32x8::splat(max);
-            let c = sleef::f32x::exp_u10(b);
-            sum += c;
-        }
-        if N % 8 != 0 {
-            let last_elements =
-                simd::f32x8::load_or(&x[blocks * 8..], simd::f32x8::splat(f32::NEG_INFINITY));
-            sum += sleef::f32x::exp_u10(last_elements - simd::f32x8::splat(max));
-        }
-        max + (sum.reduce_sum()).ln()
-    }
-
     fn symmetric_eigen<const N: usize>(
         matrix: na::SMatrix<Self, N, N>,
     ) -> Option<(SVector<f32, N>, SMatrix<f32, N, N>)> {
@@ -164,88 +73,6 @@ impl FloatTrait for f64 {
     }
     const EPS_LOG: Self = 1e-100;
     const MIN_SQRT_PI: Self = 1e-10;
-    fn scalar_exp(self) -> Self {
-        sleef::f64::exp_u10(self)
-    }
-    fn vec_exp<const N: usize>(x: &mut [Self; N]) {
-        let blocks = N / 4;
-
-        for i in 0..blocks {
-            let a = simd::f64x4::from_slice(&x[i * 4..]);
-            let b = sleef::f64x::exp_u10(a);
-            simd::f64x4::copy_to_slice(b, &mut x[i * 4..]);
-        }
-
-        #[allow(clippy::needless_range_loop)]
-        for i in blocks * 4..N {
-            x[i] = x[i].scalar_exp();
-        }
-    }
-    fn vec_logsumexp_save<const N: usize>(x: &[Self; N], exp_save: &mut [Self; N], exp_sum: &mut Self) -> Self {
-        let blocks = N / 4;
-
-        let mut max = simd::f64x4::splat(f64::NEG_INFINITY);
-        for i in 0..blocks {
-            let a = simd::f64x4::from_slice(&x[i * 4..]);
-            max = max.simd_max(a);
-        }
-
-        if N % 4 != 0 {
-            let last_elements =
-                simd::f64x4::load_or(&x[blocks * 4..], simd::f64x4::splat(f64::NEG_INFINITY));
-            max = max.simd_max(last_elements);
-        }
-        let max = max.reduce_max();
-
-        let mut sum = simd::f64x4::splat(0.0);
-        for i in 0..blocks {
-            let a = simd::f64x4::from_slice(&x[i * 4..]);
-            let b = a - simd::f64x4::splat(max);
-            let c = sleef::f64x::exp_u10(b);
-            simd::f64x4::copy_to_slice(c, &mut exp_save[i * 4..]);
-            sum += c;
-        }
-        if N % 4 != 0 {
-            let last_elements =
-                simd::f64x4::load_or(&x[blocks * 4..], simd::f64x4::splat(f64::NEG_INFINITY));
-            let c = sleef::f64x::exp_u10(last_elements - simd::f64x4::splat(max));
-            simd::f64x4::store_select(c, &mut exp_save[blocks * 4..], std::simd::Mask::splat(true));
-            sum += c;
-        }
-        let sum = sum.reduce_sum();
-        *exp_sum = sum;
-        max + (sum).ln()
-    }
-    fn vec_logsumexp<const N: usize>(x: &[Self; N]) -> Self {
-        let blocks = N / 4;
-
-        let mut max = simd::f64x4::splat(f64::NEG_INFINITY);
-        for i in 0..blocks {
-            let a = simd::f64x4::from_slice(&x[i * 4..]);
-            max = max.simd_max(a);
-        }
-
-        if N % 4 != 0 {
-            let last_elements =
-                simd::f64x4::load_or(&x[blocks * 4..], simd::f64x4::splat(f64::NEG_INFINITY));
-            max = max.simd_max(last_elements);
-        }
-        let max = max.reduce_max();
-
-        let mut sum = simd::f64x4::splat(0.0);
-        for i in 0..blocks {
-            let a = simd::f64x4::from_slice(&x[i * 4..]);
-            let b = a - simd::f64x4::splat(max);
-            let c = sleef::f64x::exp_u10(b);
-            sum += c;
-        }
-        if N % 4 != 0 {
-            let last_elements =
-                simd::f64x4::load_or(&x[blocks * 4..], simd::f64x4::splat(f64::NEG_INFINITY));
-            sum += sleef::f64x::exp_u10(last_elements - simd::f64x4::splat(max));
-        }
-        max + (sum.reduce_sum()).ln()
-    }
     fn symmetric_eigen<const N: usize>(
         matrix: na::SMatrix<Self, N, N>,
     ) -> Option<(SVector<f64, N>, SMatrix<f64, N, N>)> {

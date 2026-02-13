@@ -379,12 +379,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "doubled"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f60f472d90e6b0aa29ba7e63aef46fa5441a4a852d36d950648b5468adfe3a3"
-
-[[package]]
 name = "duct"
 version = "0.13.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1361,7 +1355,6 @@ dependencies = [
  "nalgebra",
  "num-traits 0.2.19",
  "rayon",
- "sleef",
 ]
 
 [[package]]
@@ -1940,15 +1933,6 @@ name = "simd-adler32"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
-
-[[package]]
-name = "sleef"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fe16088049a19013d5736660a666dae8e1dbb78dd1ced530a396a7bab4ef47d"
-dependencies = [
- "doubled",
-]
 
 [[package]]
 name = "static_assertions"

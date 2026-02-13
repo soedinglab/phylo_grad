@@ -19,8 +19,6 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
 /// Data precomputed for each edge. Depends only on the Q matrix and the edge length
 #[derive(Debug)]
 pub struct ModelEdgeData<F, const DIM: usize> {
-    /// 1 / e^(t Q) (matrix exponential) and then element wise reciprical
-    pub matrix_exp_recip: na::SMatrix<F, DIM, DIM>,
     /// matrix_exp transposed
     pub transition_T: na::SMatrix<F, DIM, DIM>,
     /// exp(t * lambda_i) for the DIM many eigenvalues of Q 
@@ -137,10 +135,7 @@ fn precompute_model_edge_data<F: FloatTrait, const DIM: usize>(
 
     let transition = matrix_exp;
 
-    matrix_exp.apply(|x| *x = Float::recip(*x));
-
     ModelEdgeData {
-        matrix_exp_recip: matrix_exp,
         transition_T: transition.transpose(),
         exp_t_lambda,
     }
