@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use crate::FloatTrait;
-
 /// Represents a tree
 /// The nodes are numbered from 0 to n-1, where n is the number of nodes.
 /// We store the parent of each node, the root node has parent -1.
@@ -9,14 +7,14 @@ use crate::FloatTrait;
 /// The all the nodes have to be in topological order, i.e. the parent of a node is always after the node itself in the slice.
 /// This means the root node is always the last node in the slice.
 #[derive(Debug, Clone)]
-pub struct Tree<'a, F> {
+pub struct Tree<'a> {
     pub parents: &'a [i32],
-    pub distances: &'a [F],
+    pub distances: &'a [f64],
     pub num_leaves: usize,
 }
 
-impl<'a, F: FloatTrait> Tree<'a, F> {
-    pub fn new(parents: &'a [i32], distances: &'a [F], num_leaves: usize) -> Self {
+impl<'a> Tree<'a> {
+    pub fn new(parents: &'a [i32], distances: &'a [f64], num_leaves: usize) -> Self {
         Tree {
             parents,
             distances,
@@ -34,7 +32,7 @@ pub struct Bifurcation {
     pub parent: i32,
 }
 
-pub fn get_topological_bifurcations<F: FloatTrait>(tree: &Tree<F>) -> Vec<Bifurcation> {
+pub fn get_topological_bifurcations(tree: &Tree) -> Vec<Bifurcation> {
     let mut childs = vec![Vec::new(); tree.parents.len()];
     for (child, &parent) in tree.parents.iter().enumerate() {
         if parent >= 0 {
@@ -79,10 +77,10 @@ pub fn get_topological_bifurcations<F: FloatTrait>(tree: &Tree<F>) -> Vec<Bifurc
     bifurcations
 }
 
-pub fn topological_sort<F: FloatTrait>(
+pub fn topological_sort(
     parents: &[i32],
-    distances: &[F],
-) -> (Vec<i32>, Vec<F>, usize) {
+    distances: &[f64],
+) -> (Vec<i32>, Vec<f64>, usize) {
     // Leaves have height 0, the parents of leaves have height 1, the root will have the maximum height.
     let mut heights = vec![0; parents.len()];
 
@@ -131,7 +129,7 @@ pub fn topological_sort<F: FloatTrait>(
     let new_dist = indices
         .iter()
         .map(|&x| distances[x as usize])
-        .collect::<Vec<F>>();
+        .collect::<Vec<f64>>();
 
     (new_parents, new_dist, num_leaves)
 }

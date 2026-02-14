@@ -16,16 +16,16 @@ pub fn softmax<F: FloatTrait, const N: usize>(x: &na::SVector<F, N>) -> na::SVec
     result
 }
 
-fn X<F: FloatTrait, const DIM: usize>(
-    eigenvalues: na::SVectorView<F, DIM>,
-    t: F,
-    exp_t_lambda: &na::SVector<F, DIM>,
-) -> na::SMatrix<F, DIM, DIM> {
-    na::SMatrix::<F, DIM, DIM>::from_fn(|i, j| {
+fn X<const DIM: usize>(
+    eigenvalues: na::SVectorView<f64, DIM>,
+    t: f64,
+    exp_t_lambda: &na::SVector<f64, DIM>,
+) -> na::SMatrix<f64, DIM, DIM> {
+    na::SMatrix::<f64, DIM, DIM>::from_fn(|i, j| {
         let diff = num_traits::Float::abs(eigenvalues[i] - eigenvalues[j]);
-        if diff < FloatTrait::from_f64(1e-10) {
+        if diff < 1e-10 {
             t * exp_t_lambda[i]
-        } else if diff > FloatTrait::from_f64(1.0) {
+        } else if diff > 1.0 {
             (exp_t_lambda[i] - exp_t_lambda[j]) / (eigenvalues[i] - eigenvalues[j])
         } else {
             exp_t_lambda[j]
@@ -36,11 +36,11 @@ fn X<F: FloatTrait, const DIM: usize>(
 }
 
 /// Backward pass for expm(distance * 1/sqrt_pi @ S @ sqrt_pi)
-pub fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
-    cotangent_vector: &mut na::SMatrix<F, DIM, DIM>,
-    distance: F,
-    param: &ParamPrecomp<F, DIM>,
-    exp_t_lambda: &na::SVector<F, DIM>,
+pub fn d_expm_vjp<const DIM: usize>(
+    cotangent_vector: &mut na::SMatrix<f64, DIM, DIM>,
+    distance: f64,
+    param: &ParamPrecomp<DIM>,
+    exp_t_lambda: &na::SVector<f64, DIM>,
 ) {
     /*
     B = V_pi_invT
@@ -64,10 +64,10 @@ pub fn d_expm_vjp<F: FloatTrait, const DIM: usize>(
 }
 
 /// Backward pass for rho(W) = 1/sqrt_pi @ S @ sqrt_pi
-pub fn d_param<F: FloatTrait, const DIM: usize>(
-    cotangent_vector: na::SMatrixView<F, DIM, DIM>,
-    param: &ParamPrecomp<F, DIM>,
-) -> (na::SMatrix<F, DIM, DIM>, na::SVector<F, DIM>) {
+pub fn d_param<const DIM: usize>(
+    cotangent_vector: na::SMatrixView<f64, DIM, DIM>,
+    param: &ParamPrecomp<DIM>,
+) -> (na::SMatrix<f64, DIM, DIM>, na::SVector<f64, DIM>) {
     let sqrt_pi = param.sqrt_pi.clone_owned();
     let sqrt_pi_recip = param.sqrt_pi_recip.clone_owned();
     let symmetric = param.symmetric_matrix.clone_owned();
@@ -88,7 +88,7 @@ pub fn d_param<F: FloatTrait, const DIM: usize>(
             grad_S[i, j] + grad_S[j, i] - grad_S[i, i] * pi_j / pi_i - grad_S[j, j] * pi_i / pi_j if i < j
     */
 
-    let mut grad_s = na::SMatrix::<F, DIM, DIM>::zeros();
+    let mut grad_s = na::SMatrix::<f64, DIM, DIM>::zeros();
     for j in 0..DIM {
         for i in 0..j {
             grad_s[(i, j)] = grad_symmetric[(i, j)] + grad_symmetric[(j, i)]
@@ -105,7 +105,7 @@ pub fn d_param<F: FloatTrait, const DIM: usize>(
                -sqrt_pi[i]*sqrt_pi_recip[j] * (w_ji - w_jj))
         )
     */
-    let mut grad_sqrt_pi = na::SVector::<F, DIM>::zeros();
+    let mut grad_sqrt_pi = na::SVector::<f64, DIM>::zeros();
     for j in 0..DIM {
         for i in 0..DIM {
             if i != j {
@@ -124,20 +124,20 @@ pub fn d_param<F: FloatTrait, const DIM: usize>(
     (grad_s, grad_sqrt_pi)
 }
 
-pub fn d_log_transition_bifurcation_vjp<F: FloatTrait, const DIM: usize>(
-    cotangents: &mut[na::SVector<F, DIM>],
-    lin_pl: &[na::SVector<F, DIM>],
-    forward: &[ModelEdgeData<F, DIM>],
-    param: &ParamPrecomp<F, DIM>,
-    d_Q_output: &mut na::SMatrix<F, DIM, DIM>,
+pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
+    cotangents: &mut[na::SVector<f64, DIM>],
+    lin_pl: &[na::SVector<f64, DIM>],
+    forward: &[ModelEdgeData<f64, DIM>],
+    param: &ParamPrecomp<DIM>,
+    d_Q_output: &mut na::SMatrix<f64, DIM, DIM>,
     bifurcation: &Bifurcation,
-    distances: &[F],
+    distances: &[f64],
 ) {
     if bifurcation.middle == -1 {
         // bifurcation case
 
-        let mut d_trans_left = na::SMatrix::<F, DIM, DIM>::zeros();
-        let mut d_trans_right = na::SMatrix::<F, DIM, DIM>::zeros();
+        let mut d_trans_left = na::SMatrix::<f64, DIM, DIM>::zeros();
+        let mut d_trans_right = na::SMatrix::<f64, DIM, DIM>::zeros();
         for a in 0..DIM {
             let left_contribution = forward[bifurcation.left as usize].transition_T.column(a).dot(&lin_pl[bifurcation.left as usize]);
             let right_contribution = forward[bifurcation.right as usize].transition_T.column(a).dot(&lin_pl[bifurcation.right as usize]);
@@ -156,9 +156,9 @@ pub fn d_log_transition_bifurcation_vjp<F: FloatTrait, const DIM: usize>(
         *d_Q_output += d_trans_left;
         *d_Q_output += d_trans_right;
     } else {
-        let mut d_trans_left = na::SMatrix::<F, DIM, DIM>::zeros();
-        let mut d_trans_right = na::SMatrix::<F, DIM, DIM>::zeros();
-        let mut d_trans_middle = na::SMatrix::<F, DIM, DIM>::zeros();
+        let mut d_trans_left = na::SMatrix::<f64, DIM, DIM>::zeros();
+        let mut d_trans_right = na::SMatrix::<f64, DIM, DIM>::zeros();
+        let mut d_trans_middle = na::SMatrix::<f64, DIM, DIM>::zeros();
         let parent_cotangent = cotangents[bifurcation.parent as usize];
         for a in 0..DIM {
             let left_contribution = forward[bifurcation.left as usize].transition_T.column(a).dot(&lin_pl[bifurcation.left as usize]);

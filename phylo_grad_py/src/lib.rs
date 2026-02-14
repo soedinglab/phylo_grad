@@ -6,7 +6,6 @@ use numpy::ndarray::{Array, ArrayView1, ArrayView2, ArrayView3, Axis};
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
 };
-use phylo_grad::FloatTrait;
 
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
@@ -163,28 +162,28 @@ where
     .into_pyarray(py)
 }
 
-fn to_vec_DIM<F: FloatTrait + numpy::Element, const DIM: usize>(
-    py_array2: ArrayView2<'_, F>,
-) -> Vec<na::SVector<F, DIM>> {
+fn to_vec_DIM<const DIM: usize>(
+    py_array2: ArrayView2<'_, f64>,
+) -> Vec<na::SVector<f64, DIM>> {
     py_array2
         .axis_iter(Axis(0))
-        .map(|py_array1| na_1d_from_python::<F, DIM>(py_array1))
+        .map(|py_array1| na_1d_from_python::<f64, DIM>(py_array1))
         .collect()
 }
 
-fn vec_leaf_p_from_python<F: FloatTrait + numpy::Element, const DIM: usize>(
-    py_array3: ArrayView3<F>,
-) -> Vec<Vec<na::SVector<F, DIM>>> {
+fn vec_leaf_p_from_python<const DIM: usize>(
+    py_array3: ArrayView3<'_, f64>,
+) -> Vec<Vec<na::SVector<f64, DIM>>> {
     let ndarray = py_array3;
-    let vec: Vec<Vec<na::SVector<F, DIM>>> = ndarray
+    let vec: Vec<Vec<na::SVector<f64, DIM>>> = ndarray
         .axis_iter(Axis(0))
         .map(|nodes_axis| to_vec_DIM(nodes_axis))
         .collect();
     vec
 }
 
-fn inference_into_py<'py, F: FloatTrait + numpy::Element, const DIM: usize>(
-    result: FelsensteinResult<F, DIM>,
+fn inference_into_py<'py, const DIM: usize>(
+    result: FelsensteinResult<f64, DIM>,
     py: Python<'py>,
 ) -> Bound<'py, PyDict> {
     let log_likelihood_total_py = vec_0d_into_python(result.log_likelihood, py);
@@ -202,18 +201,18 @@ fn inference_into_py<'py, F: FloatTrait + numpy::Element, const DIM: usize>(
     result.into_py_dict(py).unwrap()
 }
 
-macro_rules! backend_both {
+macro_rules! backend {
     ($dim:expr) => {
         paste::item! {
             #[pyclass]
             #[allow(non_camel_case_types)]
-            struct [<Backend_ f64_ $dim>] {
+            struct [<Backend_f64_ $dim>] {
                 tree: FelsensteinTree<$dim>,
                 /// Only used for the `calculate_gradients_with_leaf_log_p` function.
                 log_p: Vec<Vec<na::SVector<f64, $dim>>>,
             }
 
-            impl [<Backend_ f64_ $dim>] {
+            impl [<Backend_f64_ $dim>] {
                 fn calc_grad_with_log_p(
                     &mut self,
                     s: PyReadonlyArray3<f64>,
@@ -290,12 +289,6 @@ macro_rules! backend_both {
                 }
             }
         }
-    };
-}
-
-macro_rules! backend {
-    ($dim:expr) => {
-        backend_both!($dim);
     };
 }
 

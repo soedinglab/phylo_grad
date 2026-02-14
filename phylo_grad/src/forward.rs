@@ -27,19 +27,19 @@ pub struct ModelEdgeData<F, const DIM: usize> {
 
 /// Precomputed values from the model (S and sqrt_pi)
 #[derive(Debug)]
-pub struct ParamPrecomp<F, const DIM: usize> {
+pub struct ParamPrecomp<const DIM: usize> {
     /// S
-    pub symmetric_matrix: na::SMatrix<F, DIM, DIM>,
+    pub symmetric_matrix: na::SMatrix<f64, DIM, DIM>,
     /// sqrt_pi
-    pub sqrt_pi: na::SVector<F, DIM>,
+    pub sqrt_pi: na::SVector<f64, DIM>,
     /// 1/sqrt_pi
-    pub sqrt_pi_recip: na::SVector<F, DIM>,
+    pub sqrt_pi_recip: na::SVector<f64, DIM>,
     /// Eigenvalues of S
-    pub eigenvalues: na::SVector<F, DIM>,
+    pub eigenvalues: na::SVector<f64, DIM>,
     /// A in the paper
-    pub V_pi: na::SMatrix<F, DIM, DIM>,
+    pub V_pi: na::SMatrix<f64, DIM, DIM>,
     /// A^-1 in the paper
-    pub V_pi_inv: na::SMatrix<F, DIM, DIM>,
+    pub V_pi_inv: na::SMatrix<f64, DIM, DIM>,
 }
 
 /// In-place multiplication by a diagonal matrix on the left
@@ -70,13 +70,13 @@ pub fn times_diag_assign<I, F, const N: usize>(
 
 /// Precomputes things out of S and sqrt_pi
 /// Returns None if the eigenvalues are too large or the diagonalization failed, this can happen with extreme values
-pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
-    S: na::SMatrixView<F, DIM, DIM>,
-    sqrt_pi: na::SVectorView<F, DIM>,
-) -> Option<ParamPrecomp<F, DIM>> {
+pub fn compute_param_data<const DIM: usize>(
+    S: na::SMatrixView<f64, DIM, DIM>,
+    sqrt_pi: na::SVectorView<f64, DIM>,
+) -> Option<ParamPrecomp<DIM>> {
     use num_traits::Float;
 
-    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, F::MIN_SQRT_PI)));
+    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, f64::MIN_POSITIVE)));
 
     // Read only the upper triangle of S and make it symmetric
     let mut S_symmetric = S.clone_owned();
@@ -95,11 +95,11 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
         S_symmetric[(i, i)] = -rate_matrix.row(i).sum() + rate_matrix[(i, i)];
     }
 
-    let (eigenvalues, eigenvectors) = F::symmetric_eigen(S_symmetric)?;
+    let (eigenvalues, eigenvectors) = f64::symmetric_eigen(S_symmetric)?;
 
     // Prevent numerical instability
-    let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<F>();
-    if norm_eigenvals > <F as FloatTrait>::from_f64(1e5) {
+    let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<f64>();
+    if norm_eigenvals > 1e5 {
         return None;
     }
 
@@ -119,10 +119,10 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
     })
 }
 
-fn precompute_model_edge_data<F: FloatTrait, const DIM: usize>(
-    param: &ParamPrecomp<F, DIM>,
-    distance: F,
-) -> ModelEdgeData<F, DIM> {
+fn precompute_model_edge_data<const DIM: usize>(
+    param: &ParamPrecomp<DIM>,
+    distance: f64,
+) -> ModelEdgeData<f64, DIM> {
     use num_traits::Float;
 
     let exp_t_lambda = param.eigenvalues.map(|lam| Float::exp(lam * distance));
@@ -131,22 +131,20 @@ fn precompute_model_edge_data<F: FloatTrait, const DIM: usize>(
     times_diag_assign(matrix_exp.as_view_mut(), exp_t_lambda.iter().copied());
     matrix_exp *= param.V_pi_inv;
 
-    matrix_exp.apply(|x| *x = Float::max(*x, F::MIN_SQRT_PI));
-
-    let transition = matrix_exp;
+    matrix_exp.apply(|x| *x = Float::max(*x, f64::MIN_POSITIVE));
 
     ModelEdgeData {
-        transition_T: transition.transpose(),
+        transition_T: matrix_exp.transpose(),
         exp_t_lambda,
     }
 }
 
-pub fn forward_data_precompute_param<F: FloatTrait, const DIM: usize>(
-    param: &ParamPrecomp<F, DIM>,
-    distances: &[F],
-) -> ForwardData<F, DIM> {
+pub fn forward_data_precompute_param<const DIM: usize>(
+    param: &ParamPrecomp<DIM>,
+    distances: &[f64],
+) -> ForwardData<f64, DIM> {
     let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<F, DIM>::with_capacity(num_nodes);
+    let mut forward_data = ForwardData::<f64, DIM>::with_capacity(num_nodes);
 
     forward_data.model_edge_data.extend(
         distances

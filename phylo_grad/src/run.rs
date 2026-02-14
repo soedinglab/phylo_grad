@@ -48,7 +48,7 @@ pub fn calculate_column<const DIM: usize>(
     log_p: &mut [na::SVector<f64, DIM>],
     S: na::SMatrixView<f64, DIM, DIM>,
     sqrt_pi: na::SVectorView<f64, DIM>,
-    tree: Tree<f64>,
+    tree: Tree,
     only_likelihood: bool,
 ) -> SingleSideResult<f64, DIM> {
     // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
@@ -105,7 +105,7 @@ pub fn calculate_column_parallel<
     leaf_log_p: &mut [A],
     S: &[na::SMatrix<f64, DIM, DIM>],
     sqrt_pi: &[na::SVector<f64, DIM>],
-    tree: Tree<f64>,
+    tree: Tree,
     only_likelihood: bool,
 ) -> FelsensteinResult<f64, DIM> {
     let col_results = (leaf_log_p, S, sqrt_pi)
@@ -141,9 +141,9 @@ pub fn calculate_column_parallel<
 /// For one column
 fn d_Q<const DIM: usize>(
     grad_p_root: &na::SVector<f64, DIM>,
-    tree: Tree<f64>,
+    tree: Tree,
     lin_pl: &[na::SVector<f64, DIM>],
-    param: &ParamPrecomp<f64, DIM>,
+    param: &ParamPrecomp<DIM>,
     forward: &[ModelEdgeData<f64, DIM>],
 ) -> na::SMatrix<f64, DIM, DIM> {
     let top_bifurcations = get_topological_bifurcations(&tree);

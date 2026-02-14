@@ -8,7 +8,8 @@ use nalgebra as na;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::collections::HashMap;
 
-use phylo_grad::{FelsensteinTree, FloatTrait};
+use phylo_grad::FelsensteinTree;
+use phylo_grad::FloatTrait;
 
 lazy_static! {
     static ref AMINO_MAPPING: HashMap<u8, u8> = {
@@ -42,8 +43,7 @@ lazy_static! {
 pub fn seq2pll(seq: impl Iterator<Item = u8>) -> Vec<na::SVector<f64, 20>> {
     seq.map(|c| *AMINO_MAPPING.get(&c).unwrap_or(&20))
         .map(|idx| {
-            let mut v =
-                na::SVector::<f64, 20>::from_element(0.0);
+            let mut v = na::SVector::<f64, 20>::from_element(0.0);
             if idx < 20 {
                 v[idx as usize] = 1.0;
             } else {

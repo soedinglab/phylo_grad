@@ -18,7 +18,6 @@ use nalgebra as na;
 
 pub use backward::softmax;
 pub use data_types::FloatTrait;
-
 mod backward;
 mod data_types;
 mod forward;
