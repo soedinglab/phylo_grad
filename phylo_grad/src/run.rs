@@ -83,10 +83,7 @@ pub fn calculate_column<const DIM: usize>(
 
     let (grad_s, mut grad_sqrt_pi) = d_param(d_Q.as_view(), &param);
 
-    let mut grad_sqrt_pi_likelihood: na::SMatrix<f64, DIM, 1> =
-        param.sqrt_pi_recip * 2.0;
-    grad_sqrt_pi_likelihood.component_mul_assign(&d_sqrt_pi);
-    grad_sqrt_pi += grad_sqrt_pi_likelihood;
+    grad_sqrt_pi += d_sqrt_pi;
     SingleSideResult::<f64, DIM> {
         log_likelihood,
         grad_s,
