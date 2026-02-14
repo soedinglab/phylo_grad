@@ -139,18 +139,18 @@ pub fn calculate_column_parallel<
 }
 
 /// For one column
-fn d_Q<F: FloatTrait, const DIM: usize>(
-    grad_p_root: &na::SVector<F, DIM>,
-    tree: Tree<F>,
-    lin_pl: &[na::SVector<F, DIM>],
-    param: &ParamPrecomp<F, DIM>,
-    forward: &[ModelEdgeData<F, DIM>],
-) -> na::SMatrix<F, DIM, DIM> {
+fn d_Q<const DIM: usize>(
+    grad_p_root: &na::SVector<f64, DIM>,
+    tree: Tree<f64>,
+    lin_pl: &[na::SVector<f64, DIM>],
+    param: &ParamPrecomp<f64, DIM>,
+    forward: &[ModelEdgeData<f64, DIM>],
+) -> na::SMatrix<f64, DIM, DIM> {
     let top_bifurcations = get_topological_bifurcations(&tree);
-    let mut cotangents = vec![na::SVector::<F, DIM>::zeros(); tree.parents.len()];
+    let mut cotangents = vec![na::SVector::<f64, DIM>::zeros(); tree.parents.len()];
     cotangents.last_mut().unwrap().copy_from(&grad_p_root);
 
-    let mut d_Q = na::SMatrix::<F, DIM, DIM>::zeros();
+    let mut d_Q = na::SMatrix::<f64, DIM, DIM>::zeros();
 
     for bi in top_bifurcations.into_iter().rev() {
         backward::d_log_transition_bifurcation_vjp(&mut cotangents, lin_pl, forward, param, &mut d_Q, &bi, &tree.distances);

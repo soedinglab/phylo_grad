@@ -138,16 +138,16 @@ pub fn d_log_transition_bifurcation_vjp<F: FloatTrait, const DIM: usize>(
 
         let mut d_trans_left = na::SMatrix::<F, DIM, DIM>::zeros();
         let mut d_trans_right = na::SMatrix::<F, DIM, DIM>::zeros();
-        let parent_cotangent = cotangents[bifurcation.parent as usize];
         for a in 0..DIM {
             let left_contribution = forward[bifurcation.left as usize].transition_T.column(a).dot(&lin_pl[bifurcation.left as usize]);
             let right_contribution = forward[bifurcation.right as usize].transition_T.column(a).dot(&lin_pl[bifurcation.right as usize]);
+            let parent_cotangent = cotangents[bifurcation.parent as usize][a];
             for b in 0..DIM {
-                cotangents[bifurcation.left as usize][b] += parent_cotangent[a] * right_contribution * forward[bifurcation.left as usize].transition_T[(b, a)];
-                cotangents[bifurcation.right as usize][b] += parent_cotangent[a] * left_contribution * forward[bifurcation.right as usize].transition_T[(b, a)];
+                cotangents[bifurcation.left as usize][b] += parent_cotangent * right_contribution * forward[bifurcation.left as usize].transition_T[(b, a)];
+                cotangents[bifurcation.right as usize][b] += parent_cotangent * left_contribution * forward[bifurcation.right as usize].transition_T[(b, a)];
             }
-            d_trans_left.set_row(a, &(lin_pl[bifurcation.left as usize] * parent_cotangent[a] * right_contribution).transpose());
-            d_trans_right.set_row(a, &(lin_pl[bifurcation.right as usize] * parent_cotangent[a] * left_contribution).transpose());
+            d_trans_left.set_row(a, &(lin_pl[bifurcation.left as usize] * parent_cotangent * right_contribution).transpose());
+            d_trans_right.set_row(a, &(lin_pl[bifurcation.right as usize] * parent_cotangent * left_contribution).transpose());
             
         }
 
