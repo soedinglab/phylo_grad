@@ -7,5 +7,5 @@ members = [
 ]
 
 [profile.release]
-lto = true
-debug = true
+lto = false
+debug = false
