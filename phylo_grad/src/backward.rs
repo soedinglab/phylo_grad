@@ -134,11 +134,13 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
     distances: &[f64],
     offsets: &[u32],
 ) {
+    let scaler = if offsets[bifurcation.parent as usize] == 0 {
+        1.0
+    } else {
+        f64::powi(2.0, offsets[bifurcation.parent as usize] as i32)
+    };
     if bifurcation.middle == -1 {
         // bifurcation case
-
-        let scaler = f64::powi(2.0, offsets[bifurcation.parent as usize] as i32);
-
         let mut d_trans_left = na::SMatrix::<f64, DIM, DIM>::zeros();
         let mut d_trans_right = na::SMatrix::<f64, DIM, DIM>::zeros();
         for a in 0..DIM {
@@ -163,7 +165,6 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
         let mut d_trans_right = na::SMatrix::<f64, DIM, DIM>::zeros();
         let mut d_trans_middle = na::SMatrix::<f64, DIM, DIM>::zeros();
         let parent_cotangent = cotangents[bifurcation.parent as usize];
-        let scaler = f64::powi(2.0, offsets[bifurcation.parent as usize] as i32);
         for a in 0..DIM {
             let left_contribution = forward[bifurcation.left as usize].transition_T.column(a).dot(&lin_pl[bifurcation.left as usize]);
             let right_contribution = forward[bifurcation.right as usize].transition_T.column(a).dot(&lin_pl[bifurcation.right as usize]);

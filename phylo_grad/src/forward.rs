@@ -177,10 +177,10 @@ pub fn forward_node<const DIM: usize>(
         lin_partial_likelihoods[parent][a] *= sum;
         max = f64::max(max, sum);
     }
-    if max < f64::powi(2.0, -20) {
+    if max < f64::powi(2.0, -100) {
         for a in 0..DIM {
-            lin_partial_likelihoods[parent][a] *= f64::powi(2.0, 20);
+            lin_partial_likelihoods[parent][a] *= f64::powi(2.0, 100);
         }
-        offsets[parent] += 20;
+        offsets[parent] += 100;
     }
 }
