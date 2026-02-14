@@ -7,7 +7,6 @@ pub struct ForwardData<F, const DIM: usize> {
     pub model_edge_data: Vec<ModelEdgeData<F, DIM>>,
 }
 
-
 impl<F, const DIM: usize> ForwardData<F, DIM> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -21,7 +20,7 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
 pub struct ModelEdgeData<F, const DIM: usize> {
     /// matrix_exp transposed
     pub transition_T: na::SMatrix<F, DIM, DIM>,
-    /// exp(t * lambda_i) for the DIM many eigenvalues of Q 
+    /// exp(t * lambda_i) for the DIM many eigenvalues of Q
     pub exp_t_lambda: na::SVector<F, DIM>,
 }
 
@@ -158,19 +157,30 @@ pub fn forward_data_precompute_param<const DIM: usize>(
 /// Main part of the Felsenstein in Forward
 /// log_p are the partial log likelihoods, they start with the leave nodes initialized. This function takes 2 computed log_p vectors
 /// and writes the compbined result in the parent log_p vector
-pub fn forward_node<F: FloatTrait, const DIM: usize>(
+/// Offsets are scaling factors to prevent underflow. offsets[i] = 10 means that the values of this nodes are scaled by 2**10 more than the child values.
+/// The absolut offset is obtained by adding the offsets of all the nodes below this node (including)
+pub fn forward_node<const DIM: usize>(
     child: usize,
     parent: usize,
-    lin_partial_likelihoods: &mut [na::SVector<F, DIM>],
-    forward_data: &ForwardData<F, DIM>
+    lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
+    forward_data: &ForwardData<f64, DIM>,
+    offsets: &mut [u32],
 ) {
     // In linspace log_p[parent]_a = sum_b (log_p[child](b) * transiton(rate_matrix, distance)(a,b) )
+    let mut max = 0.0;
     for a in 0..DIM {
-        let mut sum = F::zero();
+        let mut sum = 0.0;
         for b in 0..DIM {
             sum += lin_partial_likelihoods[child][b]
                 * forward_data.model_edge_data[child].transition_T[(b, a)];
         }
         lin_partial_likelihoods[parent][a] *= sum;
+        max = f64::max(max, sum);
+    }
+    if max < f64::powi(2.0, -20) {
+        for a in 0..DIM {
+            lin_partial_likelihoods[parent][a] *= f64::powi(2.0, 20);
+        }
+        offsets[parent] += 20;
     }
 }

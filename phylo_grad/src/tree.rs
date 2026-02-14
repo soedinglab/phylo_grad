@@ -77,6 +77,8 @@ pub fn get_topological_bifurcations(tree: &Tree) -> Vec<Bifurcation> {
     bifurcations
 }
 
+///
+/// Returns the new parents, new distances, number of leaves and the number of branches below
 pub fn topological_sort(
     parents: &[i32],
     distances: &[f64],
@@ -140,7 +142,8 @@ fn dfs(node: usize, childs: &[Vec<usize>], heights: &mut [u32]) -> u32 {
     }
     let mut max_height = 0;
     for &child in &childs[node] {
-        max_height = max_height.max(dfs(child, childs, heights));
+        let child_height = dfs(child, childs, heights);
+        max_height = max_height.max(child_height);
     }
     heights[node] = max_height + 1;
     max_height + 1

@@ -163,7 +163,7 @@ fn optimize_gtr_single_side(
             g[190 + i] = -grad_log_pi[i];
         }
 
-        // println!("Likelihood={}", likelihood);
+        println!("Likelihood={}", likelihood);
 
         Ok(-likelihood)
     };
