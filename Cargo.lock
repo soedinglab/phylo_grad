@@ -841,6 +841,7 @@ version = "1.0.0"
 dependencies = [
  "gosh-lbfgs",
  "lazy_static 1.5.0",
+ "logsumexp",
  "nalgebra",
  "num-traits 0.2.19",
  "phylo_grad",
@@ -1463,10 +1464,7 @@ dependencies = [
  "faer",
  "glam 0.30.10",
  "itertools 0.13.0",
- "libm",
- "logsumexp",
  "nalgebra",
- "num-traits 0.2.19",
  "rayon",
 ]
 

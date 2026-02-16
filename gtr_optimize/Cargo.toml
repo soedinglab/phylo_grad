@@ -18,3 +18,4 @@ seq_io = "0.3.4"
 nalgebra = "0.34.1"
 num-traits = {version="0.2.19", default-features=false, features = ["libm"]}
 rayon = "1.11.0"
+logsumexp = "0.1.0"

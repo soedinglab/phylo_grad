@@ -1,20 +1,7 @@
-use crate::data_types::*;
 use crate::forward::*;
 use crate::tree::Bifurcation;
 
 use nalgebra as na;
-
-/// Numerical stable softmax
-pub fn softmax<F: FloatTrait, const N: usize>(x: &na::SVector<F, N>) -> na::SVector<F, N> {
-    let x_max = x.max();
-
-    let result = x.add_scalar(-x_max);
-
-    let mut result = result.map(|x| num_traits::Float::exp(x));
-
-    result /= result.sum();
-    result
-}
 
 fn X<const DIM: usize>(
     eigenvalues: na::SVectorView<f64, DIM>,
@@ -22,14 +9,14 @@ fn X<const DIM: usize>(
     exp_t_lambda: &na::SVector<f64, DIM>,
 ) -> na::SMatrix<f64, DIM, DIM> {
     na::SMatrix::<f64, DIM, DIM>::from_fn(|i, j| {
-        let diff = num_traits::Float::abs(eigenvalues[i] - eigenvalues[j]);
+        let diff = f64::abs(eigenvalues[i] - eigenvalues[j]);
         if diff < 1e-10 {
             t * exp_t_lambda[i]
         } else if diff > 1.0 {
             (exp_t_lambda[i] - exp_t_lambda[j]) / (eigenvalues[i] - eigenvalues[j])
         } else {
             exp_t_lambda[j]
-                * (num_traits::Float::exp_m1(t * (eigenvalues[i] - eigenvalues[j]))
+                * (f64::exp_m1(t * (eigenvalues[i] - eigenvalues[j]))
                     / (eigenvalues[i] - eigenvalues[j]))
         }
     })

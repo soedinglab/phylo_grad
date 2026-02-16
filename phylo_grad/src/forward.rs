@@ -1,5 +1,3 @@
-use crate::data_types::*;
-
 use nalgebra as na;
 
 /// Forward data precomputed before the forward pass
@@ -42,12 +40,11 @@ pub struct ParamPrecomp<const DIM: usize> {
 }
 
 /// In-place multiplication by a diagonal matrix on the left
-pub fn diag_times_assign<I, F, const N: usize>(
-    mut matrix: na::SMatrixViewMut<F, N, N>,
+pub fn diag_times_assign<I, const N: usize>(
+    mut matrix: na::SMatrixViewMut<f64, N, N>,
     diagonal_entries: I,
 ) where
-    F: FloatTrait,
-    I: Iterator<Item = F>,
+    I: Iterator<Item = f64>,
 {
     for (mut row, scale) in std::iter::zip(matrix.row_iter_mut(), diagonal_entries) {
         row *= scale;
@@ -55,12 +52,11 @@ pub fn diag_times_assign<I, F, const N: usize>(
 }
 
 /// In-place multiplication by a diagonal matrix on the right
-pub fn times_diag_assign<I, F, const N: usize>(
-    mut matrix: na::SMatrixViewMut<F, N, N>,
+pub fn times_diag_assign<I, const N: usize>(
+    mut matrix: na::SMatrixViewMut<f64, N, N>,
     diagonal_entries: I,
 ) where
-    F: FloatTrait,
-    I: Iterator<Item = F>,
+    I: Iterator<Item = f64>,
 {
     for (mut col, scale) in std::iter::zip(matrix.column_iter_mut(), diagonal_entries) {
         col *= scale;
@@ -73,9 +69,8 @@ pub fn compute_param_data<const DIM: usize>(
     S: na::SMatrixView<f64, DIM, DIM>,
     sqrt_pi: na::SVectorView<f64, DIM>,
 ) -> Option<ParamPrecomp<DIM>> {
-    use num_traits::Float;
 
-    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, f64::MIN_POSITIVE)));
+    let sqrt_pi_recip = sqrt_pi.map(|x| f64::recip(f64::max(x, f64::MIN_POSITIVE)));
 
     // Read only the upper triangle of S and make it symmetric
     let mut S_symmetric = S.clone_owned();
@@ -94,7 +89,7 @@ pub fn compute_param_data<const DIM: usize>(
         S_symmetric[(i, i)] = -rate_matrix.row(i).sum() + rate_matrix[(i, i)];
     }
 
-    let (eigenvalues, eigenvectors) = f64::symmetric_eigen(S_symmetric)?;
+    let (eigenvalues, eigenvectors) = crate::numerics::symmetric_eigen(S_symmetric)?;
 
     // Prevent numerical instability
     let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<f64>();
@@ -122,16 +117,13 @@ fn precompute_model_edge_data<const DIM: usize>(
     param: &ParamPrecomp<DIM>,
     distance: f64,
 ) -> ModelEdgeData<f64, DIM> {
-    use num_traits::Float;
-
-    let exp_t_lambda = param.eigenvalues.map(|lam| Float::exp(lam * distance));
+    let exp_t_lambda = param.eigenvalues.map(|lam| f64::exp(lam * distance));
 
     let mut matrix_exp = param.V_pi.clone_owned();
     times_diag_assign(matrix_exp.as_view_mut(), exp_t_lambda.iter().copied());
     matrix_exp *= param.V_pi_inv;
 
-    matrix_exp.apply(|x| *x = Float::max(*x, f64::MIN_POSITIVE));
-
+    matrix_exp.apply(|x| *x = f64::max(*x, f64::MIN_POSITIVE));
     ModelEdgeData {
         transition_T: matrix_exp.transpose(),
         exp_t_lambda,
