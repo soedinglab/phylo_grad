@@ -1,3 +1,5 @@
+use std::os::unix::thread;
+
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::backward::{self, *};
@@ -11,7 +13,7 @@ fn forward_column<const DIM: usize>(
     lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
     parents: &[i32],
     offsets: &mut [u32],
-    forward_data: &ForwardData<f64, DIM>,
+    forward_data: &ForwardData<DIM>,
 ) {
     for (child, &parent) in parents.iter().enumerate() {
         if parent == -1 {
@@ -52,7 +54,7 @@ pub struct SingleSideResult<F, const DIM: usize> {
 }
 
 pub fn calculate_column<const DIM: usize>(
-    log_p: &mut [na::SVector<f64, DIM>],
+    pl: &mut [na::SVector<f64, DIM>],
     S: na::SMatrixView<f64, DIM, DIM>,
     sqrt_pi: na::SVectorView<f64, DIM>,
     tree: Tree,
@@ -72,8 +74,8 @@ pub fn calculate_column<const DIM: usize>(
 
     let forward_data = forward_data_precompute_param(&param, tree.distances);
     let mut offsets = vec![0; tree.parents.len()];
-    forward_column(log_p, tree.parents, &mut offsets, &forward_data);
-    let lin_pl_root = log_p.last().unwrap();
+    forward_column(pl, tree.parents, &mut offsets, &forward_data);
+    let lin_pl_root = pl.last().unwrap();
 
     let root_offset : u32= offsets.iter().sum();
 
@@ -94,7 +96,7 @@ pub fn calculate_column<const DIM: usize>(
     let d_Q = d_Q(
         &d_lin_pl_root,
         tree,
-        log_p,
+        pl,
         &param,
         &forward_data.model_edge_data,
         &offsets,
@@ -111,10 +113,10 @@ pub fn calculate_column<const DIM: usize>(
 }
 
 #[derive(Debug)]
-pub struct FelsensteinResult<F, const DIM: usize> {
-    pub log_likelihood: Vec<F>,
-    pub grad_s: Vec<na::SMatrix<F, DIM, DIM>>,
-    pub grad_sqrt_pi: Vec<na::SVector<F, DIM>>,
+pub struct FelsensteinResult<const DIM: usize> {
+    pub log_likelihood: Vec<f64>,
+    pub grad_s: Vec<na::SMatrix<f64, DIM, DIM>>,
+    pub grad_sqrt_pi: Vec<na::SVector<f64, DIM>>,
 }
 
 pub fn calculate_column_parallel<const DIM: usize, A: AsMut<[na::SVector<f64, DIM>]> + Send>(
@@ -123,7 +125,7 @@ pub fn calculate_column_parallel<const DIM: usize, A: AsMut<[na::SVector<f64, DI
     sqrt_pi: &[na::SVector<f64, DIM>],
     tree: Tree,
     only_likelihood: bool,
-) -> FelsensteinResult<f64, DIM> {
+) -> FelsensteinResult<DIM> {
     let col_results = (leaf_log_p, S, sqrt_pi)
         .into_par_iter()
         .map(|(leaf_log_p, S, sqrt_pi)| {
@@ -160,7 +162,7 @@ fn d_Q<const DIM: usize>(
     tree: Tree,
     lin_pl: &[na::SVector<f64, DIM>],
     param: &ParamPrecomp<DIM>,
-    forward: &[ModelEdgeData<f64, DIM>],
+    forward: &[ModelEdgeData<DIM>],
     offsets: &[u32]
 ) -> na::SMatrix<f64, DIM, DIM> {
     let top_bifurcations = get_topological_bifurcations(&tree);
@@ -179,8 +181,100 @@ fn d_Q<const DIM: usize>(
             &bi,
             &tree.distances,
             offsets,
+            None
         );
     }
 
     param.V_pi_inv.tr_mul(&d_Q) * param.V_pi.transpose()
+}
+
+struct TLS<const DIM: usize> {
+    offsets: Vec<u32>,
+    d_trans : Vec<na::SMatrix<f64, DIM, DIM>>,
+    cotangents: Vec<na::SVector<f64, DIM>>,
+}
+
+impl<const DIM: usize> TLS<DIM> {
+    fn new(num_nodes: usize) -> Self {
+        TLS {
+            offsets: vec![0; num_nodes],
+            d_trans: vec![na::SMatrix::<f64, DIM, DIM>::zeros(); num_nodes],
+            cotangents: vec![na::SVector::<f64, DIM>::zeros(); num_nodes],
+        }
+    }
+}
+
+thread_local! {
+    static TLS_DATA: std::cell::RefCell<Option<TLS<DIM>>> = std::cell::RefCell::new(None);
+}
+
+fn cacluate_column_single_S<const DIM: usize>(
+    pl: &mut [na::SVector<f64, DIM>],
+    param: &ParamPrecomp<DIM>,
+    forward_data: &ForwardData<DIM>,
+    tree: Tree,
+    only_likelihood: bool,
+) -> (f64, na::SVector<f64, DIM>) {
+    forward_column(pl, tree.parents, offsets, forward_data);
+
+    let lin_pl_root = pl.last().unwrap();
+
+    let root_offset : u32= offsets.iter().sum();
+
+    let (log_likelihood, d_lin_pl_root, d_sqrt_pi) = final_likelihood(
+        lin_pl_root.as_view(),
+        param.sqrt_pi.as_view(),
+        root_offset,
+    );
+
+    if only_likelihood {
+        return (log_likelihood, na::SVector::<f64, DIM>::zeros());
+    }
+
+    
+    let top_bifurcations = get_topological_bifurcations(&tree);
+    let mut cotangents = vec![na::SVector::<f64, DIM>::zeros(); tree.parents.len()];
+    cotangents.last_mut().unwrap().copy_from(&d_lin_pl_root);
+
+    let mut d_Q = na::SMatrix::<f64, DIM, DIM>::zeros();
+
+    for bi in top_bifurcations.into_iter().rev() {
+        backward::d_log_transition_bifurcation_vjp(
+            &mut cotangents,
+            pl,
+            &forward_data.model_edge_data,
+            param,
+            &mut d_Q,
+            &bi,
+            &tree.distances,
+            offsets,
+            None
+        );
+    }
+
+    todo!()
+}
+
+pub fn calculate_columns_single_S<const DIM: usize>(
+    pl: &mut [Vec<na::SVector<f64, DIM>>],
+    S: na::SMatrixView<f64, DIM, DIM>,
+    sqrt_pi: na::SVectorView<f64, DIM>,
+    tree: Tree,
+    only_likelihood: bool,
+) -> FelsensteinResult<DIM> {
+    // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
+    let param = match compute_param_data(S, sqrt_pi) {
+        Some(param) => param,
+        None => {
+            return FelsensteinResult::<DIM> {
+                log_likelihood: vec![f64::NEG_INFINITY; pl.len()],
+                grad_s: vec![na::SMatrix::<f64, DIM, DIM>::zeros(); pl.len()],
+                grad_sqrt_pi: vec![na::SVector::<f64, DIM>::zeros(); pl.len()],
+            };
+        }
+    };
+
+    let forward_data = forward_data_precompute_param(&param, tree.distances);
+    let mut offsets = vec![0; tree.parents.len()];
+    todo!();
 }

@@ -112,14 +112,15 @@ pub fn d_param<const DIM: usize>(
 }
 
 pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
-    cotangents: &mut[na::SVector<f64, DIM>],
+    cotangents: &mut [na::SVector<f64, DIM>],
     lin_pl: &[na::SVector<f64, DIM>],
-    forward: &[ModelEdgeData<f64, DIM>],
+    forward: &[ModelEdgeData<DIM>],
     param: &ParamPrecomp<DIM>,
     d_Q_output: &mut na::SMatrix<f64, DIM, DIM>,
     bifurcation: &Bifurcation,
     distances: &[f64],
     offsets: &[u32],
+    d_trans: Option<&mut [na::SMatrix<f64, DIM, DIM>]>,
 ) {
     let scaler = if offsets[bifurcation.parent as usize] == 0 {
         1.0
@@ -131,49 +132,145 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
         let mut d_trans_left = na::SMatrix::<f64, DIM, DIM>::zeros();
         let mut d_trans_right = na::SMatrix::<f64, DIM, DIM>::zeros();
         for a in 0..DIM {
-            let left_contribution = forward[bifurcation.left as usize].transition_T.column(a).dot(&lin_pl[bifurcation.left as usize]);
-            let right_contribution = forward[bifurcation.right as usize].transition_T.column(a).dot(&lin_pl[bifurcation.right as usize]);
+            let left_contribution = forward[bifurcation.left as usize]
+                .transition_T
+                .column(a)
+                .dot(&lin_pl[bifurcation.left as usize]);
+            let right_contribution = forward[bifurcation.right as usize]
+                .transition_T
+                .column(a)
+                .dot(&lin_pl[bifurcation.right as usize]);
             let parent_cotangent = cotangents[bifurcation.parent as usize][a];
             for b in 0..DIM {
-                cotangents[bifurcation.left as usize][b] += parent_cotangent * right_contribution * forward[bifurcation.left as usize].transition_T[(b, a)] * scaler;
-                cotangents[bifurcation.right as usize][b] += parent_cotangent * left_contribution * forward[bifurcation.right as usize].transition_T[(b, a)] * scaler;
+                cotangents[bifurcation.left as usize][b] += parent_cotangent
+                    * right_contribution
+                    * forward[bifurcation.left as usize].transition_T[(b, a)]
+                    * scaler;
+                cotangents[bifurcation.right as usize][b] += parent_cotangent
+                    * left_contribution
+                    * forward[bifurcation.right as usize].transition_T[(b, a)]
+                    * scaler;
             }
-            d_trans_left.set_row(a, &(lin_pl[bifurcation.left as usize] * scaler * parent_cotangent * right_contribution).transpose());
-            d_trans_right.set_row(a, &(lin_pl[bifurcation.right as usize] * scaler * parent_cotangent * left_contribution).transpose());
-            
+            d_trans_left.set_row(
+                a,
+                &(lin_pl[bifurcation.left as usize]
+                    * scaler
+                    * parent_cotangent
+                    * right_contribution)
+                    .transpose(),
+            );
+            d_trans_right.set_row(
+                a,
+                &(lin_pl[bifurcation.right as usize]
+                    * scaler
+                    * parent_cotangent
+                    * left_contribution)
+                    .transpose(),
+            );
         }
 
-        d_expm_vjp(&mut d_trans_left, distances[bifurcation.left as usize], param, &forward[bifurcation.left as usize].exp_t_lambda); 
-        d_expm_vjp(&mut d_trans_right, distances[bifurcation.right as usize], param, &forward[bifurcation.right as usize].exp_t_lambda);
-        *d_Q_output += d_trans_left;
-        *d_Q_output += d_trans_right;
+        if let Some(d_trans) = d_trans {
+            d_trans[bifurcation.left as usize] += d_trans_left;
+            d_trans[bifurcation.right as usize] += d_trans_right;
+        } else {
+            d_expm_vjp(
+                &mut d_trans_left,
+                distances[bifurcation.left as usize],
+                param,
+                &forward[bifurcation.left as usize].exp_t_lambda,
+            );
+            d_expm_vjp(
+                &mut d_trans_right,
+                distances[bifurcation.right as usize],
+                param,
+                &forward[bifurcation.right as usize].exp_t_lambda,
+            );
+            *d_Q_output += d_trans_left;
+            *d_Q_output += d_trans_right;
+        }
     } else {
         let mut d_trans_left = na::SMatrix::<f64, DIM, DIM>::zeros();
         let mut d_trans_right = na::SMatrix::<f64, DIM, DIM>::zeros();
         let mut d_trans_middle = na::SMatrix::<f64, DIM, DIM>::zeros();
         let parent_cotangent = cotangents[bifurcation.parent as usize];
         for a in 0..DIM {
-            let left_contribution = forward[bifurcation.left as usize].transition_T.column(a).dot(&lin_pl[bifurcation.left as usize]);
-            let right_contribution = forward[bifurcation.right as usize].transition_T.column(a).dot(&lin_pl[bifurcation.right as usize]);
-            let middle_contribution = forward[bifurcation.middle as usize].transition_T.column(a).dot(&lin_pl[bifurcation.middle as usize]);
+            let left_contribution = forward[bifurcation.left as usize]
+                .transition_T
+                .column(a)
+                .dot(&lin_pl[bifurcation.left as usize]);
+            let right_contribution = forward[bifurcation.right as usize]
+                .transition_T
+                .column(a)
+                .dot(&lin_pl[bifurcation.right as usize]);
+            let middle_contribution = forward[bifurcation.middle as usize]
+                .transition_T
+                .column(a)
+                .dot(&lin_pl[bifurcation.middle as usize]);
             for b in 0..DIM {
-                cotangents[bifurcation.left as usize][b] += (right_contribution * middle_contribution * parent_cotangent[a]) * forward[bifurcation.left as usize].transition_T[(b, a)] * scaler;
-                cotangents[bifurcation.right as usize][b] += (left_contribution * middle_contribution * parent_cotangent[a]) * forward[bifurcation.right as usize].transition_T[(b, a)] * scaler;
-                cotangents[bifurcation.middle as usize][b] += (left_contribution * right_contribution * parent_cotangent[a]) * forward[bifurcation.middle as usize].transition_T[(b, a)] * scaler;
+                cotangents[bifurcation.left as usize][b] +=
+                    (right_contribution * middle_contribution * parent_cotangent[a])
+                        * forward[bifurcation.left as usize].transition_T[(b, a)]
+                        * scaler;
+                cotangents[bifurcation.right as usize][b] +=
+                    (left_contribution * middle_contribution * parent_cotangent[a])
+                        * forward[bifurcation.right as usize].transition_T[(b, a)]
+                        * scaler;
+                cotangents[bifurcation.middle as usize][b] +=
+                    (left_contribution * right_contribution * parent_cotangent[a])
+                        * forward[bifurcation.middle as usize].transition_T[(b, a)]
+                        * scaler;
             }
-            d_trans_left.set_row(a, &(lin_pl[bifurcation.left as usize] * scaler * parent_cotangent[a] * (right_contribution * middle_contribution)).transpose());
-            d_trans_right.set_row(a, &(lin_pl[bifurcation.right as usize] * scaler * parent_cotangent[a] * (left_contribution * middle_contribution)).transpose());
-            d_trans_middle.set_row(a, &(lin_pl[bifurcation.middle as usize] * scaler * parent_cotangent[a] * (left_contribution * right_contribution)).transpose());
+            d_trans_left.set_row(
+                a,
+                &(lin_pl[bifurcation.left as usize]
+                    * scaler
+                    * parent_cotangent[a]
+                    * (right_contribution * middle_contribution))
+                    .transpose(),
+            );
+            d_trans_right.set_row(
+                a,
+                &(lin_pl[bifurcation.right as usize]
+                    * scaler
+                    * parent_cotangent[a]
+                    * (left_contribution * middle_contribution))
+                    .transpose(),
+            );
+            d_trans_middle.set_row(
+                a,
+                &(lin_pl[bifurcation.middle as usize]
+                    * scaler
+                    * parent_cotangent[a]
+                    * (left_contribution * right_contribution))
+                    .transpose(),
+            );
         }
-        d_expm_vjp(&mut d_trans_left, distances[bifurcation.left as usize], param, &forward[bifurcation.left as usize].exp_t_lambda); 
-        d_expm_vjp(&mut d_trans_right, distances[bifurcation.right as usize], param, &forward[bifurcation.right as usize].exp_t_lambda);
-        d_expm_vjp(&mut d_trans_middle, distances[bifurcation.middle as usize], param, &forward[bifurcation.middle as usize].exp_t_lambda);
-        *d_Q_output += d_trans_left;
-        *d_Q_output += d_trans_right;
-        *d_Q_output += d_trans_middle;
+        if let Some(d_trans) = d_trans {
+            d_trans[bifurcation.left as usize] += d_trans_left;
+            d_trans[bifurcation.right as usize] += d_trans_right;
+            d_trans[bifurcation.middle as usize] += d_trans_middle;
+        } else {
+            d_expm_vjp(
+                &mut d_trans_left,
+                distances[bifurcation.left as usize],
+                param,
+                &forward[bifurcation.left as usize].exp_t_lambda,
+            );
+            d_expm_vjp(
+                &mut d_trans_right,
+                distances[bifurcation.right as usize],
+                param,
+                &forward[bifurcation.right as usize].exp_t_lambda,
+            );
+            d_expm_vjp(
+                &mut d_trans_middle,
+                distances[bifurcation.middle as usize],
+                param,
+                &forward[bifurcation.middle as usize].exp_t_lambda,
+            );
+            *d_Q_output += d_trans_left;
+            *d_Q_output += d_trans_right;
+            *d_Q_output += d_trans_middle;
+        }
     };
-
-
-   
-    
 }

@@ -1,11 +1,11 @@
 use nalgebra as na;
 
 /// Forward data precomputed before the forward pass
-pub struct ForwardData<F, const DIM: usize> {
-    pub model_edge_data: Vec<ModelEdgeData<F, DIM>>,
+pub struct ForwardData<const DIM: usize> {
+    pub model_edge_data: Vec<ModelEdgeData<DIM>>,
 }
 
-impl<F, const DIM: usize> ForwardData<F, DIM> {
+impl<const DIM: usize> ForwardData<DIM> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             model_edge_data: Vec::with_capacity(capacity),
@@ -15,11 +15,11 @@ impl<F, const DIM: usize> ForwardData<F, DIM> {
 
 /// Data precomputed for each edge. Depends only on the Q matrix and the edge length
 #[derive(Debug)]
-pub struct ModelEdgeData<F, const DIM: usize> {
+pub struct ModelEdgeData<const DIM: usize> {
     /// matrix_exp transposed
-    pub transition_T: na::SMatrix<F, DIM, DIM>,
+    pub transition_T: na::SMatrix<f64, DIM, DIM>,
     /// exp(t * lambda_i) for the DIM many eigenvalues of Q
-    pub exp_t_lambda: na::SVector<F, DIM>,
+    pub exp_t_lambda: na::SVector<f64, DIM>,
 }
 
 /// Precomputed values from the model (S and sqrt_pi)
@@ -116,7 +116,7 @@ pub fn compute_param_data<const DIM: usize>(
 fn precompute_model_edge_data<const DIM: usize>(
     param: &ParamPrecomp<DIM>,
     distance: f64,
-) -> ModelEdgeData<f64, DIM> {
+) -> ModelEdgeData<DIM> {
     let exp_t_lambda = param.eigenvalues.map(|lam| f64::exp(lam * distance));
 
     let mut matrix_exp = param.V_pi.clone_owned();
@@ -133,9 +133,9 @@ fn precompute_model_edge_data<const DIM: usize>(
 pub fn forward_data_precompute_param<const DIM: usize>(
     param: &ParamPrecomp<DIM>,
     distances: &[f64],
-) -> ForwardData<f64, DIM> {
+) -> ForwardData<DIM> {
     let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<f64, DIM>::with_capacity(num_nodes);
+    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
 
     forward_data.model_edge_data.extend(
         distances
@@ -155,7 +155,7 @@ pub fn forward_node<const DIM: usize>(
     child: usize,
     parent: usize,
     lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
-    forward_data: &ForwardData<f64, DIM>,
+    forward_data: &ForwardData<DIM>,
     offsets: &mut [u32],
 ) {
     // In linspace log_p[parent]_a = sum_b (log_p[child](b) * transiton(rate_matrix, distance)(a,b) )

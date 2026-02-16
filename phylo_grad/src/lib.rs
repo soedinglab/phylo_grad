@@ -78,6 +78,10 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         self.num_leaves
     }
 
+    pub fn num_sites(&self) -> usize {
+        self.partial_likelihoods.len()
+    }
+
     /// `s` and `sqrt_pi` have as first dimension the side id in the alignment. `s` gives the state transition matrix for each side, `sqrt_pi` gives the square root of the stationary distribution for each side.
     /// See the paper for more details. Especially the `Time symmetric parameterization` section.
     ///
@@ -94,7 +98,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         &mut self,
         s: &[na::SMatrix<f64, DIM, DIM>],
         sqrt_pi: &[na::SVector<f64, DIM>],
-    ) -> FelsensteinResult<f64, DIM> {
+    ) -> FelsensteinResult<DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
         // One out internal nodes in partial_likelihoods
         for pl in &mut self.partial_likelihoods {
@@ -141,7 +145,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         s: &[na::SMatrix<f64, DIM, DIM>],
         sqrt_pi: &[na::SVector<f64, DIM>],
         partial_likelihood: &mut [&mut [na::SVector<f64, DIM>]],
-    ) -> FelsensteinResult<f64, DIM> {
+    ) -> FelsensteinResult<DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
         calculate_column_parallel(partial_likelihood, s, sqrt_pi, tree, false)
     }
