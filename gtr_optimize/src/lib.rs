@@ -195,7 +195,7 @@ fn optimize_gtr_single_side(
     let optimizer = gosh_lbfgs::lbfgs()
         .with_max_iterations(0)
         .minimize(&mut init, evaluate, |prgr| {
-            // println!("Iteration {}: {}", prgr.niter, prgr.fx);
+            println!("Iteration {}: {}", prgr.niter, prgr.fx);
             if (last_loss - prgr.fx).abs() < 1e-6 * prgr.fx && prgr.niter > 10 {
                 return true;
             }

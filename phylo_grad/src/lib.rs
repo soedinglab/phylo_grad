@@ -27,6 +27,8 @@ pub use run::SingleSideResult;
 
 use crate::run::*;
 
+const MIN_SQRT_PI: f64 = 1e-10;
+
 /// Represents a tree topology with branch lengths
 /// This struct contains the main functionality of the library.
 ///
@@ -108,7 +110,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            todo!();
+            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, false)
         } else {
             calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, false)
         };
@@ -130,7 +132,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            todo!();
+            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, true)
         } else {
             calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, true)
         };
@@ -166,6 +168,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         partial_likelihood[self.num_leaves..].iter_mut().for_each(|p| {
             *p = na::SVector::<f64, DIM>::from_element(1.0);
         });
+        let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
         calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, false)
     }
 
@@ -181,6 +184,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         partial_likelihood[self.num_leaves..].iter_mut().for_each(|p| {
             *p = na::SVector::<f64, DIM>::from_element(1.0);
         });
+        let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
         let result = calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, true);
         result.log_likelihood
     }
