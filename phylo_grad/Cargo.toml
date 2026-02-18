@@ -1,20 +1,17 @@
 [package]
 name = "phylo_grad"
-version = "1.1.0"
-edition = "2021"
+version = "2.0.0"
+edition = "2024"
 authors = ["Benjamin Lieser <benjamin.lieser@mpinat.mpg.de>", "Jora Belousov <jorabelousov@gmail.com>"]
 description = "Fast gradient calculation of the Felsenstein algorithm with respect to the rate matrix"
 repository = "https://github.com/soedinglab/phylo_grad"
 license = "MIT OR Apache-2.0"
 keywords = ["math", "felsenstein", "machine-learning", "bioinformatics"]
 categories = ["mathematics", "science::bioinformatics"]
+rust-version = "1.85"
 
 [dependencies]
-logsumexp = "0.1.0"
-nalgebra = "0.33.2"
-num-traits = {version="0.2.19", default-features=false, features = ["libm"]}
+nalgebra = {version ="0.34.1", features = []}
+glam = {version="0.30.10", features = ["fast-math"]}
 rayon = "1.10.0"
-itertools = "0.13.0"
-libm = "0.2.10"
-sleef = "0.3.2"
 faer = {version="0.23.2", default-features=false}

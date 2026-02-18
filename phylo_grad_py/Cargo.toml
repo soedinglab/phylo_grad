@@ -1,13 +1,14 @@
 [package]
 name = "phylo_grad_py"
-version = "1.1.0"
-edition = "2021"
+version = "2.0.0"
+edition = "2024"
 authors = ["Benjamin Lieser <benjamin.lieser@mpinat.mpg.de>", "Jora Belousov <jorabelousov@gmail.com>"]
 description = "Python bindings for phylo_grad"
 repository = "https://github.com/soedinglab/phylo_grad"
 license = "MIT OR Apache-2.0"
 keywords = ["math", "felsenstein", "machine-learning", "bioinformatics"]
 categories = ["mathematics", "science::bioinformatics"]
+rust-version = "1.85"
 
 [lib]
 name = "_phylo_grad"
@@ -17,5 +18,5 @@ crate-type = ["cdylib"]
 phylo_grad = {path = "../phylo_grad"}
 numpy = { version = "0.27.1"}
 pyo3 = { version = "0.27.2", features = ["extension-module"] }
-nalgebra = "0.33.2"
+nalgebra = "0.34.1"
 paste = "=0.1.2"

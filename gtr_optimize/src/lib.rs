@@ -4,11 +4,12 @@
 //! It has a global matrix mode a per column matrix mode, caled "local" here.
 
 use lazy_static::lazy_static;
+use logsumexp::LogSumExp;
 use nalgebra as na;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::collections::HashMap;
 
-use phylo_grad::{FelsensteinTree, FloatTrait};
+use phylo_grad::FelsensteinTree;
 
 lazy_static! {
     static ref AMINO_MAPPING: HashMap<u8, u8> = {
@@ -39,16 +40,15 @@ lazy_static! {
     };
 }
 
-pub fn seq2pll<F: FloatTrait>(seq: impl Iterator<Item = u8>) -> Vec<na::SVector<F, 20>> {
+pub fn seq2pll(seq: impl Iterator<Item = u8>) -> Vec<na::SVector<f64, 20>> {
     seq.map(|c| *AMINO_MAPPING.get(&c).unwrap_or(&20))
         .map(|idx| {
-            let mut v =
-                na::SVector::<F, 20>::from_element(<F as FloatTrait>::from_f64(f64::NEG_INFINITY));
+            let mut v = na::SVector::<f64, 20>::from_element(0.0);
             if idx < 20 {
-                v[idx as usize] = F::zero();
+                v[idx as usize] = 1.0;
             } else {
                 for i in 0..20 {
-                    v[i] = F::zero();
+                    v[i] = 1.0;
                 }
             }
             v
@@ -60,7 +60,7 @@ pub fn process_newick_alignment(
     newick: &str,
     sequences: &HashMap<String, Vec<u8>>,
 ) -> (
-    phylo_grad::FelsensteinTree<f64, 20>,
+    phylo_grad::FelsensteinTree<20>,
     Vec<Vec<na::SVector<f64, 20>>>,
 ) {
     let tree = phylotree::tree::Tree::from_newick(newick).unwrap();
@@ -112,11 +112,22 @@ pub fn process_newick_alignment(
                 column_seq[new_idx as usize] = seq[i];
             }
         }
-        leaf_pll.push(seq2pll::<f64>(column_seq.into_iter()));
+        leaf_pll.push(seq2pll(column_seq.into_iter()));
     }
 
-    let felsenstein = FelsensteinTree::<f64, 20>::new(&parents, &distances);
+    let felsenstein = FelsensteinTree::<20>::new(&parents, &distances);
     (felsenstein, leaf_pll)
+}
+/// Numerical stable softmax
+pub fn softmax<const N: usize>(x: &na::SVector<f64, N>) -> na::SVector<f64, N> {
+    let x_max = x.max();
+
+    let result = x.add_scalar(-x_max);
+
+    let mut result = result.map(|x| num_traits::Float::exp(x));
+
+    result /= result.sum();
+    result
 }
 
 pub fn optimize_gtr_local(newick: &str, sequences: &HashMap<String, Vec<u8>>) -> f64 {
@@ -135,7 +146,7 @@ pub fn optimize_gtr_local(newick: &str, sequences: &HashMap<String, Vec<u8>>) ->
 }
 
 fn optimize_gtr_single_side(
-    felsenstein: &FelsensteinTree<f64, 20>,
+    felsenstein: &FelsensteinTree<20>,
     log_pi_init: &[f64],
     log_p: &mut [na::SVector<f64, 20>],
 ) -> f64 {
@@ -198,7 +209,7 @@ fn optimize_gtr_single_side(
 
 pub fn optimize_gtr_global(newick: &str, sequences: &HashMap<String, Vec<u8>>) -> f64 {
     let (mut felsenstein, leaf_pll) = process_newick_alignment(newick, sequences);
-    felsenstein.bind_leaf_log_p(leaf_pll);
+    felsenstein.bind_leaf_pl(leaf_pll);
 
     let evaluate = |x: &[f64], g: &mut [f64]| {
         let log_R = &x[..190];
@@ -282,7 +293,7 @@ fn rate_matrix_backward(
     let d_logM = -d_logS.sum();
 
     let piRpi_max = data.piRpi.max();
-    let piRpi_exp: na::SMatrix<f64, 20, 20> = data.piRpi.map(|x| (x - piRpi_max).scalar_exp());
+    let piRpi_exp: na::SMatrix<f64, 20, 20> = data.piRpi.map(|x| (x - piRpi_max).exp());
     let piRpi_sum = piRpi_exp.sum();
 
     let d_piRpi = piRpi_exp.map(|x| x * d_logM / piRpi_sum);
@@ -304,7 +315,7 @@ fn rate_matrix_backward(
     let d_log_pi =
         d_log_pi + sqrt_pi_cotangent.component_mul(&data.log_pi.map(|x| 0.5 * (0.5 * x).exp()));
 
-    let softmax_log_pi_unorm = phylo_grad::softmax(&data.log_pi_unormalized);
+    let softmax_log_pi_unorm = softmax(&data.log_pi_unormalized);
 
     for i in 0..20 {
         grad_log_pi[i] = d_log_pi[i] - softmax_log_pi_unorm[i] * d_log_pi.sum();
@@ -316,7 +327,7 @@ fn rate_matrix_backward(
 fn rate_matrix(log_R: &[f64], log_pi_unormalized: &[f64]) -> RateMatrixData {
     let log_pi_unormalized: na::SVector<f64, 20> =
         na::SVector::<f64, 20>::from_iterator(log_pi_unormalized.iter().copied());
-    let log_pi = log_pi_unormalized.add_scalar(-FloatTrait::logsumexp(log_pi_unormalized.iter()));
+    let log_pi = log_pi_unormalized.add_scalar(-log_pi_unormalized.iter().ln_sum_exp());
 
     let log_R_mat = {
         let mut mat = na::SMatrix::<f64, 20, 20>::zeros();
@@ -345,7 +356,7 @@ fn rate_matrix(log_R: &[f64], log_pi_unormalized: &[f64]) -> RateMatrixData {
         mat
     };
 
-    let logM = FloatTrait::logsumexp(piRpi.iter());
+    let logM = piRpi.iter().ln_sum_exp();
 
     let logS = {
         let mut mat = na::SMatrix::<f64, 20, 20>::zeros();
@@ -364,7 +375,7 @@ fn rate_matrix(log_R: &[f64], log_pi_unormalized: &[f64]) -> RateMatrixData {
     let sqrt_pi = {
         let mut v = na::SVector::<f64, 20>::zeros();
         for i in 0..20 {
-            v[i] = (log_pi[i] * 0.5).scalar_exp();
+            v[i] = (log_pi[i] * 0.5).exp();
         }
         v
     };
@@ -373,7 +384,7 @@ fn rate_matrix(log_R: &[f64], log_pi_unormalized: &[f64]) -> RateMatrixData {
         let mut mat = na::SMatrix::<f64, 20, 20>::zeros();
         for i in 0..20 {
             for j in 0..20 {
-                mat[(i, j)] = logS[(i, j)].scalar_exp();
+                mat[(i, j)] = logS[(i, j)].exp();
             }
         }
         mat

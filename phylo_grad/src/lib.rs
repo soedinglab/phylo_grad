@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-#![feature(portable_simd)]
 
 //! # PhyloGrad
 //! This crate provides a Rust implementation of a fast differentiation algorithm for the rate matrix in phylogenetic models.
@@ -17,11 +16,8 @@ pub use nalgebra;
 
 use nalgebra as na;
 
-pub use data_types::FloatTrait;
-pub use backward::softmax;
-
 mod backward;
-mod data_types;
+mod numerics;
 mod forward;
 mod run;
 mod tree;
@@ -31,26 +27,26 @@ pub use run::SingleSideResult;
 
 use crate::run::*;
 
+const MIN_SQRT_PI: f64 = 1e-10;
+
 /// Represents a tree topology with branch lengths
 /// This struct contains the main functionality of the library.
 ///
 /// It is generic over the number of states in the model, which is given by `DIM`.
-///
-/// It is also generic over `f32` and `f64`
-pub struct FelsensteinTree<F, const DIM: usize> {
+pub struct FelsensteinTree<const DIM: usize> {
     parents: Vec<i32>,
-    distances: Vec<F>,
+    distances: Vec<f64>,
     num_leaves: usize,
-    log_p: Vec<Vec<na::SVector<F, DIM>>>,
-    tmp_mem: Option<Vec<Vec<na::SMatrix<F, DIM, DIM>>>>,
+    /// First dimension is the side id in the alignment, second dimension is the node id in the tree.
+    partial_likelihoods: Vec<Vec<na::SVector<f64, DIM>>>,
 }
 
-impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
+impl<const DIM: usize> FelsensteinTree<DIM> {
     /// The tree topology is represented as a vector of parent node ids. The root node has parent id `-1`.
     /// The leaf nodes have to come first in this slice.
     ///
     /// The distances are given as a vector of branch lengths with the same order as the parent vector.
-    pub fn new(parents: &[i32], distances: &[F]) -> Self {
+    pub fn new(parents: &[i32], distances: &[f64]) -> Self {
         assert!(parents.len() == distances.len());
         let (parents, distances, num_leaves) = tree::topological_sort(parents, distances);
 
@@ -59,25 +55,34 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
         FelsensteinTree {
             parents,
             distances,
-            log_p: vec![],
+            partial_likelihoods: vec![],
             num_leaves,
-            tmp_mem: None,
         }
     }
 
-    /// Binds the log probabilities of the leaves to the tree.
+    /// Binds the probabilities of the leaves to the tree. This will usually be a one hot vector describing the state at the leaf node.
+    /// The outer vector is over the sites, the inner vector over the leaf nodes.
     /// This enables usage of the `calculate_gradients` function.
-    pub fn bind_leaf_log_p(&mut self, log_p: Vec<Vec<na::SVector<F, DIM>>>) {
-        self.log_p = log_p;
-        // resize the log_p to the number of all nodes
+    pub fn bind_leaf_pl(&mut self, pl: Vec<Vec<na::SVector<f64, DIM>>>) {
+        self.partial_likelihoods = pl;
+        
+        // resize the partial_likelihoods to the number of all nodes
         let num_nodes = self.parents.len();
-        for log_p in &mut self.log_p {
-            log_p.resize(num_nodes, na::SVector::<F, DIM>::zeros());
+        for pl in &mut self.partial_likelihoods {
+            pl.resize(num_nodes, na::SVector::<f64, DIM>::zeros());
         }
     }
 
     pub fn num_nodes(&self) -> usize {
         self.parents.len()
+    }
+
+    pub fn num_leaves(&self) -> usize {
+        self.num_leaves
+    }
+
+    pub fn num_sites(&self) -> usize {
+        self.partial_likelihoods.len()
     }
 
     /// `s` and `sqrt_pi` have as first dimension the side id in the alignment. `s` gives the state transition matrix for each side, `sqrt_pi` gives the square root of the stationary distribution for each side.
@@ -91,37 +96,24 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     ///
     /// Only the upper diagonal part of `s` is used. The gradients will only be populated in the upper diagonal and the lower diagonal will be filled with zeros.
     ///
-    /// This functions assumes you have already called `bind_leaf_log_p` to bind the log probabilities of the leaves.
+    /// This functions assumes you have already called `bind_leaf_pl` to bind the partial likelihoods of the leaves.
     pub fn calculate_gradients(
         &mut self,
-        s: &[na::SMatrix<F, DIM, DIM>],
-        sqrt_pi: &[na::SVector<F, DIM>],
-    ) -> FelsensteinResult<F, DIM> {
+        s: &[na::SMatrix<f64, DIM, DIM>],
+        sqrt_pi: &[na::SVector<f64, DIM>],
+    ) -> FelsensteinResult<DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // Zero out internal nodes in log_p
-        for log_p in &mut self.log_p {
-            log_p.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<F, DIM>::zeros();
+        // One out internal nodes in partial_likelihoods
+        for pl in &mut self.partial_likelihoods {
+            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
+                *p = na::SVector::<f64, DIM>::from_element(1.0);
             });
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
-                let num_nodes = self.parents.len();
-                let L = self.log_p.len();
-                vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
-            });
-
-            calculate_column_parallel_single_S(
-                &mut self.log_p,
-                &s[0],
-                &sqrt_pi[0],
-                tree,
-                d_trans_matrix,
-                false
-            )
+            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, false)
         } else {
-            calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, false)
+            calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, false)
         };
         result
     }
@@ -129,81 +121,72 @@ impl<F: FloatTrait, const DIM: usize> FelsensteinTree<F, DIM> {
     /// Same as `calculate_gradients`, but only calculates the log likelihoods for each side in the alignment.
     pub fn calculate_likelihoods(
         &mut self,
-        s: &[na::SMatrix<F, DIM, DIM>],
-        sqrt_pi: &[na::SVector<F, DIM>],
-    ) -> Vec<F> {
+        s: &[na::SMatrix<f64, DIM, DIM>],
+        sqrt_pi: &[na::SVector<f64, DIM>],
+    ) -> Vec<f64> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // Zero out internal nodes in log_p
-        for log_p in &mut self.log_p {
-            log_p.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<F, DIM>::zeros();
+        // One out internal nodes in partial_likelihoods
+        for pl in &mut self.partial_likelihoods {
+            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
+                *p = na::SVector::<f64, DIM>::from_element(1.0);
             });
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            let d_trans_matrix = self.tmp_mem.get_or_insert_with(|| {
-                let num_nodes = self.parents.len();
-                let L = self.log_p.len();
-                vec![vec![na::SMatrix::<F, DIM, DIM>::zeros(); num_nodes]; L]
-            });
-
-            calculate_column_parallel_single_S(
-                &mut self.log_p,
-                &s[0],
-                &sqrt_pi[0],
-                tree,
-                d_trans_matrix,
-                true,
-            )
+            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, true)
         } else {
-            calculate_column_parallel(&mut self.log_p, s, sqrt_pi, tree, true)
+            calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, true)
         };
 
         return result.log_likelihood;
     }
 
-    /// Same as `calculate_gradients`, but it takes also an array of the log_probabilities of the leaves.
-    /// It expects `log_p` to have enough space for all nodes with internal nodes initialized to zero and leaf nodes properly initialized.
-    pub fn calculate_gradients_with_log_p(
+    /// Same as `calculate_gradients`, but it takes also an array of the partial likelihoods of the leaves.
+    /// It expects `pl` to have enough space for all nodes with internal nodes initialized to one and leaf nodes properly initialized.
+    pub fn calculate_gradients_with_pl(
         &self,
-        s: &[na::SMatrix<F, DIM, DIM>],
-        sqrt_pi: &[na::SVector<F, DIM>],
-        log_p: &mut [&mut [na::SVector<F, DIM>]],
-    ) -> FelsensteinResult<F, DIM> {
+        s: &[na::SMatrix<f64, DIM, DIM>],
+        sqrt_pi: &[na::SVector<f64, DIM>],
+        partial_likelihood: &mut [&mut [na::SVector<f64, DIM>]],
+    ) -> FelsensteinResult<DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        calculate_column_parallel(log_p, s, sqrt_pi, tree, false)
+        calculate_column_parallel(partial_likelihood, s, sqrt_pi, tree, false)
     }
 
     /// This function calculates the gradients for a single side in the alignment.
     /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
     ///
-    /// log_p is expected to have enough space to hold the log probabilities for all nodes
+    /// partial_likelihood is expected to have enough space to hold the partial likelihoods for all nodes
+    /// internal nodes will be initialized to one and leaf nodes should be properly initialized.
     pub fn calculate_gradients_single_side(
         &self,
-        s: na::SMatrixView<F, DIM, DIM>,
-        sqrt_pi: na::SVectorView<F, DIM>,
-        log_p: &mut [na::SVector<F, DIM>],
-    ) -> SingleSideResult<F, DIM> {
+        s: na::SMatrixView<f64, DIM, DIM>,
+        sqrt_pi: na::SVectorView<f64, DIM>,
+        partial_likelihood: &mut [na::SVector<f64, DIM>],
+    ) -> SingleSideResult<f64, DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // zero out internal nodes in log_p
-        log_p[self.num_leaves..].iter_mut().for_each(|p| {
-            *p = na::SVector::<F, DIM>::zeros();
+        // one out internal nodes in partial_likelihood
+        partial_likelihood[self.num_leaves..].iter_mut().for_each(|p| {
+            *p = na::SVector::<f64, DIM>::from_element(1.0);
         });
-        calculate_column(log_p, s.as_view(), sqrt_pi.as_view(), tree, false)
+        let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
+        calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, false)
     }
 
+    /// Same as `calculate_gradients_single_side`, but only calculates the log likelihood for a single side in the alignment.
     pub fn calculate_likelihood_single_side(
         &self,
-        s: na::SMatrixView<F, DIM, DIM>,
-        sqrt_pi: na::SVectorView<F, DIM>,
-        log_p: &mut [na::SVector<F, DIM>],
-    ) -> F {
+        s: na::SMatrixView<f64, DIM, DIM>,
+        sqrt_pi: na::SVectorView<f64, DIM>,
+        partial_likelihood: &mut [na::SVector<f64, DIM>],
+    ) -> f64 {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // zero out internal nodes in log_p
-        log_p[self.num_leaves..].iter_mut().for_each(|p| {
-            *p = na::SVector::<F, DIM>::zeros();
+        // one out internal nodes in partial_likelihood
+        partial_likelihood[self.num_leaves..].iter_mut().for_each(|p| {
+            *p = na::SVector::<f64, DIM>::from_element(1.0);
         });
-        let result = calculate_column(log_p, s.as_view(), sqrt_pi.as_view(), tree, true);
+        let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
+        let result = calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, true);
         result.log_likelihood
     }
 }

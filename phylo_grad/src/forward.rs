@@ -1,65 +1,50 @@
-use crate::data_types::*;
-
 use nalgebra as na;
 
 /// Forward data precomputed before the forward pass
-pub struct ForwardData<F, const DIM: usize> {
-    pub log_transition: Vec<LogTransitionForwardData<F, DIM>>,
+pub struct ForwardData<const DIM: usize> {
+    pub model_edge_data: Vec<ModelEdgeData<DIM>>,
 }
 
-/// Forward data which is saved during the forward pass
-pub struct ForwardDataSave<F, const DIM: usize> {
-    pub logsumexp_exp_save: Vec<na::SMatrix<F, DIM, DIM>>,
-    pub logsumexp_sum_save: Vec<na::SVector<F, DIM>>,
-}
-
-impl<F : FloatTrait, const DIM: usize> ForwardDataSave<F, DIM> {
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            logsumexp_exp_save: vec![
-                na::SMatrix::<F, DIM, DIM>::zeros();
-                capacity
-            ],
-            logsumexp_sum_save: vec![
-                na::SVector::<F, DIM>::zeros();
-                capacity
-            ],
-        }
-    }
-}
-
-impl<F, const DIM: usize> ForwardData<F, DIM> {
+impl<const DIM: usize> ForwardData<DIM> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            log_transition: Vec::with_capacity(capacity),
+            model_edge_data: Vec::with_capacity(capacity),
         }
     }
 }
 
+/// Data precomputed for each edge. Depends only on the Q matrix and the edge length
 #[derive(Debug)]
-pub struct LogTransitionForwardData<F, const DIM: usize> {
-    pub matrix_exp_recip: na::SMatrix<F, DIM, DIM>,
-    pub log_transition_T: na::SMatrix<F, DIM, DIM>,
-    pub exp_t_lambda: na::SVector<F, DIM>,
+pub struct ModelEdgeData<const DIM: usize> {
+    /// matrix_exp transposed
+    pub transition_T: na::SMatrix<f64, DIM, DIM>,
+    /// exp(t * lambda_i) for the DIM many eigenvalues of Q
+    pub exp_t_lambda: na::SVector<f64, DIM>,
 }
 
+/// Precomputed values from the model (S and sqrt_pi)
 #[derive(Debug)]
-pub struct ParamPrecomp<F, const DIM: usize> {
-    pub symmetric_matrix: na::SMatrix<F, DIM, DIM>,
-    pub sqrt_pi: na::SVector<F, DIM>,
-    pub sqrt_pi_recip: na::SVector<F, DIM>,
-    pub eigenvalues: na::SVector<F, DIM>,
-    pub V_pi: na::SMatrix<F, DIM, DIM>,
-    pub V_pi_inv: na::SMatrix<F, DIM, DIM>,
+pub struct ParamPrecomp<const DIM: usize> {
+    /// S
+    pub symmetric_matrix: na::SMatrix<f64, DIM, DIM>,
+    /// sqrt_pi
+    pub sqrt_pi: na::SVector<f64, DIM>,
+    /// 1/sqrt_pi
+    pub sqrt_pi_recip: na::SVector<f64, DIM>,
+    /// Eigenvalues of S
+    pub eigenvalues: na::SVector<f64, DIM>,
+    /// A in the paper
+    pub V_pi: na::SMatrix<f64, DIM, DIM>,
+    /// A^-1 in the paper
+    pub V_pi_inv: na::SMatrix<f64, DIM, DIM>,
 }
 
 /// In-place multiplication by a diagonal matrix on the left
-pub fn diag_times_assign<I, F, const N: usize>(
-    mut matrix: na::SMatrixViewMut<F, N, N>,
+pub fn diag_times_assign<I, const N: usize>(
+    mut matrix: na::SMatrixViewMut<f64, N, N>,
     diagonal_entries: I,
 ) where
-    F: FloatTrait,
-    I: Iterator<Item = F>,
+    I: Iterator<Item = f64>,
 {
     for (mut row, scale) in std::iter::zip(matrix.row_iter_mut(), diagonal_entries) {
         row *= scale;
@@ -67,12 +52,11 @@ pub fn diag_times_assign<I, F, const N: usize>(
 }
 
 /// In-place multiplication by a diagonal matrix on the right
-pub fn times_diag_assign<I, F, const N: usize>(
-    mut matrix: na::SMatrixViewMut<F, N, N>,
+pub fn times_diag_assign<I, const N: usize>(
+    mut matrix: na::SMatrixViewMut<f64, N, N>,
     diagonal_entries: I,
 ) where
-    F: FloatTrait,
-    I: Iterator<Item = F>,
+    I: Iterator<Item = f64>,
 {
     for (mut col, scale) in std::iter::zip(matrix.column_iter_mut(), diagonal_entries) {
         col *= scale;
@@ -81,13 +65,12 @@ pub fn times_diag_assign<I, F, const N: usize>(
 
 /// Precomputes things out of S and sqrt_pi
 /// Returns None if the eigenvalues are too large or the diagonalization failed, this can happen with extreme values
-pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
-    S: na::SMatrixView<F, DIM, DIM>,
-    sqrt_pi: na::SVectorView<F, DIM>,
-) -> Option<ParamPrecomp<F, DIM>> {
-    use num_traits::Float;
+pub fn compute_param_data<const DIM: usize>(
+    S: na::SMatrixView<f64, DIM, DIM>,
+    sqrt_pi: na::SVectorView<f64, DIM>,
+) -> Option<ParamPrecomp<DIM>> {
 
-    let sqrt_pi_recip = sqrt_pi.map(|x| Float::recip(Float::max(x, F::MIN_SQRT_PI)));
+    let sqrt_pi_recip = sqrt_pi.map(|x| f64::recip(f64::max(x, f64::MIN_POSITIVE)));
 
     // Read only the upper triangle of S and make it symmetric
     let mut S_symmetric = S.clone_owned();
@@ -106,11 +89,11 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
         S_symmetric[(i, i)] = -rate_matrix.row(i).sum() + rate_matrix[(i, i)];
     }
 
-    let (eigenvalues, eigenvectors) = F::symmetric_eigen(S_symmetric)?;
+    let (eigenvalues, eigenvectors) = crate::numerics::symmetric_eigen(S_symmetric)?;
 
     // Prevent numerical instability
-    let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<F>();
-    if norm_eigenvals > <F as FloatTrait>::from_f64(1e5) {
+    let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<f64>();
+    if norm_eigenvals > 1e5 {
         return None;
     }
 
@@ -130,63 +113,66 @@ pub fn compute_param_data<F: FloatTrait, const DIM: usize>(
     })
 }
 
-fn log_transition_precompute_param<F: FloatTrait, const DIM: usize>(
-    param: &ParamPrecomp<F, DIM>,
-    distance: F,
-) -> LogTransitionForwardData<F, DIM> {
-    use num_traits::Float;
-
-    let exp_t_lambda = param.eigenvalues.map(|lam| Float::exp(lam * distance));
+fn precompute_model_edge_data<const DIM: usize>(
+    param: &ParamPrecomp<DIM>,
+    distance: f64,
+) -> ModelEdgeData<DIM> {
+    let exp_t_lambda = param.eigenvalues.map(|lam| f64::exp(lam * distance));
 
     let mut matrix_exp = param.V_pi.clone_owned();
     times_diag_assign(matrix_exp.as_view_mut(), exp_t_lambda.iter().copied());
     matrix_exp *= param.V_pi_inv;
 
-    matrix_exp.apply(|x| *x = Float::max(*x, F::MIN_SQRT_PI));
-
-    let log_transition = matrix_exp.map(Float::ln);
-
-    matrix_exp.apply(|x| *x = Float::recip(*x));
-
-    LogTransitionForwardData {
-        matrix_exp_recip: matrix_exp,
-        log_transition_T: log_transition.transpose(),
+    matrix_exp.apply(|x| *x = f64::max(*x, f64::MIN_POSITIVE));
+    ModelEdgeData {
+        transition_T: matrix_exp.transpose(),
         exp_t_lambda,
     }
 }
 
-pub fn forward_data_precompute_param<F: FloatTrait, const DIM: usize>(
-    param: &ParamPrecomp<F, DIM>,
-    distances: &[F],
-) -> ForwardData<F, DIM> {
+pub fn forward_data_precompute_param<const DIM: usize>(
+    param: &ParamPrecomp<DIM>,
+    distances: &[f64],
+) -> ForwardData<DIM> {
     let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<F, DIM>::with_capacity(num_nodes);
+    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
 
-    forward_data.log_transition.extend(
+    forward_data.model_edge_data.extend(
         distances
             .iter()
-            .map(|dist| log_transition_precompute_param(param, *dist)),
+            .map(|dist| precompute_model_edge_data(param, *dist)),
     );
     forward_data
 }
 
 /// adds the log_p of the children to the log_p of the parent
-pub fn forward_node<F: FloatTrait, const DIM: usize>(
+/// Main part of the Felsenstein in Forward
+/// log_p are the partial log likelihoods, they start with the leave nodes initialized. This function takes 2 computed log_p vectors
+/// and writes the compbined result in the parent log_p vector
+/// Offsets are scaling factors to prevent underflow. offsets[i] = 10 means that the values of this nodes are scaled by 2**10 more than the child values.
+/// The absolut offset is obtained by adding the offsets of all the nodes below this node (including)
+pub fn forward_node<const DIM: usize>(
     child: usize,
     parent: usize,
-    log_p: &mut [na::SVector<F, DIM>],
-    forward_data: &ForwardData<F, DIM>,
-    forward_data_save: &mut ForwardDataSave<F, DIM>,
+    lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
+    forward_data: &ForwardData<DIM>,
+    offsets: &mut [u32],
 ) {
-    let logsumexp_exp_save = &mut forward_data_save.logsumexp_exp_save[child].data.0;
-    let logsumexp_sum_save = forward_data_save.logsumexp_sum_save[child].as_mut_slice();
-    /* log_p[parent]_a = logsumexp_b(log_p[child](b) + log_transition(rate_matrix, distance)(a, b) ) */
+    // In linspace log_p[parent]_a = sum_b (log_p[child](b) * transiton(rate_matrix, distance)(a,b) )
+    let mut max = 0.0;
     for a in 0..DIM {
-        let row_a = forward_data.log_transition[child].log_transition_T.column(a);
-        let tmp = log_p[child] + row_a;
-        unsafe {
-            log_p[parent][a] += F::vec_logsumexp_save(std::mem::transmute::<&[[F; DIM]; 1], &[F; DIM]>(
-                &tmp.data.0), &mut logsumexp_exp_save[a], &mut logsumexp_sum_save[a]);
+        let mut sum = 0.0;
+        for b in 0..DIM {
+            sum += lin_partial_likelihoods[child][b]
+                * forward_data.model_edge_data[child].transition_T[(b, a)];
         }
+        lin_partial_likelihoods[parent][a] *= sum;
+        max = f64::max(max, sum);
+    }
+    if max < f64::powi(2.0, -100) {
+        for a in 0..DIM {
+            lin_partial_likelihoods[parent][a] *= f64::powi(2.0, 100);
+        }
+        offsets[parent] += 100;
     }
 }
