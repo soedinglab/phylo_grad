@@ -60,7 +60,8 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         }
     }
 
-    /// Binds the log probabilities of the leaves to the tree.
+    /// Binds the probabilities of the leaves to the tree. This will usually be a one hot vector describing the state at the leaf node.
+    /// The outer vector is over the sites, the inner vector over the leaf nodes.
     /// This enables usage of the `calculate_gradients` function.
     pub fn bind_leaf_pl(&mut self, pl: Vec<Vec<na::SVector<f64, DIM>>>) {
         self.partial_likelihoods = pl;
@@ -142,7 +143,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
 
     /// Same as `calculate_gradients`, but it takes also an array of the partial likelihoods of the leaves.
     /// It expects `pl` to have enough space for all nodes with internal nodes initialized to one and leaf nodes properly initialized.
-    pub fn calculate_gradients_with_pl_vec(
+    pub fn calculate_gradients_with_pl(
         &self,
         s: &[na::SMatrix<f64, DIM, DIM>],
         sqrt_pi: &[na::SVector<f64, DIM>],
