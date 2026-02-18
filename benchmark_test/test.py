@@ -43,12 +43,14 @@ def helper_test(dim : int, gradients: bool, single_model: bool = False):
 
     torch_tree, parent_list, branch_lengths, leaf_log_p = gen_tree(t_dtype, dim)
 
+    leaf_pl = torch.exp(leaf_log_p)
+
     if single_model:
         data = [gen_data_single_model(t_dtype, dim, seed) for seed in range(10)]
     else:
         data = [gen_data(t_dtype, dim, seed) for seed in range(10)]
 
-    rust_tree = phylo_grad.FelsensteinTree(parent_list, branch_lengths.astype(np_dtype), leaf_log_p.numpy(), 1e-4)
+    rust_tree = phylo_grad.FelsensteinTree(parent_list, branch_lengths.astype(np_dtype), leaf_pl.numpy(), 1e-4)
 
         
     for i in range(10):
