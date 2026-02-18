@@ -63,7 +63,7 @@ class FelsensteinTree:
         branch_lengths = np.clip(branch_lengths, distance_threshold, None)
         
         try:
-            tree_class = getattr(_phylo_grad, f'Backend_{dim}')
+            tree_class = getattr(_phylo_grad, f'Backend_f64_{dim}')
         except AttributeError:
             raise ValueError(f'Unsupported dim {dim}, see Readme.md for more information')
 
