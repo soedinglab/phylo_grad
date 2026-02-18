@@ -34,20 +34,12 @@ def gen_data_single_model(t_dtype, dim, seed):
     sqrt_pi = sqrt_pi[0:1]
     return S, sqrt_pi
 
-def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, gpu: bool = False):
-    if dtype == "f32":
-        t_dtype = torch.float32
-        np_dtype = np.float32
-    else:
-        t_dtype = torch.float64
-        np_dtype = np.float64
+def helper_test(dim : int, gradients: bool, single_model: bool = False):
+    t_dtype = torch.float64
+    np_dtype = np.float64
     
-    if dtype == "f32":
-        rtol = 1e-2
-        atol = 1e-2
-    else:
-        rtol = 1e-4
-        atol = 1e-4
+    rtol = 1e-4
+    atol = 1e-4
 
     torch_tree, parent_list, branch_lengths, leaf_log_p = gen_tree(t_dtype, dim)
 
@@ -56,7 +48,7 @@ def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, g
     else:
         data = [gen_data(t_dtype, dim, seed) for seed in range(10)]
 
-    rust_tree = phylo_grad.FelsensteinTree(parent_list, branch_lengths.astype(np_dtype), leaf_log_p.numpy(), 1e-4, gpu)
+    rust_tree = phylo_grad.FelsensteinTree(parent_list, branch_lengths.astype(np_dtype), leaf_log_p.numpy(), 1e-4)
 
         
     for i in range(10):
@@ -65,10 +57,7 @@ def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, g
 
 
         result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
-        if gpu == False:
-            likelihoods = rust_tree.calculate_log_likelihoods(S.numpy(), sqrt_pi.numpy()) 
-            assert(np.allclose(likelihoods, result['log_likelihood'], rtol=1e-5))
-
+        
         assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=rtol))
         
         if gradients:
@@ -93,11 +82,14 @@ def helper_test(dtype, dim : int, gradients: bool, single_model: bool = False, g
             assert(np.allclose(result['grad_s'], torch_S_grad, rtol=rtol, atol=atol))
     
 def test_likelihood():
-    helper_test("f64", 4, False)
-    helper_test("f64", 20, False)
-
+    helper_test(4, False, True)
+    helper_test(4, False, False)
+    helper_test(20, False, True)
+    helper_test(20, False, False)
 
 def test_grads():
-    helper_test("f64", 4, True)
-    helper_test("f64", 20, True)
+    helper_test(4, True, True)
+    helper_test(4, True, False)
+    helper_test(20, True, True)
+    helper_test(20, True, False)
 

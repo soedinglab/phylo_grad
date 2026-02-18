@@ -31,12 +31,12 @@ def process_newick(newick: str | io.TextIOBase, leaf_pl_dict : dict) -> dict:
                 raise ValueError(f"Leaf {node.name} from newick not found in leaf_pl_dict")
             leaf_log_p.append(leaf_pl_dict[node.name])
     
-    leaf_log_p_array = np.array(leaf_log_p, np.float64).transpose(1, 0, 2)
+    leaf_pl_array = np.array(leaf_log_p, np.float64).transpose(1, 0, 2)
 
     return {
         'parent_list': np.array(parent_list, dtype=np.int32),
         'branch_lengths': np.array(branch_lengths, dtype=np.float64),
-        'leaf_log_p': leaf_log_p_array
+        'leaf_pl': leaf_pl_array
     }
 
 class FelsensteinTree:
@@ -90,7 +90,7 @@ class FelsensteinTree:
         """
 
         data = process_newick(newick, leaf_pl_dict)
-        return cls(data['parent_list'], data['branch_lengths'], data['leaf_log_p'], distance_threshold) 
+        return cls(data['parent_list'], data['branch_lengths'], data['leaf_pl'], distance_threshold) 
         
     def calculate_gradients(self, S : np.ndarray, sqrt_pi : np.ndarray) -> dict:
         """Calculates the gradients of the log likelihood with respect to the given substitution model.
