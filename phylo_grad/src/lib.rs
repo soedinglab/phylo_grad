@@ -33,6 +33,7 @@ const MIN_SQRT_PI: f64 = 1e-10;
 /// This struct contains the main functionality of the library.
 ///
 /// It is generic over the number of states in the model, which is given by `DIM`.
+#[derive(Debug, Clone)]
 pub struct FelsensteinTree<const DIM: usize> {
     parents: Vec<i32>,
     distances: Vec<f64>,
