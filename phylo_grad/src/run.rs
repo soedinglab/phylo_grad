@@ -45,6 +45,7 @@ fn final_likelihood<const DIM: usize>(
     )
 }
 
+#[derive(Debug, Clone)]
 pub struct SingleSideResult<F, const DIM: usize> {
     pub log_likelihood: F,
     pub grad_s: na::SMatrix<F, DIM, DIM>,
