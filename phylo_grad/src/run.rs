@@ -342,7 +342,7 @@ pub fn calculate_columns_single_S_parallel<const DIM: usize>(
     let L = pl.len();
 
     let real_num_threads = if L / 32 < num_threads {
-        L / 32
+        L.max(32) / 32
     } else {
         num_threads
     };
