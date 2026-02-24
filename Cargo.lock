@@ -1450,7 +1450,7 @@ dependencies = [
 
 [[package]]
 name = "phylo_grad"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "faer",
  "glam 0.30.10",
