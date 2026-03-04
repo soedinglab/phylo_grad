@@ -1,6 +1,6 @@
 [package]
 name = "phylo_grad_py"
-version = "2.0.0"
+version = "2.1.1"
 edition = "2024"
 authors = ["Benjamin Lieser <benjamin.lieser@mpinat.mpg.de>", "Jora Belousov <jorabelousov@gmail.com>"]
 description = "Python bindings for phylo_grad"
@@ -8,7 +8,7 @@ repository = "https://github.com/soedinglab/phylo_grad"
 license = "MIT OR Apache-2.0"
 keywords = ["math", "felsenstein", "machine-learning", "bioinformatics"]
 categories = ["mathematics", "science::bioinformatics"]
-rust-version = "1.85"
+rust-version = "1.87"
 
 [lib]
 name = "_phylo_grad"
