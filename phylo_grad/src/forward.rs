@@ -37,6 +37,8 @@ pub struct ParamPrecomp<const DIM: usize> {
     pub V_pi: na::SMatrix<f64, DIM, DIM>,
     /// A^-1 in the paper
     pub V_pi_inv: na::SMatrix<f64, DIM, DIM>,
+    /// Q
+    pub Q : na::SMatrix<f64, DIM, DIM>,
 }
 
 /// In-place multiplication by a diagonal matrix on the left
@@ -110,6 +112,7 @@ pub fn compute_param_data<const DIM: usize>(
         eigenvalues,
         V_pi,
         V_pi_inv,
+        Q: rate_matrix,
     })
 }
 

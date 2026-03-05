@@ -40,6 +40,8 @@ pub struct FelsensteinTree<const DIM: usize> {
     num_leaves: usize,
     /// First dimension is the side id in the alignment, second dimension is the node id in the tree.
     partial_likelihoods: Vec<Vec<na::SVector<f64, DIM>>>,
+    /// Sorting order of the nodes. i[new_index] = original_index
+    sorting_order: Vec<usize>,
 }
 
 impl<const DIM: usize> FelsensteinTree<DIM> {
@@ -49,7 +51,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
     /// The distances are given as a vector of branch lengths with the same order as the parent vector.
     pub fn new(parents: &[i32], distances: &[f64]) -> Self {
         assert!(parents.len() == distances.len());
-        let (parents, distances, num_leaves) = tree::topological_sort(parents, distances);
+        let (parents, distances, num_leaves, sorting_order) = tree::topological_sort(parents, distances);
 
         assert_eq!(parents.last().unwrap(), &-1); // root node is the last node
 
@@ -58,6 +60,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
             distances,
             partial_likelihoods: vec![],
             num_leaves,
+            sorting_order,
         }
     }
 
@@ -114,7 +117,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
             calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, false)
         } else {
-            calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, false)
+            calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, false, None)
         };
         result
     }
@@ -136,7 +139,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
             calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, true)
         } else {
-            calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, true)
+            calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, true, None)
         };
 
         return result.log_likelihood;
@@ -151,7 +154,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         partial_likelihood: &mut [&mut [na::SVector<f64, DIM>]],
     ) -> FelsensteinResult<DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        calculate_column_parallel(partial_likelihood, s, sqrt_pi, tree, false)
+        calculate_column_parallel(partial_likelihood, s, sqrt_pi, tree, false, None)
     }
 
     /// This function calculates the gradients for a single side in the alignment.
@@ -171,7 +174,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
             *p = na::SVector::<f64, DIM>::from_element(1.0);
         });
         let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
-        calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, false)
+        calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, false, None)
     }
 
     /// Same as `calculate_gradients_single_side`, but only calculates the log likelihood for a single side in the alignment.
@@ -187,7 +190,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
             *p = na::SVector::<f64, DIM>::from_element(1.0);
         });
         let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
-        let result = calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, true);
+        let result = calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, true, None);
         result.log_likelihood
     }
 }

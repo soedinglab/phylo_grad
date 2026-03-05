@@ -58,6 +58,7 @@ pub fn calculate_column<const DIM: usize>(
     sqrt_pi: na::SVectorView<f64, DIM>,
     tree: Tree,
     only_likelihood: bool,
+    grad_edge_lengths: Option<&mut [f64]>,
 ) -> SingleSideResult<f64, DIM> {
     // If the diagonalization fails or eigenvalues are to big, we give -inf as likelihood and zero gradients
     let param = match compute_param_data(S, sqrt_pi) {
@@ -96,6 +97,7 @@ pub fn calculate_column<const DIM: usize>(
         &param,
         &forward_data.model_edge_data,
         &offsets,
+        grad_edge_lengths,
     );
 
     let (grad_s, mut grad_sqrt_pi) = d_param(d_Q.as_view(), &param);
@@ -116,40 +118,82 @@ pub struct FelsensteinResult<const DIM: usize> {
 }
 
 pub fn calculate_column_parallel<const DIM: usize, A: AsMut<[na::SVector<f64, DIM>]> + Send>(
-    leaf_log_p: &mut [A],
+    leaf_pl: &mut [A],
     S: &[na::SMatrix<f64, DIM, DIM>],
     sqrt_pi: &[na::SVector<f64, DIM>],
     tree: Tree,
     only_likelihood: bool,
+    tree_grad: Option<&mut [f64]>,
 ) -> FelsensteinResult<DIM> {
-    let col_results = (leaf_log_p, S, sqrt_pi)
-        .into_par_iter()
-        .map(|(leaf_log_p, S, sqrt_pi)| {
-            let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
-            calculate_column(
-                leaf_log_p.as_mut(),
-                S.as_view(),
-                sqrt_pi.as_view(),
-                tree.clone(),
-                only_likelihood,
-            ) // The clone is shallow, Tree is cheap to clone
-        })
-        .collect::<Vec<_>>();
+    if tree_grad.is_some() {
+        let mut tree_grads = vec![vec![0.0; tree.parents.len()]; leaf_pl.len()];
 
-    let mut log_likelihood_total = vec![];
-    let mut grad_delta_total = vec![];
-    let mut grad_sqrt_pi_total = vec![];
+        let col_results = (leaf_pl, S, sqrt_pi, &mut tree_grads)
+            .into_par_iter()
+            .map(|(leaf_log_p, S, sqrt_pi, mut tree_grads)| {
+                let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
+                calculate_column(
+                    leaf_log_p.as_mut(),
+                    S.as_view(),
+                    sqrt_pi.as_view(),
+                    tree.clone(),
+                    only_likelihood,
+                    Some(&mut tree_grads),
+                ) // The clone is shallow, Tree is cheap to clone
+            })
+            .collect::<Vec<_>>();
 
-    for col_result in col_results {
-        log_likelihood_total.push(col_result.log_likelihood);
-        grad_delta_total.push(col_result.grad_s);
-        grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
-    }
+        let mut log_likelihood_total = vec![];
+        let mut grad_s_total = vec![];
+        let mut grad_sqrt_pi_total = vec![];
 
-    FelsensteinResult {
-        log_likelihood: log_likelihood_total,
-        grad_s: grad_delta_total,
-        grad_sqrt_pi: grad_sqrt_pi_total,
+        let tree_grad = tree_grad.unwrap();
+
+        for (i, col_result) in col_results.iter().enumerate() {
+            log_likelihood_total.push(col_result.log_likelihood);
+            grad_s_total.push(col_result.grad_s);
+            grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
+            for (j, &grad) in tree_grads[i].iter().enumerate() {
+                tree_grad[j] += grad;
+            }
+        }
+
+        FelsensteinResult {
+            log_likelihood: log_likelihood_total,
+            grad_s: grad_s_total,
+            grad_sqrt_pi: grad_sqrt_pi_total,
+        }
+    } else {
+        let col_results = (leaf_pl, S, sqrt_pi)
+            .into_par_iter()
+            .map(|(leaf_log_p, S, sqrt_pi)| {
+                let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
+                calculate_column(
+                    leaf_log_p.as_mut(),
+                    S.as_view(),
+                    sqrt_pi.as_view(),
+                    tree.clone(),
+                    only_likelihood,
+                    None,
+                ) // The clone is shallow, Tree is cheap to clone
+            })
+            .collect::<Vec<_>>();
+
+        let mut log_likelihood_total = vec![];
+        let mut grad_delta_total = vec![];
+        let mut grad_sqrt_pi_total = vec![];
+
+        for col_result in col_results {
+            log_likelihood_total.push(col_result.log_likelihood);
+            grad_delta_total.push(col_result.grad_s);
+            grad_sqrt_pi_total.push(col_result.grad_sqrt_pi);
+        }
+
+        FelsensteinResult {
+            log_likelihood: log_likelihood_total,
+            grad_s: grad_delta_total,
+            grad_sqrt_pi: grad_sqrt_pi_total,
+        }
     }
 }
 
@@ -161,6 +205,7 @@ fn d_Q<const DIM: usize>(
     param: &ParamPrecomp<DIM>,
     forward: &[ModelEdgeData<DIM>],
     offsets: &[u32],
+    mut d_edge_lengths: Option<&mut [f64]>,
 ) -> na::SMatrix<f64, DIM, DIM> {
     let top_bifurcations = get_topological_bifurcations(&tree);
     let mut cotangents = vec![na::SVector::<f64, DIM>::zeros(); tree.parents.len()];
@@ -168,17 +213,18 @@ fn d_Q<const DIM: usize>(
 
     let mut d_Q = na::SMatrix::<f64, DIM, DIM>::zeros();
 
-    for bi in top_bifurcations.into_iter().rev() {
+    for bi in top_bifurcations.iter().rev() {
         backward::d_log_transition_bifurcation_vjp(
             &mut cotangents,
             lin_pl,
             forward,
             param,
             &mut d_Q,
-            &bi,
+            bi,
             &tree.distances,
             offsets,
             None,
+            d_edge_lengths.as_deref_mut(),
         );
     }
 
@@ -209,6 +255,7 @@ fn cacluate_column_single_S<const DIM: usize>(
     only_likelihood: bool,
     tls: &mut TLS<DIM>,
     bifurcations: &[Bifurcation],
+    mut d_edge_lengths: Option<&mut [f64]>,
 ) -> (f64, na::SVector<f64, DIM>) {
     forward_column(pl, tree.parents, &mut tls.offsets, forward_data);
 
@@ -238,6 +285,7 @@ fn cacluate_column_single_S<const DIM: usize>(
             &tree.distances,
             &tls.offsets,
             Some(&mut tls.d_trans),
+            d_edge_lengths.as_deref_mut(),
         );
     }
 
@@ -251,6 +299,7 @@ pub fn calculate_column_block_single_S<const DIM: usize>(
     tree: Tree,
     only_likelihood: bool,
     bifurcations: &[Bifurcation],
+    mut d_edge_lengths: Option<&mut [f64]>,
 ) -> FelsensteinResult<DIM> {
     let mut tls = TLS::<DIM>::new(tree.parents.len());
 
@@ -271,6 +320,7 @@ pub fn calculate_column_block_single_S<const DIM: usize>(
             only_likelihood,
             &mut tls,
             bifurcations,
+            d_edge_lengths.as_deref_mut(),
         );
         d_sqrt_pi_sum += d_sqrt_pi;
         log_likelihoods.push(ll);
