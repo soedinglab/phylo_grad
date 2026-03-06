@@ -24,6 +24,7 @@ mod tree;
 
 pub use run::FelsensteinResult;
 pub use run::SingleSideResult;
+pub use run::FelsensteinResultWithTree;
 
 use crate::run::*;
 
@@ -241,4 +242,257 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         let result = calculate_column(partial_likelihood, s.as_view(), sqrt_pi.as_view(), tree, true, None);
         result.log_likelihood
     }
+}
+
+// Unit tests:
+#[cfg(test)]
+mod tests {
+    use rand::{SeedableRng, distr::Distribution};
+
+    use super::*;
+    
+    fn random_S(rng: &mut impl rand::Rng) -> na::SMatrix<f64, 4, 4> {
+        let mut m = na::SMatrix::<f64, 4, 4>::zeros();
+        for i in 0..4 {
+            for j in (i+1)..4 {
+                m[(i, j)] = rand::distr::Uniform::new(0.1, 1.0).unwrap().sample(rng);
+            }
+        }
+        m
+    }
+
+    fn random_sqrt_pi(rng: &mut impl rand::Rng) -> na::SVector<f64, 4> {
+        let mut v = na::SVector::<f64, 4>::zeros();
+        for i in 0..4 {
+            v[i] = rand::distr::Uniform::new(0.1, 1.0).unwrap().sample(rng);
+        }
+        v /= v.sum();
+        v.map(|x| x.sqrt())
+    }
+
+    fn random_pl(rng: &mut impl rand::Rng, num_leaves: usize) -> Vec<na::SVector<f64, 4>> {
+        (0..num_leaves).map(|_| {
+            let mut v = na::SVector::<f64, 4>::zeros();
+            v[rand::distr::Uniform::new(0, 4).unwrap().sample(rng)] = 1.0;
+            v
+        }).collect()
+    }
+
+    fn random_branch_lengths(rng: &mut impl rand::Rng, num_nodes: usize) -> Vec<f64> {
+        rand::distr::Uniform::new(0.1, 1.0).unwrap().sample_iter(rng).take(num_nodes).collect()
+    }
+
+    fn numerical_grads(
+        tree: &mut FelsensteinTree<4>,
+        s: &mut [na::SMatrix<f64, 4, 4>],
+        sqrt_pi: &mut [na::SVector<f64, 4>],
+        epsilon: f64,
+    ) -> FelsensteinResult<4> {
+        let mut grad_s = vec![na::SMatrix::<f64, 4, 4>::zeros(); s.len()];
+        let mut grad_sqrt_pi = vec![na::SVector::<f64, 4>::zeros(); sqrt_pi.len()];
+
+        for i in 0..s.len() {
+            for j in 0..4 {
+                for k in 0..4 {
+                    let original_value = s[i][(j, k)];
+                    s[i][(j, k)] = original_value + epsilon;
+                    let plus_epsilon = tree.calculate_likelihoods(s, sqrt_pi)[i];
+                    s[i][(j, k)] = original_value - epsilon;
+                    let minus_epsilon = tree.calculate_likelihoods(s, sqrt_pi)[i];
+                    grad_s[i][(j, k)] = (plus_epsilon - minus_epsilon) / (2.0 * epsilon);
+                    s[i][(j, k)] = original_value; // restore original value
+                }
+            }
+        }
+
+        for i in 0..sqrt_pi.len() {
+            for j in 0..4 {
+                let original_value = sqrt_pi[i][j];
+                sqrt_pi[i][j] = original_value + epsilon;
+                let plus_epsilon = tree.calculate_likelihoods(s, sqrt_pi)[i];
+                sqrt_pi[i][j] = original_value - epsilon;
+                let minus_epsilon = tree.calculate_likelihoods(s, sqrt_pi)[i];
+                grad_sqrt_pi[i][j] = (plus_epsilon - minus_epsilon) / (2.0 * epsilon);
+                sqrt_pi[i][j] = original_value; // restore original value
+            }
+        }
+
+        FelsensteinResult {
+            log_likelihood: tree.calculate_likelihoods(s, sqrt_pi),
+            grad_s,
+            grad_sqrt_pi,
+        }
+    }
+
+    fn numerical_grads_branches(
+        parents: &[i32],
+        pl: Vec<Vec<na::SVector<f64, 4>>>,
+        s: &[na::SMatrix<f64, 4, 4>],
+        sqrt_pi: &[na::SVector<f64, 4>],
+        branch_lengths: &mut [f64],
+        epsilon: f64,
+    ) -> (Vec<f64>, Vec<f64>) {
+        let mut grad_tree = vec![0.0; branch_lengths.len()];
+
+        let likelihoods = {
+            let mut tree = FelsensteinTree::<4>::new(parents, branch_lengths);
+            tree.bind_leaf_pl(pl.clone());
+            tree.calculate_likelihoods(s, sqrt_pi)
+        };
+
+        for i in 0..branch_lengths.len() {
+            let original_value = branch_lengths[i];
+            branch_lengths[i] = original_value + epsilon;
+            let plus_epsilon = {
+                let mut tree = FelsensteinTree::<4>::new(parents, branch_lengths);
+                tree.bind_leaf_pl(pl.clone());
+                tree.calculate_likelihoods(s, sqrt_pi).iter().sum::<f64>()
+            };
+            branch_lengths[i] = original_value - epsilon;
+            let minus_epsilon = {
+                let mut tree = FelsensteinTree::<4>::new(parents, branch_lengths);
+                tree.bind_leaf_pl(pl.clone());
+                tree.calculate_likelihoods(s, sqrt_pi).iter().sum::<f64>()
+            };
+            grad_tree[i] = (plus_epsilon - minus_epsilon) / (2.0 * epsilon);
+            branch_lengths[i] = original_value; // restore original value
+        }
+        (grad_tree, likelihoods)
+       
+    }
+
+    #[test]
+    fn test_felsenstein_tree() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+        
+        let parents = vec![7, 7, 8, 8, 9, 9, -1, 6,6,6];
+        
+        let distances = random_branch_lengths(&mut rng, parents.len());
+        let mut tree = FelsensteinTree::<4>::new(&parents, &distances);
+        
+        let L = 5;
+
+        let pl = (0..L).map(|_| {
+            random_pl(&mut rng, tree.num_leaves())
+        }).collect::<Vec<Vec<na::SVector<f64, 4>>>>();
+
+        tree.bind_leaf_pl(pl);
+
+        let S = (0..L).map(|_| {
+            random_S(&mut rng)
+        }).collect::<Vec<na::SMatrix<f64, 4, 4>>>();
+
+        let sqrt_pi = (0..L).map(|_| {
+            random_sqrt_pi(&mut rng)
+        }).collect::<Vec<na::SVector<f64, 4>>>();
+          
+
+        let result = tree.calculate_gradients(&S, &sqrt_pi);
+        println!("Log likelihoods: {:?}", result.log_likelihood);
+        println!("Grad s: {:?}", result.grad_s);
+        println!("Grad sqrt_pi: {:?}", result.grad_sqrt_pi);
+
+        let numerical_result = numerical_grads(&mut tree, &mut S.clone(), &mut sqrt_pi.clone(), 1e-5);
+        println!("Numerical Log likelihoods: {:?}", numerical_result.log_likelihood);
+        println!("Numerical Grad s: {:?}", numerical_result.grad_s);
+        println!("Numerical Grad sqrt_pi: {:?}", numerical_result.grad_sqrt_pi);
+
+        for i in 0..S.len() {
+            for j in 0..4 {
+                for k in 0..4 {
+                    let grad = result.grad_s[i][(j, k)];
+                    let numerical_grad = numerical_result.grad_s[i][(j, k)];
+                    assert!((grad - numerical_grad).abs() < 1e-3, "Grad s at ({}, {}, {}) differs: {} vs {}", i, j, k, grad, numerical_grad);
+                }
+            }
+        }
+
+        for i in 0..sqrt_pi.len() {
+            for j in 0..4 {
+                let grad = result.grad_sqrt_pi[i][j];
+                let numerical_grad = numerical_result.grad_sqrt_pi[i][j];
+                assert!((grad - numerical_grad).abs() < 1e-3, "Grad sqrt_pi at ({}, {}) differs: {} vs {}", i, j, grad, numerical_grad);
+            }
+        }
+
+    }
+
+    #[test]
+    fn test_felsenstein_tree_branch_grads() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+        
+        let parents = vec![7, 7, 8, 8, 9, 9, -1, 6,6,6];
+        
+        let distances = random_branch_lengths(&mut rng, parents.len());
+        let mut tree = FelsensteinTree::<4>::new(&parents, &distances);
+        
+        let L = 5;
+
+        let pl = (0..L).map(|_| {
+            random_pl(&mut rng, tree.num_leaves())
+        }).collect::<Vec<Vec<na::SVector<f64, 4>>>>();
+
+        tree.bind_leaf_pl(pl.clone());
+
+        let S = (0..L).map(|_| {
+            random_S(&mut rng)
+        }).collect::<Vec<na::SMatrix<f64, 4, 4>>>();
+
+        let sqrt_pi = (0..L).map(|_| {
+            random_sqrt_pi(&mut rng)
+        }).collect::<Vec<na::SVector<f64, 4>>>();
+          
+        let distances = random_branch_lengths(&mut rng, parents.len());
+
+        let result = tree.calculate_gradients_with_tree(&S, &sqrt_pi, &distances);
+        println!("Log likelihoods: {:?}", result.log_likelihood);
+        println!("Grad tree: {:?}", result.grad_tree);
+
+        let numerical_result = numerical_grads_branches(&parents, pl.clone(), &S.clone(), &sqrt_pi.clone(), &mut distances.clone(), 1e-5);
+        println!("Numerical Grad tree: {:?}", numerical_result.0);
+        println!("Numerical Log likelihoods: {:?}", numerical_result.1);
+
+        for i in 0..parents.len() {
+            let grad = result.grad_tree[i];
+            let numerical_grad = numerical_result.0[i];
+            assert!((grad - numerical_grad).abs() < 1e-3, "Grad tree at {} differs: {} vs {}", i, grad, numerical_grad);
+        }
+    }   
+    #[test]
+    fn test_felsenstein_tree_branch_grads_singleS() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+        
+        let parents = vec![7, 7, 8, 8, 9, 9, -1, 6,6,6];
+        
+        let distances = random_branch_lengths(&mut rng, parents.len());
+        let mut tree = FelsensteinTree::<4>::new(&parents, &distances);
+        
+        let L = 5;
+
+        let pl = (0..L).map(|_| {
+            random_pl(&mut rng, tree.num_leaves())
+        }).collect::<Vec<Vec<na::SVector<f64, 4>>>>();
+
+        tree.bind_leaf_pl(pl.clone());
+
+        let S = random_S(&mut rng);
+
+        let sqrt_pi = random_sqrt_pi(&mut rng);
+          
+        let distances = random_branch_lengths(&mut rng, parents.len());
+
+        let result = tree.calculate_gradients_with_tree(&vec![S], &vec![sqrt_pi], &distances);
+        println!("Log likelihoods: {:?}", result.log_likelihood);
+        println!("Grad tree: {:?}", result.grad_tree);
+
+        let numerical_result = numerical_grads_branches(&parents, pl.clone(), &vec![S], &vec![sqrt_pi], &mut distances.clone(), 1e-5);
+        println!("Numerical Grad tree: {:?}", numerical_result.0);
+        println!("Numerical Log likelihoods: {:?}", numerical_result.1);
+
+        for i in 0..parents.len() {
+            let grad = result.grad_tree[i];
+            let numerical_grad = numerical_result.0[i];
+            assert!((grad - numerical_grad).abs() < 1e-3, "Grad tree at {} differs: {} vs {}", i, grad, numerical_grad);
+        }
+    }   
 }

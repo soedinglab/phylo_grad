@@ -91,6 +91,10 @@ pub fn compute_param_data<const DIM: usize>(
         S_symmetric[(i, i)] = -rate_matrix.row(i).sum() + rate_matrix[(i, i)];
     }
 
+    for i in 0..DIM {
+        rate_matrix[(i, i)] = -rate_matrix.row(i).sum();
+    }
+
     let (eigenvalues, eigenvectors) = crate::numerics::symmetric_eigen(S_symmetric)?;
 
     // Prevent numerical instability
