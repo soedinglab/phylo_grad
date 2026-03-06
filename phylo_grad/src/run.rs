@@ -117,6 +117,14 @@ pub struct FelsensteinResult<const DIM: usize> {
     pub grad_sqrt_pi: Vec<na::SVector<f64, DIM>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct FelsensteinResultWithTree<const DIM: usize> {
+    pub log_likelihood: Vec<f64>,
+    pub grad_s: Vec<na::SMatrix<f64, DIM, DIM>>,
+    pub grad_sqrt_pi: Vec<na::SVector<f64, DIM>>,
+    pub grad_tree: Vec<f64>,
+}
+
 pub fn calculate_column_parallel<const DIM: usize, A: AsMut<[na::SVector<f64, DIM>]> + Send>(
     leaf_pl: &mut [A],
     S: &[na::SMatrix<f64, DIM, DIM>],
@@ -366,6 +374,7 @@ pub fn calculate_columns_single_S_parallel<const DIM: usize>(
     sqrt_pi: &na::SVector<f64, DIM>,
     tree: Tree,
     only_likelihood: bool,
+    d_edge_lengths: Option<&mut [f64]>,
 ) -> FelsensteinResult<DIM> {
     let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
 
@@ -403,10 +412,11 @@ pub fn calculate_columns_single_S_parallel<const DIM: usize>(
     let mut pl = pl;
 
     let mut results_vec = vec![
-        FelsensteinResult::<DIM> {
+        FelsensteinResultWithTree::<DIM> {
             log_likelihood: vec![],
             grad_s: vec![],
             grad_sqrt_pi: vec![],
+            grad_tree: vec![],
         };
         real_num_threads
     ];
@@ -422,14 +432,28 @@ pub fn calculate_columns_single_S_parallel<const DIM: usize>(
             let (first, end) = results.split_first_mut().unwrap();
             results = end;
             s.spawn(|_| {
-                *first = calculate_column_block_single_S(
+                let mut tree_grad = if d_edge_lengths.is_some() {
+                    vec![0.0; tree.parents.len()]
+                } else {
+                    vec![]
+                };
+                let result = calculate_column_block_single_S(
                     pl_slice,
                     &param,
                     &forward_data,
                     tree.clone(),
                     only_likelihood,
                     &bifurcations,
+                    if tree_grad.is_empty() {
+                        None
+                    } else {
+                        Some(tree_grad.as_mut_slice())
+                    },
                 );
+                first.log_likelihood = result.log_likelihood;
+                first.grad_s = result.grad_s;
+                first.grad_sqrt_pi = result.grad_sqrt_pi;
+                first.grad_tree = tree_grad;
             });
         }
     });
@@ -441,6 +465,14 @@ pub fn calculate_columns_single_S_parallel<const DIM: usize>(
 
     let grad_s = results_vec.iter().map(|res| res.grad_s[0]).sum();
     let grad_sqrt_pi = results_vec.iter().map(|res| res.grad_sqrt_pi[0]).sum();
+
+    if let Some(d_tree) = d_edge_lengths {
+        for res in results_vec.iter() {
+            for (i, &grad) in res.grad_tree.iter().enumerate() {
+                d_tree[i] += grad;
+            }
+        }
+    }
 
     FelsensteinResult {
         log_likelihood: log_likelihoods,

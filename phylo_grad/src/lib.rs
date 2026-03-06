@@ -115,11 +115,59 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, false)
+            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, false, None)
         } else {
             calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, false, None)
         };
         result
+    }
+
+    pub fn calculate_gradients_with_tree(
+        &mut self,
+        s: &[na::SMatrix<f64, DIM, DIM>],
+        sqrt_pi: &[na::SVector<f64, DIM>],
+        branch_lengths: &[f64]
+    ) -> FelsensteinResultWithTree<DIM> {
+        // permute the branch lengths:
+        let branch_lengths = {
+            let mut permuted_branch_lengths = vec![0.0; branch_lengths.len()];
+            for (new, orig) in self.sorting_order.iter().enumerate() {
+                permuted_branch_lengths[new] = branch_lengths[*orig];
+            }
+            permuted_branch_lengths
+        };
+
+        let tree = tree::Tree::new(&self.parents, &branch_lengths, self.num_leaves);
+        // One out internal nodes in partial_likelihoods
+        for pl in &mut self.partial_likelihoods {
+            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
+                *p = na::SVector::<f64, DIM>::from_element(1.0);
+            });
+        }
+
+        let mut branch_length_grads = vec![0.0; self.parents.len()];
+
+        let result = if s.len() == 1 && sqrt_pi.len() == 1 {
+            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, false, Some(&mut branch_length_grads))
+        } else {
+            calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, false, Some(&mut branch_length_grads))
+        };
+
+        // Permute back the branch length gradients:
+        let branch_length_grads = {
+            let mut permuted_branch_length_grads = vec![0.0; branch_length_grads.len()];
+            for (new, orig) in self.sorting_order.iter().enumerate() {
+                permuted_branch_length_grads[*orig] = branch_length_grads[new];
+            }
+            permuted_branch_length_grads
+        };
+
+        FelsensteinResultWithTree {
+            log_likelihood: result.log_likelihood,
+            grad_s: result.grad_s,
+            grad_sqrt_pi: result.grad_sqrt_pi,
+            grad_tree: branch_length_grads,
+        }
     }
 
     /// Same as `calculate_gradients`, but only calculates the log likelihoods for each side in the alignment.
@@ -137,7 +185,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
-            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, true)
+            calculate_columns_single_S_parallel(&mut self.partial_likelihoods, &s[0], &sqrt_pi[0], tree, true, None)
         } else {
             calculate_column_parallel(&mut self.partial_likelihoods, s, sqrt_pi, tree, true, None)
         };
