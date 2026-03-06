@@ -4,7 +4,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] — 2026-
+## [2.2.0] - 2026-03-06
+
+### Additions
+- The there is a function calculate_gradients_with_branch_lengths() which also calculates the gradient of the branch lengths
+
+## [2.1.1] - 2026-02-24
+
+### Fix
+- Division by zero for small alignments because of the multithreading strategy in the single model mode
+
+## [2.1.0] - 2026-02-24
+
+### Changes
+- Implement Debug and Clone for FelsensteinTree and SingleSideResult
+- Report MSRV as 1.87 because our nalgebra dependecy
+
+
+## [2.0.0] — 2026-02-18
 
 ### Changes
 
@@ -13,3 +30,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - We dropped support for f32
 - The parallization of the single model case has been changed to be dramatically more memory efficient.
 - The project does not relay on a nighlty compiler anymore.
+
+

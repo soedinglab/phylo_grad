@@ -121,6 +121,7 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
     distances: &[f64],
     offsets: &[u32],
     d_trans: Option<&mut [na::SMatrix<f64, DIM, DIM>]>,
+    d_edge_lengths: Option<&mut [f64]>,
 ) {
     let scaler = if offsets[bifurcation.parent as usize] == 0 {
         1.0
@@ -167,6 +168,14 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
                     * left_contribution)
                     .transpose(),
             );
+        }
+
+        if let Some(d_edge_lengths) = d_edge_lengths {
+            let d_t = param.Q * (forward[bifurcation.left as usize].transition_T).transpose();
+            d_edge_lengths[bifurcation.left as usize] += d_t.dot(&d_trans_left);
+
+            let d_t = param.Q * (forward[bifurcation.right as usize].transition_T).transpose();
+            d_edge_lengths[bifurcation.right as usize] += d_t.dot(&d_trans_right);
         }
 
         if let Some(d_trans) = d_trans {
@@ -244,6 +253,16 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
                     * (left_contribution * right_contribution))
                     .transpose(),
             );
+        }
+        if let Some(d_edge_lengths) = d_edge_lengths {
+            let d_t = param.Q * (forward[bifurcation.left as usize].transition_T).transpose();
+            d_edge_lengths[bifurcation.left as usize] += d_t.dot(&d_trans_left);
+
+            let d_t = param.Q * (forward[bifurcation.right as usize].transition_T).transpose();
+            d_edge_lengths[bifurcation.right as usize] += d_t.dot(&d_trans_right);
+
+            let d_t = param.Q * (forward[bifurcation.middle as usize].transition_T).transpose();
+            d_edge_lengths[bifurcation.middle as usize] += d_t.dot(&d_trans_middle);
         }
         if let Some(d_trans) = d_trans {
             d_trans[bifurcation.left as usize] += d_trans_left;
