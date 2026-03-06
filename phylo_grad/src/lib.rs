@@ -123,7 +123,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         result
     }
 
-    pub fn calculate_gradients_with_tree(
+    pub fn calculate_gradients_with_branch_lengths(
         &mut self,
         s: &[na::SMatrix<f64, DIM, DIM>],
         sqrt_pi: &[na::SVector<f64, DIM>],
@@ -444,7 +444,7 @@ mod tests {
           
         let distances = random_branch_lengths(&mut rng, parents.len());
 
-        let result = tree.calculate_gradients_with_tree(&S, &sqrt_pi, &distances);
+        let result = tree.calculate_gradients_with_branch_lengths(&S, &sqrt_pi, &distances);
         println!("Log likelihoods: {:?}", result.log_likelihood);
         println!("Grad tree: {:?}", result.grad_tree);
 
@@ -481,7 +481,7 @@ mod tests {
           
         let distances = random_branch_lengths(&mut rng, parents.len());
 
-        let result = tree.calculate_gradients_with_tree(&vec![S], &vec![sqrt_pi], &distances);
+        let result = tree.calculate_gradients_with_branch_lengths(&vec![S], &vec![sqrt_pi], &distances);
         println!("Log likelihoods: {:?}", result.log_likelihood);
         println!("Grad tree: {:?}", result.grad_tree);
 
