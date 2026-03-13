@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-03-13
+
+### Changes
+- For broadcasted parameter like the branch_lengths and S and sqrt_pi (if only one is provided) we used to calculate the gradients with respect to the summed log likelihood of the columns. Now we return the gradients per column.
+
 ## [2.2.0] - 2026-03-06
 
 ### Additions

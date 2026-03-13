@@ -64,6 +64,11 @@ def helper_test(dim : int, gradients: bool, single_model: bool = False):
         
         if gradients:
             torch_S_grad, torch_sqrt_pi_grad = felsenstein.gradients(torch_tree, S.double(), sqrt_pi.double())
+
+            if single_model:
+                # If single model, we only compare the first one, since the rest are just copies
+                result['grad_s'] = result['grad_s'].sum(axis=0)
+                result['grad_sqrt_pi'] = result['grad_sqrt_pi'].sum(axis=0)
             
             if torch_S_grad.isnan().any():
                 print("Torch S grad is nan")
