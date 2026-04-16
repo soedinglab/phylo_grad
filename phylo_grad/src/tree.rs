@@ -70,6 +70,8 @@ pub fn get_topological_bifurcations(tree: &Tree) -> Vec<Bifurcation> {
             });
         } else if children.len() > 3 {
             panic!("Node {} has {} children, but only bifurcations with 2 or 3 children are supported", node, children.len());
+        } else if children.len() == 1 {
+            panic!("Node {} has only one child, but only bifurcations with 2 or 3 children are supported", node);
         }
     }
 

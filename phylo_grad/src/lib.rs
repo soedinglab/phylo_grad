@@ -516,6 +516,63 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn test_felsenstein_tree_branch_grads_rooted() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+
+        let parents = vec![7, 7, 8, 8, 9, 9, 10, 6, 6, 10, -1];
+
+        let distances = random_branch_lengths(&mut rng, parents.len());
+        let mut tree = FelsensteinTree::<4>::new(&parents, &distances);
+
+        let L = 5;
+
+        let pl = (0..L)
+            .map(|_| random_pl(&mut rng, tree.num_leaves()))
+            .collect::<Vec<Vec<na::SVector<f64, 4>>>>();
+
+        tree.bind_leaf_pl(pl.clone());
+
+        let S = (0..L)
+            .map(|_| random_S(&mut rng))
+            .collect::<Vec<na::SMatrix<f64, 4, 4>>>();
+
+        let sqrt_pi = (0..L)
+            .map(|_| random_sqrt_pi(&mut rng))
+            .collect::<Vec<na::SVector<f64, 4>>>();
+
+        let distances = random_branch_lengths(&mut rng, parents.len());
+
+        let result = tree.calculate_gradients_with_branch_lengths(&S, &sqrt_pi, &distances);
+        println!("Log likelihoods: {:?}", result.log_likelihood);
+        println!("Grad tree: {:?}", result.grad_tree);
+
+        let numerical_result = numerical_grads_branches(
+            &parents,
+            pl.clone(),
+            &S.clone(),
+            &sqrt_pi.clone(),
+            &mut distances.clone(),
+            1e-5,
+        );
+        println!("Numerical Grad tree: {:?}", numerical_result.0);
+        println!("Numerical Log likelihoods: {:?}", numerical_result.1);
+
+        for col in 0..sqrt_pi.len() {
+            let grad = &result.grad_tree[col];
+            for i in 0..parents.len() {
+                let grad = grad[i];
+                let numerical_grad = numerical_result.0[col][i];
+                assert!(
+                    (grad - numerical_grad).abs() < 1e-3,
+                    "Grad tree at {} differs: {} vs {}",
+                    i,
+                    grad,
+                    numerical_grad
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_felsenstein_tree_branch_grads() {
