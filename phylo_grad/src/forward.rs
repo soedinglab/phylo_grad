@@ -97,12 +97,6 @@ pub fn compute_param_data<const DIM: usize>(
 
     let (eigenvalues, eigenvectors) = crate::numerics::symmetric_eigen(S_symmetric)?;
 
-    // Prevent numerical instability
-    let norm_eigenvals = eigenvalues.iter().map(|x| x.abs()).sum::<f64>();
-    if norm_eigenvals > 1e5 {
-        return None;
-    }
-
     let mut V_pi = eigenvectors;
     diag_times_assign(V_pi.as_view_mut(), sqrt_pi_recip.iter().copied());
 
