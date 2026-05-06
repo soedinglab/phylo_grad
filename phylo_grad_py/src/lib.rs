@@ -12,7 +12,7 @@ use pyo3::types::{IntoPyDict, PyDict};
 
 use std::collections::HashMap;
 
-use phylo_grad::{FelsensteinResult, FelsensteinTree};
+use phylo_grad::{FelsensteinResult, FelsensteinResultWithTree, FelsensteinTree};
 
 fn backend_from_py<const DIM: usize>(
     parent_list: PyReadonlyArray1<'_, i32>,
@@ -201,6 +201,36 @@ fn inference_into_py<'py, const DIM: usize>(
     result.into_py_dict(py).unwrap()
 }
 
+fn vec_2d_f64_into_python(vec: Vec<Vec<f64>>, py: Python<'_>) -> Bound<'_, PyArray2<f64>> {
+    let rows = vec.len();
+    let cols = if rows == 0 { 0 } else { vec[0].len() };
+    let flat = vec.into_iter().flatten().collect::<Vec<_>>();
+    Array::<f64, _>::from_shape_vec((rows, cols), flat)
+        .unwrap()
+        .into_pyarray(py)
+}
+
+fn inference_with_tree_into_py<'py, const DIM: usize>(
+    result: FelsensteinResultWithTree<DIM>,
+    py: Python<'py>,
+) -> Bound<'py, PyDict> {
+    let log_likelihood_total_py = vec_0d_into_python(result.log_likelihood, py);
+    let grad_s_total_py = vec_2d_into_python(result.grad_s, py);
+    let grad_sqrt_pi_total_py = vec_1d_into_python(result.grad_sqrt_pi, py);
+    let grad_tree_total_py = vec_2d_f64_into_python(result.grad_tree, py);
+
+    let result: HashMap<String, Py<PyAny>> = [
+        ("log_likelihood".to_string(), log_likelihood_total_py.into()),
+        ("grad_s".to_string(), grad_s_total_py.into()),
+        ("grad_sqrt_pi".to_string(), grad_sqrt_pi_total_py.into()),
+        ("grad_tree".to_string(), grad_tree_total_py.into()),
+    ]
+    .into_iter()
+    .collect();
+
+    result.into_py_dict(py).unwrap()
+}
+
 macro_rules! backend {
     ($dim:expr) => {
         paste::item! {
@@ -286,6 +316,23 @@ macro_rules! backend {
                     let py = self_.py();
 
                     inference_into_py(self_.calc_grad_with_pl(s, sqrt_pi, leaf_log_p), py)
+                }
+
+                #[pyo3(signature=(s, sqrt_pi, branch_lengths))]
+                fn calculate_gradients_with_branch_lengths<'py>(
+                    mut self_: PyRefMut<'py, Self>,
+                    s: PyReadonlyArray3<f64>,
+                    sqrt_pi: PyReadonlyArray2<f64>,
+                    branch_lengths: PyReadonlyArray1<f64>,
+                ) -> Bound<'py, PyDict> {
+                    let py = self_.py();
+                    let backend = &mut self_.tree;
+                    let s = vec_2d_from_python(s);
+                    let sqrt_pi = vec_1d_from_python(sqrt_pi);
+                    let branch_lengths = branch_lengths.as_array().to_vec();
+                    let result = backend
+                        .calculate_gradients_with_branch_lengths(&s, &sqrt_pi, &branch_lengths);
+                    inference_with_tree_into_py(result, py)
                 }
             }
         }

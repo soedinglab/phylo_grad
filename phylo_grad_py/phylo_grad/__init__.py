@@ -59,6 +59,7 @@ class FelsensteinTree:
         self.dtype = leaf_pl.dtype
         self.L = leaf_pl.shape[0]
         self.dim = dim
+        self.num_nodes = len(parent_list)
 
         branch_lengths = np.clip(branch_lengths, distance_threshold, None)
         
@@ -127,6 +128,29 @@ class FelsensteinTree:
         assert sqrt_pi.shape == (self.L, self.dim) or sqrt_pi.shape == (1, self.dim), "sqrt_pi must have shape [L, DIM] or [1, DIM]"
         assert S.shape[0] == sqrt_pi.shape[0], "S and sqrt_pi must have the same first dimension, either L or 1"
         return self.tree.calculate_log_likelihoods(S.astype(np.float64), sqrt_pi.astype(np.float64))
+
+    def calculate_gradients_with_branch_lengths(self, S: np.ndarray, sqrt_pi: np.ndarray, branch_lengths: np.ndarray) -> dict:
+        """Same as calculate_gradients but also returns gradients w.r.t. branch lengths.
+
+        :param S: shape [L, DIM, DIM] or [1, DIM, DIM]
+        :param sqrt_pi: shape [L, DIM] or [1, DIM]
+        :param branch_lengths: shape [N] where N is number of nodes in parent_list
+
+        :return: dict with keys 'grad_s', 'grad_sqrt_pi', 'grad_tree', 'log_likelihood'
+                 'grad_tree' has shape [L, N]
+        """
+        assert isinstance(S, np.ndarray), "S must be a numpy array"
+        assert S.shape == (self.L, self.dim, self.dim) or S.shape == (1, self.dim, self.dim), "S must have shape [L, DIM, DIM] or [1, DIM, DIM]"
+        assert isinstance(sqrt_pi, np.ndarray), "sqrt_pi must be a numpy array"
+        assert sqrt_pi.shape == (self.L, self.dim) or sqrt_pi.shape == (1, self.dim), "sqrt_pi must have shape [L, DIM] or [1, DIM]"
+        assert S.shape[0] == sqrt_pi.shape[0], "S and sqrt_pi must have the same first dimension, either L or 1"
+        assert isinstance(branch_lengths, np.ndarray), "branch_lengths must be a numpy array"
+        assert branch_lengths.shape == (self.num_nodes,), "branch_lengths must have shape [N] where N is number of nodes"
+        return self.tree.calculate_gradients_with_branch_lengths(
+            S.astype(np.float64),
+            sqrt_pi.astype(np.float64),
+            branch_lengths.astype(np.float64),
+        )
 
     def get_sequence_length(self) -> int:
         """Returns L, the length of the sequences"""
