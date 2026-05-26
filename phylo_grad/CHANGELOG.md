@@ -4,15 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.3.0] - 2026-03-13
+## [2.3.0] - 2026-05-26
 
 ### Changes
 - For broadcasted parameter like the branch_lengths and S and sqrt_pi (if only one is provided) we used to calculate the gradients with respect to the summed log likelihood of the columns. Now we return the gradients per column.
+- We used to give -inf as likelihood if the eigenvalues of the rate matrix where very negative. This is actually numerically stable, so we allow this now.
 
 ## [2.2.0] - 2026-03-06
 
 ### Additions
-- The there is a function calculate_gradients_with_branch_lengths() which also calculates the gradient of the branch lengths
+- added a function calculate_gradients_with_branch_lengths() which also calculates the gradient of the branch lengths
 
 ## [2.1.1] - 2026-02-24
 
@@ -23,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 - Implement Debug and Clone for FelsensteinTree and SingleSideResult
-- Report MSRV as 1.87 because our nalgebra dependecy
+- Report MSRV as 1.87 because of the nalgebra dependecy
 
 
 ## [2.0.0] — 2026-02-18
