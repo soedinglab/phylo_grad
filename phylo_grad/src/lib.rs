@@ -66,6 +66,19 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         }
     }
 
+    pub fn update_branch_lengths(&mut self, branch_lengths: &[f64]) {
+        assert!(branch_lengths.len() == self.distances.len());
+        // permute the branch lengths:
+        let branch_lengths = {
+            let mut permuted_branch_lengths = vec![0.0; branch_lengths.len()];
+            for (new, orig) in self.sorting_order.iter().enumerate() {
+                permuted_branch_lengths[new] = branch_lengths[*orig];
+            }
+            permuted_branch_lengths
+        };
+        self.distances = branch_lengths;
+    }
+
     /// Binds the probabilities of the leaves to the tree. This will usually be a one hot vector describing the state at the leaf node.
     /// The outer vector is over the sites, the inner vector over the leaf nodes.
     /// This enables usage of the `calculate_gradients` function.
@@ -367,7 +380,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
 #[cfg(test)]
 mod tests {
     use rand::{SeedableRng, distr::Distribution};
-use rayon::result;
 
     use super::*;
 
@@ -781,5 +793,36 @@ use rayon::result;
             );
         }
         
+    }
+
+    #[test]
+    fn test_update_branch_lengths_same_values_same_likelihood() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+
+        let parents = vec![7, 7, 8, 8, 9, 9, -1, 6, 6, 6];
+        let distances = random_branch_lengths(&mut rng, parents.len());
+        let mut tree = FelsensteinTree::<4>::new(&parents, &distances);
+
+        let L = 4;
+        let pl = (0..L)
+            .map(|_| random_pl(&mut rng, tree.num_leaves()))
+            .collect::<Vec<Vec<na::SVector<f64, 4>>>>();
+        tree.bind_leaf_pl(pl);
+
+        let s = random_S(&mut rng);
+        let sqrt_pi = random_sqrt_pi(&mut rng);
+
+        let likelihood_before = tree.calculate_likelihoods(&vec![s], &vec![sqrt_pi]);
+        tree.update_branch_lengths(&distances);
+        let likelihood_after = tree.calculate_likelihoods(&vec![s], &vec![sqrt_pi]);
+
+        for (before, after) in likelihood_before.iter().zip(likelihood_after.iter()) {
+            assert!(
+                (before - after).abs() < 1e-12,
+                "Log likelihood changed after noop branch update: {} vs {}",
+                before,
+                after
+            );
+        }
     }
 }
