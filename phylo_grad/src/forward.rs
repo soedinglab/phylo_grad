@@ -88,7 +88,7 @@ pub fn compute_param_data<const DIM: usize>(
     times_diag_assign(rate_matrix.as_view_mut(), sqrt_pi.iter().copied());
 
     for i in 0..DIM {
-        rate_matrix[(i, i)] = -rate_matrix.row(i).sum();
+        rate_matrix[(i, i)] -= rate_matrix.row(i).sum();
     }
 
     // S_sym has unspecified diagonal elements, so we put the correct ones from the rate matrix
