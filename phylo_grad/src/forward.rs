@@ -16,8 +16,6 @@ impl<const DIM: usize> ForwardData<DIM> {
 /// Data precomputed for each edge. Depends only on the Q matrix and the edge length
 #[derive(Debug)]
 pub struct ModelEdgeData<const DIM: usize> {
-    /// matrix_exp transposed
-    pub transition_T: na::SMatrix<f64, DIM, DIM>,
     /// exp(t * lambda_i) for the DIM many eigenvalues of Q
     pub exp_t_lambda: na::SVector<f64, DIM>,
 }
@@ -38,7 +36,7 @@ pub struct ParamPrecomp<const DIM: usize> {
     /// A^-1 in the paper
     pub V_pi_inv: na::SMatrix<f64, DIM, DIM>,
     /// Q
-    pub Q : na::SMatrix<f64, DIM, DIM>,
+    pub Q: na::SMatrix<f64, DIM, DIM>,
 }
 
 /// In-place multiplication by a diagonal matrix on the left
@@ -71,7 +69,6 @@ pub fn compute_param_data<const DIM: usize>(
     S: na::SMatrixView<f64, DIM, DIM>,
     sqrt_pi: na::SVectorView<f64, DIM>,
 ) -> Option<ParamPrecomp<DIM>> {
-
     let sqrt_pi_recip = sqrt_pi.map(|x| f64::recip(f64::max(x, f64::MIN_POSITIVE)));
 
     // Read only the upper triangle of S and make it symmetric
@@ -95,7 +92,6 @@ pub fn compute_param_data<const DIM: usize>(
     for i in 0..DIM {
         S_symmetric[(i, i)] = rate_matrix[(i, i)];
     }
-
 
     let (eigenvalues, eigenvectors) = crate::numerics::symmetric_eigen(S_symmetric)?;
 
@@ -122,55 +118,47 @@ fn precompute_model_edge_data<const DIM: usize>(
 ) -> ModelEdgeData<DIM> {
     let exp_t_lambda = param.eigenvalues.map(|lam| f64::exp(lam * distance));
 
-    let mut matrix_exp = param.V_pi.clone_owned();
-    times_diag_assign(matrix_exp.as_view_mut(), exp_t_lambda.iter().copied());
-    matrix_exp *= param.V_pi_inv;
-
-    matrix_exp.apply(|x| *x = f64::max(*x, f64::MIN_POSITIVE));
-    ModelEdgeData {
-        transition_T: matrix_exp.transpose(),
-        exp_t_lambda,
-    }
+    ModelEdgeData { exp_t_lambda }
 }
 
 pub fn forward_data_precompute_param<const DIM: usize>(
     param: &ParamPrecomp<DIM>,
     distances: &[f64],
-) -> ForwardData<DIM> {
-    let num_nodes = distances.len();
-    let mut forward_data = ForwardData::<DIM>::with_capacity(num_nodes);
-
-    forward_data.model_edge_data.extend(
-        distances
-            .iter()
-            .map(|dist| precompute_model_edge_data(param, *dist)),
-    );
-    forward_data
+) -> Vec<ModelEdgeData<DIM>> {
+    distances
+        .iter()
+        .map(|dist| precompute_model_edge_data(param, *dist))
+        .collect()
 }
 
 /// adds the log_p of the children to the log_p of the parent
 /// Main part of the Felsenstein in Forward
 /// log_p are the partial log likelihoods, they start with the leave nodes initialized. This function takes 2 computed log_p vectors
-/// and writes the compbined result in the parent log_p vector
+/// and writes the combined result in the parent log_p vector
 /// Offsets are scaling factors to prevent underflow. offsets[i] = 10 means that the values of this nodes are scaled by 2**10 more than the child values.
 /// The absolut offset is obtained by adding the offsets of all the nodes below this node (including)
 pub fn forward_node<const DIM: usize>(
     child: usize,
     parent: usize,
     lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
-    forward_data: &ForwardData<DIM>,
+    forward_data: &[ModelEdgeData<DIM>],
+    param: &ParamPrecomp<DIM>,
     offsets: &mut [u32],
 ) {
-    // In linspace log_p[parent]_a = sum_b (log_p[child](b) * transiton(rate_matrix, distance)(a,b) )
+    // Felsensteins rule
+    // lin_partial_likelihoods[parent][a] *= sum_b lin_partial_likelihoods[child][b] * P(a -> b)
+    // This is a matrix vector mutliplication Tv, where T is the transition matrix and v is the vector of partial likelihoods of the child node
+    // T = V_pi * diag(exp_t_lambda) * V_pi_inv
+
+    // All steps are quadratic, so no matrix matrix multiplication.
+    let mul1 = param.V_pi_inv * lin_partial_likelihoods[child];
+    let mul2 = forward_data[child].exp_t_lambda.component_mul(&mul1);
+    let parent_contribution = param.V_pi * mul2;
+
     let mut max = 0.0;
     for a in 0..DIM {
-        let mut sum = 0.0;
-        for b in 0..DIM {
-            sum += lin_partial_likelihoods[child][b]
-                * forward_data.model_edge_data[child].transition_T[(b, a)];
-        }
-        lin_partial_likelihoods[parent][a] *= sum;
-        max = f64::max(max, sum);
+        lin_partial_likelihoods[parent][a] *= parent_contribution[a];
+        max = f64::max(max, lin_partial_likelihoods[parent][a]);
     }
     if max < f64::powi(2.0, -100) {
         for a in 0..DIM {

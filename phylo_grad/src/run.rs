@@ -11,7 +11,8 @@ fn forward_column<const DIM: usize>(
     lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
     parents: &[i32],
     offsets: &mut [u32],
-    forward_data: &ForwardData<DIM>,
+    forward_data: &[ModelEdgeData<DIM>],
+    param: &ParamPrecomp<DIM>,
 ) {
     for (child, &parent) in parents.iter().enumerate() {
         if parent == -1 {
@@ -22,6 +23,7 @@ fn forward_column<const DIM: usize>(
             parent as usize,
             lin_partial_likelihoods,
             forward_data,
+            &param,
             offsets,
         );
     }
@@ -72,9 +74,9 @@ pub fn calculate_column<const DIM: usize>(
         }
     };
 
-    let forward_data = forward_data_precompute_param(&param, tree.distances);
+    let edge_data = forward_data_precompute_param(&param, tree.distances);
     let mut offsets = vec![0; tree.parents.len()];
-    forward_column(pl, tree.parents, &mut offsets, &forward_data);
+    forward_column(pl, tree.parents, &mut offsets, &edge_data, &param);
     let lin_pl_root = pl.last().unwrap();
 
     let root_offset: u32 = offsets.iter().sum();
@@ -95,7 +97,7 @@ pub fn calculate_column<const DIM: usize>(
         tree,
         pl,
         &param,
-        &forward_data.model_edge_data,
+        &edge_data,
         &offsets,
         grad_edge_lengths,
     );
@@ -237,13 +239,13 @@ fn d_Q<const DIM: usize>(
 fn calculate_column_with_precompute<const DIM: usize>(
     pl: &mut [na::SVector<f64, DIM>],
     param: &ParamPrecomp<DIM>,
-    forward_data: &ForwardData<DIM>,
+    forward_data: &[ModelEdgeData<DIM>],
     tree: Tree,
     only_likelihood: bool,
     grad_edge_lengths: Option<&mut [f64]>,
 ) -> SingleSideResult<f64, DIM> {
     let mut offsets = vec![0; tree.parents.len()];
-    forward_column(pl, tree.parents, &mut offsets, forward_data);
+    forward_column(pl, tree.parents, &mut offsets, forward_data, param);
 
     let lin_pl_root = pl.last().unwrap();
 
@@ -265,7 +267,7 @@ fn calculate_column_with_precompute<const DIM: usize>(
         tree,
         pl,
         param,
-        &forward_data.model_edge_data,
+        &forward_data,
         &offsets,
         grad_edge_lengths,
     );

@@ -123,6 +123,8 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
     d_trans: Option<&mut [na::SMatrix<f64, DIM, DIM>]>,
     d_edge_lengths: Option<&mut [f64]>,
 ) {
+    todo!("Implement d_log_transition_bifurcation_vjp");
+    /*
     let scaler = if offsets[bifurcation.parent as usize] == 0 {
         1.0
     } else {
@@ -292,4 +294,5 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             *d_Q_output += d_trans_middle;
         }
     };
+    */
 }
