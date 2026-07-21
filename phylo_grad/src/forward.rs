@@ -141,6 +141,7 @@ pub fn forward_node<const DIM: usize>(
     child: usize,
     parent: usize,
     lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
+    lin_child_contributions: &mut [na::SVector<f64, DIM>],
     forward_data: &[ModelEdgeData<DIM>],
     param: &ParamPrecomp<DIM>,
     offsets: &mut [u32],
@@ -155,12 +156,14 @@ pub fn forward_node<const DIM: usize>(
     let mul2 = forward_data[child].exp_t_lambda.component_mul(&mul1);
     let parent_contribution = param.V_pi * mul2;
 
+    lin_child_contributions[child] = parent_contribution.clone();
+
     let mut max = 0.0;
     for a in 0..DIM {
         lin_partial_likelihoods[parent][a] *= parent_contribution[a];
         max = f64::max(max, lin_partial_likelihoods[parent][a]);
     }
-    if max < f64::powi(2.0, -100) {
+    let xtAinv_t = x.transpose() * param.V_pi_inv.transpose(); {
         for a in 0..DIM {
             lin_partial_likelihoods[parent][a] *= f64::powi(2.0, 100);
         }

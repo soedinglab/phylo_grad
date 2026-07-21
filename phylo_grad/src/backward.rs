@@ -38,7 +38,7 @@ pub fn d_expm_vjp<const DIM: usize>(
     let Aty = A_t * cotangent_vector;
 
     // x^TA^-T
-    let xtAinv_t = x.transpose() * param.V_pi_inv;
+    let xtAinv_t = x.transpose() * param.V_pi_inv.transpose();
 
     let mut X = X(param.eigenvalues.as_view(), distance, exp_t_lambda);
 
@@ -111,6 +111,7 @@ pub fn d_param<const DIM: usize>(
 pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
     cotangents: &mut [na::SVector<f64, DIM>],
     lin_pl: &[na::SVector<f64, DIM>],
+    lin_child_contributions: &[na::SVector<f64, DIM>],
     forward: &[ModelEdgeData<DIM>],
     param: &ParamPrecomp<DIM>,
     d_Q_output: &mut na::SMatrix<f64, DIM, DIM>,
@@ -151,12 +152,12 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
     }
 
     if bifurcation.middle == -1 {
-        let parent_cotangent = cotangents[bifurcation.parent as usize];
+        let parent_cotangent = cotangents[bifurcation.parent as usize] * scaler;
 
         let left_cotangent =
-            parent_cotangent.component_mul(&lin_pl[bifurcation.right as usize]) * scaler;
+            parent_cotangent.component_mul(&lin_child_contributions[bifurcation.right as usize]);
         let right_cotangent =
-            parent_cotangent.component_mul(&lin_pl[bifurcation.left as usize]) * scaler;
+            parent_cotangent.component_mul(&lin_child_contributions[bifurcation.left as usize]);
 
         single_edge(
             d_Q_output,
@@ -182,20 +183,17 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
         }
     } else {
         // trifurcation case
-        let parent_cotangent = cotangents[bifurcation.parent as usize];
+        let parent_cotangent = cotangents[bifurcation.parent as usize] * scaler;
 
         let left_cotangent = parent_cotangent
-            .component_mul(&lin_pl[bifurcation.middle as usize])
-            .component_mul(&lin_pl[bifurcation.right as usize])
-            * scaler;
+            .component_mul(&lin_child_contributions[bifurcation.middle as usize])
+            .component_mul(&lin_child_contributions[bifurcation.right as usize]);
         let middle_cotangent = parent_cotangent
-            .component_mul(&lin_pl[bifurcation.left as usize])
-            .component_mul(&lin_pl[bifurcation.right as usize])
-            * scaler;
+            .component_mul(&lin_child_contributions[bifurcation.left as usize])
+            .component_mul(&lin_child_contributions[bifurcation.right as usize]);
         let right_cotangent = parent_cotangent
-            .component_mul(&lin_pl[bifurcation.left as usize])
-            .component_mul(&lin_pl[bifurcation.middle as usize])
-            * scaler;        
+            .component_mul(&lin_child_contributions[bifurcation.left as usize])
+            .component_mul(&lin_child_contributions[bifurcation.middle as usize]);
 
 
 

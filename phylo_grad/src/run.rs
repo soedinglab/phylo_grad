@@ -9,6 +9,7 @@ use nalgebra as na;
 /// log_p should have the leaf log_p initialized and all the other nodes set to zero
 fn forward_column<const DIM: usize>(
     lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
+    lin_child_contributions: &mut [na::SVector<f64, DIM>],
     parents: &[i32],
     offsets: &mut [u32],
     forward_data: &[ModelEdgeData<DIM>],
@@ -22,6 +23,7 @@ fn forward_column<const DIM: usize>(
             child as usize,
             parent as usize,
             lin_partial_likelihoods,
+            lin_child_contributions,
             forward_data,
             &param,
             offsets,
@@ -76,7 +78,8 @@ pub fn calculate_column<const DIM: usize>(
 
     let edge_data = forward_data_precompute_param(&param, tree.distances);
     let mut offsets = vec![0; tree.parents.len()];
-    forward_column(pl, tree.parents, &mut offsets, &edge_data, &param);
+    let mut lin_child_contributions = vec![na::SVector::<f64, DIM>::zeros(); tree.parents.len()];
+    forward_column(pl, &mut lin_child_contributions, tree.parents, &mut offsets, &edge_data, &param);
     let lin_pl_root = pl.last().unwrap();
 
     let root_offset: u32 = offsets.iter().sum();
@@ -96,6 +99,7 @@ pub fn calculate_column<const DIM: usize>(
         &d_lin_pl_root,
         tree,
         pl,
+        &lin_child_contributions,
         &param,
         &edge_data,
         &offsets,
@@ -207,6 +211,7 @@ fn d_Q<const DIM: usize>(
     grad_p_root: &na::SVector<f64, DIM>,
     tree: Tree,
     lin_pl: &[na::SVector<f64, DIM>],
+    lin_child_contributions: &[na::SVector<f64, DIM>],
     param: &ParamPrecomp<DIM>,
     forward: &[ModelEdgeData<DIM>],
     offsets: &[u32],
@@ -222,6 +227,7 @@ fn d_Q<const DIM: usize>(
         backward::d_log_transition_bifurcation_vjp(
             &mut cotangents,
             lin_pl,
+            lin_child_contributions,
             forward,
             param,
             &mut d_Q,
@@ -244,7 +250,8 @@ fn calculate_column_with_precompute<const DIM: usize>(
     grad_edge_lengths: Option<&mut [f64]>,
 ) -> SingleSideResult<f64, DIM> {
     let mut offsets = vec![0; tree.parents.len()];
-    forward_column(pl, tree.parents, &mut offsets, forward_data, param);
+    let mut lin_child_contributions = vec![na::SVector::<f64, DIM>::zeros(); tree.parents.len()];
+    forward_column(pl, &mut lin_child_contributions, tree.parents, &mut offsets, forward_data, param);
 
     let lin_pl_root = pl.last().unwrap();
 
@@ -265,6 +272,7 @@ fn calculate_column_with_precompute<const DIM: usize>(
         &d_lin_pl_root,
         tree,
         pl,
+        &lin_child_contributions,
         param,
         &forward_data,
         &offsets,
