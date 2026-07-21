@@ -22,32 +22,30 @@ fn X<const DIM: usize>(
     })
 }
 
-/// Backward pass for expm(distance * 1/sqrt_pi @ S @ sqrt_pi)
+/// Backward pass for expm(distance * Q)x
+/// It gets the cotangent of expm(distance * Q)x and accumulates the cotangent of Q
 pub fn d_expm_vjp<const DIM: usize>(
-    cotangent_vector: &mut na::SMatrix<f64, DIM, DIM>,
+    Q_cotangent_vector: &mut na::SMatrix<f64, DIM, DIM>,
     distance: f64,
     param: &ParamPrecomp<DIM>,
     exp_t_lambda: &na::SVector<f64, DIM>,
+    x:  &na::SVector<f64, DIM>,
+    cotangent_vector: &na::SVector<f64, DIM>
 ) {
-    /*
-    B = V_pi_invT
-    B_inv = V_pi_T
 
-    result =
-      ((B_inv @ cotangent @ B) \odot X_T(lam, dist))
+    let A_t = param.V_pi.transpose();
 
-      we do not do the outer most matrix muls here
-    */
+    // A^Ty
+    let Aty = A_t * cotangent_vector;
 
-    let B = param.V_pi_inv.transpose();
-    let B_inv = param.V_pi.transpose();
+    // x^TA^-T
+    let xtAinv_t = x.transpose() * param.V_pi_inv;
 
-    let X = X(param.eigenvalues.as_view(), distance, exp_t_lambda);
+    let mut X = X(param.eigenvalues.as_view(), distance, exp_t_lambda);
 
-    *cotangent_vector *= B;
-    *cotangent_vector = B_inv * *cotangent_vector;
+    X.component_mul_assign(&(Aty * xtAinv_t));
 
-    cotangent_vector.component_mul_assign(&X);
+    *Q_cotangent_vector += X;
 }
 
 /// Backward pass for rho(W) = 1/sqrt_pi @ S @ sqrt_pi
@@ -123,8 +121,6 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
     d_trans: Option<&mut [na::SMatrix<f64, DIM, DIM>]>,
     d_edge_lengths: Option<&mut [f64]>,
 ) {
-    todo!("Implement d_log_transition_bifurcation_vjp");
-    /*
     let scaler = if offsets[bifurcation.parent as usize] == 0 {
         1.0
     } else {
@@ -199,7 +195,7 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             *d_Q_output += d_trans_left;
             *d_Q_output += d_trans_right;
         }
-    } else {
+    } else { // trifurcation case 
         let mut d_trans_left = na::SMatrix::<f64, DIM, DIM>::zeros();
         let mut d_trans_right = na::SMatrix::<f64, DIM, DIM>::zeros();
         let mut d_trans_middle = na::SMatrix::<f64, DIM, DIM>::zeros();
@@ -294,5 +290,4 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             *d_Q_output += d_trans_middle;
         }
     };
-    */
 }
