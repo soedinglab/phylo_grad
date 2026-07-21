@@ -228,7 +228,6 @@ fn d_Q<const DIM: usize>(
             bi,
             &tree.distances,
             offsets,
-            None,
             d_edge_lengths.as_deref_mut(),
         );
     }
