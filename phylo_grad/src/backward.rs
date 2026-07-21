@@ -134,7 +134,8 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
         exp_t_lambda: &na::SVector<f64, DIM>,
         child_pl: &na::SVector<f64, DIM>,
         child_cotangent: &mut na::SVector<f64, DIM>,
-    ) {
+        d_edge: bool,
+    ) -> f64 {
         d_expm_vjp(
             d_Q_output,
             distance,
@@ -149,6 +150,16 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
         *child_cotangent = param.V_pi.transpose() * cotangent_vector;
         child_cotangent.component_mul_assign(exp_t_lambda);
         *child_cotangent = param.V_pi_inv.transpose() * *child_cotangent;
+
+        if d_edge {
+            // d/dt exp(tQ) x = V_pi * diag(lambda_i * exp(t * lambda_i)) * V_pi_inv * x
+            let mut d_exp_t_lambda = exp_t_lambda.component_mul(&param.eigenvalues);
+            d_exp_t_lambda.component_mul_assign(&(param.V_pi_inv * *child_pl));
+            let d_parent_contribution_dt = param.V_pi * d_exp_t_lambda;
+            cotangent_vector.dot(&d_parent_contribution_dt)
+        } else {
+            0.0
+        }
     }
 
     if bifurcation.middle == -1 {
@@ -159,7 +170,7 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
         let right_cotangent =
             parent_cotangent.component_mul(&lin_child_contributions[bifurcation.left as usize]);
 
-        single_edge(
+        let d_left_t = single_edge(
             d_Q_output,
             &left_cotangent,
             distances[bifurcation.left as usize],
@@ -167,8 +178,9 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             &forward[bifurcation.left as usize].exp_t_lambda,
             &lin_pl[bifurcation.left as usize],
             &mut cotangents[bifurcation.left as usize],
+            d_edge_lengths.is_some(),
         );
-        single_edge(
+        let d_right_t = single_edge(
             d_Q_output,
             &right_cotangent,
             distances[bifurcation.right as usize],
@@ -176,10 +188,12 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             &forward[bifurcation.right as usize].exp_t_lambda,
             &lin_pl[bifurcation.right as usize],
             &mut cotangents[bifurcation.right as usize],
+            d_edge_lengths.is_some(),
         );
 
         if let Some(d_edge_lengths) = d_edge_lengths {
-            todo!("Do edge gradients");
+            d_edge_lengths[bifurcation.left as usize] += d_left_t;
+            d_edge_lengths[bifurcation.right as usize] += d_right_t;
         }
     } else {
         // trifurcation case
@@ -195,9 +209,7 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             .component_mul(&lin_child_contributions[bifurcation.left as usize])
             .component_mul(&lin_child_contributions[bifurcation.middle as usize]);
 
-
-
-        single_edge(
+        let d_left_t = single_edge(
             d_Q_output,
             &left_cotangent,
             distances[bifurcation.left as usize],
@@ -205,8 +217,9 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             &forward[bifurcation.left as usize].exp_t_lambda,
             &lin_pl[bifurcation.left as usize],
             &mut cotangents[bifurcation.left as usize],
+            d_edge_lengths.is_some(),
         );
-        single_edge(
+        let d_middle_t = single_edge(
             d_Q_output,
             &middle_cotangent,
             distances[bifurcation.middle as usize],
@@ -214,8 +227,9 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             &forward[bifurcation.middle as usize].exp_t_lambda,
             &lin_pl[bifurcation.middle as usize],
             &mut cotangents[bifurcation.middle as usize],
+            d_edge_lengths.is_some(),
         );
-        single_edge(
+        let d_right_t = single_edge(
             d_Q_output,
             &right_cotangent,
             distances[bifurcation.right as usize],
@@ -223,10 +237,13 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
             &forward[bifurcation.right as usize].exp_t_lambda,
             &lin_pl[bifurcation.right as usize],
             &mut cotangents[bifurcation.right as usize],
+            d_edge_lengths.is_some(),
         );
 
         if let Some(d_edge_lengths) = d_edge_lengths {
-            todo!("Do edge gradients");
+            d_edge_lengths[bifurcation.left as usize] += d_left_t;
+            d_edge_lengths[bifurcation.middle as usize] += d_middle_t;
+            d_edge_lengths[bifurcation.right as usize] += d_right_t;
         }
     };
 }

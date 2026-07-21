@@ -1,18 +1,5 @@
 use nalgebra as na;
 
-/// Forward data precomputed before the forward pass
-pub struct ForwardData<const DIM: usize> {
-    pub model_edge_data: Vec<ModelEdgeData<DIM>>,
-}
-
-impl<const DIM: usize> ForwardData<DIM> {
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            model_edge_data: Vec::with_capacity(capacity),
-        }
-    }
-}
-
 /// Data precomputed for each edge. Depends only on the Q matrix and the edge length
 #[derive(Debug)]
 pub struct ModelEdgeData<const DIM: usize> {
@@ -35,8 +22,6 @@ pub struct ParamPrecomp<const DIM: usize> {
     pub V_pi: na::SMatrix<f64, DIM, DIM>,
     /// A^-1 in the paper
     pub V_pi_inv: na::SMatrix<f64, DIM, DIM>,
-    /// Q
-    pub Q: na::SMatrix<f64, DIM, DIM>,
 }
 
 /// In-place multiplication by a diagonal matrix on the left
@@ -108,7 +93,6 @@ pub fn compute_param_data<const DIM: usize>(
         eigenvalues,
         V_pi,
         V_pi_inv,
-        Q: rate_matrix,
     })
 }
 
@@ -163,7 +147,7 @@ pub fn forward_node<const DIM: usize>(
         lin_partial_likelihoods[parent][a] *= parent_contribution[a];
         max = f64::max(max, lin_partial_likelihoods[parent][a]);
     }
-    let xtAinv_t = x.transpose() * param.V_pi_inv.transpose(); {
+    if max < f64::powi(2.0, -100) {
         for a in 0..DIM {
             lin_partial_likelihoods[parent][a] *= f64::powi(2.0, 100);
         }
