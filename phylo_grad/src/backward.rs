@@ -12,7 +12,7 @@ fn X<const DIM: usize>(
         let diff = f64::abs(eigenvalues[i] - eigenvalues[j]);
         if diff < 1e-10 {
             t * exp_t_lambda[i]
-        } else if diff > 1.0 {
+        } else if diff > 0.1 {
             (exp_t_lambda[i] - exp_t_lambda[j]) / (eigenvalues[i] - eigenvalues[j])
         } else {
             exp_t_lambda[j]
@@ -32,10 +32,8 @@ pub fn d_expm_vjp<const DIM: usize>(
     x: &na::SVector<f64, DIM>,
     cotangent_vector: &na::SVector<f64, DIM>,
 ) {
-    let A_t = param.V_pi.transpose();
-
     // A^Ty
-    let Aty = A_t * cotangent_vector;
+    let Aty = param.V_pi.tr_mul(&cotangent_vector);
 
     // x^TA^-T
     let xtAinv_t = x.transpose() * param.V_pi_inv.transpose();
