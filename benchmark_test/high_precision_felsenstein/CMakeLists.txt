@@ -14,4 +14,5 @@ add_executable(high_precision_felsenstein
 )
 
 target_include_directories(high_precision_felsenstein PRIVATE ${EIGEN3_INCLUDE_DIRS})
+target_compile_definitions(high_precision_felsenstein PRIVATE EIGEN_DEFAULT_DENSE_INDEX_TYPE=int)
 target_link_libraries(high_precision_felsenstein PRIVATE ${QD_LIBRARY})

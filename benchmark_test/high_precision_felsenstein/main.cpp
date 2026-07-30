@@ -1,371 +1,296 @@
 #include "felsenstein_qd.hpp"
 
-#include <cctype>
+#include <cmath>
 #include <iomanip>
-#include <fstream>
 #include <iostream>
+#include <limits>
+#include <random>
 #include <stdexcept>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace hpf = high_precision_felsenstein;
 
 namespace {
 
-struct ParsedTree {
-  std::vector<int> parent;
-  std::vector<qd_real> branch_length;
-  std::vector<std::string> node_name;
-  int root = -1;
-};
-
-struct MsaData {
-  std::vector<std::string> taxon_names;
-  std::vector<std::string> sequences;
-  int num_sites = 0;
-};
-
-void SkipWs(const std::string& s, size_t* i) {
-  while (*i < s.size() && std::isspace(static_cast<unsigned char>(s[*i]))) {
-    ++(*i);
-  }
+qd_real SampleQd(std::mt19937_64* rng, const qd_real& lo, const qd_real& hi) {
+  const double lo_d = to_double(lo);
+  const double hi_d = to_double(hi);
+  std::uniform_real_distribution<double> dist(lo_d, hi_d);
+  return qd_real(dist(*rng));
 }
 
-std::string ReadWholeFile(const std::string& path) {
-  std::ifstream in(path);
-  if (!in) {
-    throw std::runtime_error("failed to open " + path);
-  }
-  return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+qd_real AbsQd(const qd_real& x) {
+  return (x < qd_real(0.0)) ? -x : x;
 }
 
-bool IsLabelChar(char c) {
-  return c != '(' && c != ')' && c != ',' && c != ':' && c != ';' && !std::isspace(static_cast<unsigned char>(c));
+qd_real CentralDiffStep(const qd_real& x) {
+  const qd_real base = qd_real("1e-6");
+  const qd_real ax = AbsQd(x);
+  return (ax > qd_real(1.0)) ? (base * ax) : base;
 }
 
-std::string ParseLabel(const std::string& s, size_t* i) {
-  SkipWs(s, i);
-  size_t start = *i;
-  while (*i < s.size() && IsLabelChar(s[*i])) {
-    ++(*i);
+qd_real SafePositiveStep(const qd_real& x) {
+  qd_real eps = CentralDiffStep(x);
+  if (x - eps <= qd_real(0.0)) {
+    eps = x * qd_real("0.49");
   }
-  if (*i == start) {
-    return "";
+  if (eps <= qd_real(0.0)) {
+    throw std::runtime_error("failed to construct positive central-difference step");
   }
-  return s.substr(start, *i - start);
+  return eps;
 }
 
-qd_real ParseBranchLength(const std::string& s, size_t* i) {
-  SkipWs(s, i);
-  if (*i >= s.size() || s[*i] != ':') {
-    return qd_real(0.0);
-  }
-  ++(*i);
-  SkipWs(s, i);
-  size_t start = *i;
-  while (*i < s.size()) {
-    const char c = s[*i];
-    if (c == ',' || c == ')' || c == ';' || std::isspace(static_cast<unsigned char>(c))) {
-      break;
+size_t Pow2Checked(int exp) {
+  size_t out = 1;
+  for (int i = 0; i < exp; ++i) {
+    if (out > std::numeric_limits<size_t>::max() / 2) {
+      throw std::invalid_argument("tree_height is too large");
     }
-    ++(*i);
-  }
-  if (*i == start) {
-    throw std::runtime_error("missing branch length value after ':'");
-  }
-  return hpf::ParseQd(s.substr(start, *i - start));
-}
-
-int AddNode(ParsedTree* tree) {
-  tree->parent.push_back(-2);
-  tree->branch_length.push_back(qd_real(0.0));
-  tree->node_name.emplace_back();
-  return static_cast<int>(tree->parent.size()) - 1;
-}
-
-int ParseSubtree(const std::string& s, size_t* i, ParsedTree* tree) {
-  SkipWs(s, i);
-  if (*i >= s.size()) {
-    throw std::runtime_error("unexpected end while parsing Newick subtree");
-  }
-
-  if (s[*i] == '(') {
-    ++(*i);
-    const int node = AddNode(tree);
-    while (true) {
-      SkipWs(s, i);
-      if (*i >= s.size()) {
-        throw std::runtime_error("unexpected end while parsing internal node children");
-      }
-
-      const int child = ParseSubtree(s, i, tree);
-      tree->parent[child] = node;
-
-      SkipWs(s, i);
-      if (*i >= s.size()) {
-        throw std::runtime_error("unexpected end after child subtree");
-      }
-
-      if (s[*i] == ',') {
-        ++(*i);
-      } else if (s[*i] == ')') {
-        ++(*i);
-        break;
-      } else {
-        throw std::runtime_error("expected ',' or ')' while parsing internal node");
-      }
-    }
-
-    tree->node_name[node] = ParseLabel(s, i);
-    tree->branch_length[node] = ParseBranchLength(s, i);
-    return node;
-  }
-
-  const int leaf = AddNode(tree);
-  tree->node_name[leaf] = ParseLabel(s, i);
-  if (tree->node_name[leaf].empty()) {
-    throw std::runtime_error("leaf without a label in Newick tree");
-  }
-  tree->branch_length[leaf] = ParseBranchLength(s, i);
-  return leaf;
-}
-
-ParsedTree LoadNewickTree(const std::string& path) {
-  const std::string content = ReadWholeFile(path);
-  size_t i = 0;
-  ParsedTree tree;
-  const int root = ParseSubtree(content, &i, &tree);
-  tree.root = root;
-  tree.parent[root] = -1;
-
-  SkipWs(content, &i);
-  if (i >= content.size() || content[i] != ';') {
-    throw std::runtime_error("Newick tree must end with ';'");
-  }
-  ++i;
-  SkipWs(content, &i);
-  if (i != content.size()) {
-    throw std::runtime_error("unexpected trailing content after Newick ';'");
-  }
-
-  return tree;
-}
-
-MsaData LoadFastaMsa(const std::string& path) {
-  std::ifstream in(path);
-  if (!in) {
-    throw std::runtime_error("failed to open " + path);
-  }
-
-  std::vector<std::string> names;
-  std::vector<std::string> seqs;
-  std::unordered_map<std::string, int> index_by_name;
-
-  std::string line;
-  std::string current_name;
-  while (std::getline(in, line)) {
-    if (line.empty()) {
-      continue;
-    }
-
-    if (line[0] == '>') {
-      current_name = line.substr(1);
-      if (current_name.empty()) {
-        throw std::runtime_error("empty FASTA header encountered in " + path);
-      }
-      auto it = index_by_name.find(current_name);
-      if (it != index_by_name.end()) {
-        throw std::runtime_error("duplicate FASTA taxon name: " + current_name);
-      }
-      index_by_name[current_name] = static_cast<int>(names.size());
-      names.push_back(current_name);
-      seqs.emplace_back();
-      continue;
-    }
-
-    if (current_name.empty()) {
-      throw std::runtime_error("sequence data encountered before first FASTA header");
-    }
-
-    std::string compact;
-    compact.reserve(line.size());
-    for (char c : line) {
-      if (!std::isspace(static_cast<unsigned char>(c))) {
-        compact.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-      }
-    }
-    seqs.back().append(compact);
-  }
-
-  if (names.empty()) {
-    throw std::runtime_error("no sequences found in " + path);
-  }
-
-  const int num_sites = static_cast<int>(seqs.front().size());
-  if (num_sites == 0) {
-    throw std::runtime_error("empty sequences in " + path);
-  }
-  for (size_t i = 0; i < seqs.size(); ++i) {
-    if (static_cast<int>(seqs[i].size()) != num_sites) {
-      throw std::runtime_error("FASTA sequences have unequal lengths");
-    }
-  }
-
-  return MsaData{.taxon_names = std::move(names), .sequences = std::move(seqs), .num_sites = num_sites};
-}
-
-std::vector<char> AminoStates() {
-  return {'A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y'};
-}
-
-std::unordered_map<char, int> BuildStateIndex(const std::vector<char>& states) {
-  std::unordered_map<char, int> index;
-  for (int i = 0; i < static_cast<int>(states.size()); ++i) {
-    index[states[i]] = i;
-  }
-  return index;
-}
-
-bool IsAmbiguous(char c) {
-  return c == 'N' || c == 'X' || c == '?' || c == '-' || c == 'B' || c == 'Z' || c == 'J' || c == 'U' || c == 'O';
-}
-
-hpf::MatrixXq BuildEqualRatesQ(int k) {
-  hpf::MatrixXq q = hpf::MatrixXq::Zero(k, k);
-  const qd_real off = qd_real(1.0) / qd_real(static_cast<double>(k - 1));
-  for (int i = 0; i < k; ++i) {
-    for (int j = 0; j < k; ++j) {
-      if (i == j) {
-        continue;
-      }
-      q(i, j) = off;
-    }
-    q(i, i) = qd_real(-1.0);
-  }
-  return q;
-}
-
-hpf::VectorXq BuildUniformRootPrior(int k) {
-  hpf::VectorXq pi(k);
-  const qd_real p = qd_real(1.0) / qd_real(static_cast<double>(k));
-  for (int i = 0; i < k; ++i) {
-    pi[i] = p;
-  }
-  return pi;
-}
-
-std::vector<int> CollectLeafNodes(const ParsedTree& tree) {
-  const int n = static_cast<int>(tree.parent.size());
-  std::vector<int> degree(n, 0);
-  for (int node = 0; node < n; ++node) {
-    const int p = tree.parent[node];
-    if (p >= 0) {
-      degree[p] += 1;
-    }
-  }
-
-  std::vector<int> leaves;
-  for (int node = 0; node < n; ++node) {
-    if (degree[node] == 0) {
-      leaves.push_back(node);
-    }
-  }
-  return leaves;
-}
-
-std::unordered_map<std::string, std::string> BuildSequenceByName(const MsaData& msa) {
-  std::unordered_map<std::string, std::string> out;
-  for (int i = 0; i < static_cast<int>(msa.taxon_names.size()); ++i) {
-    out[msa.taxon_names[i]] = msa.sequences[i];
+    out *= 2;
   }
   return out;
 }
 
-hpf::MatrixXq BuildLeafPartialsForSite(
-    int site,
-    const std::vector<int>& leaf_nodes,
-    const ParsedTree& tree,
-    const std::unordered_map<std::string, std::string>& seq_by_name,
-    const std::unordered_map<char, int>& state_index,
-    int num_states) {
-  hpf::MatrixXq leaf_partials(static_cast<int>(leaf_nodes.size()), num_states);
+void BuildRandomFullBinaryTree(
+    int tree_height,
+    qd_real min_branch_length,
+    qd_real max_branch_length,
+    std::mt19937_64* rng,
+    std::vector<int>* parent,
+    std::vector<qd_real>* branch_length,
+    std::vector<int>* leaf_nodes) {
+  const size_t num_leaves = Pow2Checked(tree_height);
+  const size_t num_nodes = num_leaves * 2 - 1;
+  if (num_nodes > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::invalid_argument("generated tree is too large for int indexing");
+  }
 
-  for (int i = 0; i < static_cast<int>(leaf_nodes.size()); ++i) {
-    const int node = leaf_nodes[i];
-    const std::string& label = tree.node_name[node];
-    auto it = seq_by_name.find(label);
-    if (it == seq_by_name.end()) {
-      throw std::runtime_error("leaf '" + label + "' missing in MSA");
+  parent->assign(num_nodes, -1);
+  branch_length->assign(num_nodes, qd_real(0.0));
+
+  for (size_t node = 0; node < num_nodes; ++node) {
+    const size_t left = node * 2 + 1;
+    const size_t right = left + 1;
+    if (left < num_nodes) {
+      (*parent)[left] = static_cast<int>(node);
     }
-
-    leaf_partials.row(i).setZero();
-    const char c = it->second[site];
-    auto state_it = state_index.find(c);
-    if (state_it != state_index.end()) {
-      leaf_partials(i, state_it->second) = qd_real(1.0);
-    } else if (IsAmbiguous(c)) {
-      leaf_partials.row(i).setOnes();
-    } else {
-      throw std::runtime_error(
-          "unsupported symbol '" + std::string(1, c) + "' at taxon '" + label + "', site " + std::to_string(site));
+    if (right < num_nodes) {
+      (*parent)[right] = static_cast<int>(node);
     }
   }
 
+  for (size_t node = 1; node < num_nodes; ++node) {
+    (*branch_length)[node] = SampleQd(rng, min_branch_length, max_branch_length);
+  }
+
+  leaf_nodes->clear();
+  leaf_nodes->reserve(num_leaves);
+  const size_t first_leaf = num_leaves - 1;
+  for (size_t node = first_leaf; node < num_nodes; ++node) {
+    leaf_nodes->push_back(static_cast<int>(node));
+  }
+}
+
+hpf::MatrixXq BuildRandomLeafPartials(
+    int num_leaves,
+    int num_states,
+    qd_real min_leaf_partial,
+    qd_real max_leaf_partial,
+    std::mt19937_64* rng) {
+  hpf::MatrixXq leaf_partials(num_leaves, num_states);
+  for (int r = 0; r < num_leaves; ++r) {
+    for (int c = 0; c < num_states; ++c) {
+      leaf_partials(r, c) = SampleQd(rng, min_leaf_partial, max_leaf_partial);
+    }
+  }
   return leaf_partials;
+}
+
+hpf::MatrixXq BuildRandomSymmetricS(int num_states, std::mt19937_64* rng) {
+  hpf::MatrixXq s = hpf::MatrixXq::Zero(num_states, num_states);
+  for (int i = 0; i < num_states; ++i) {
+    for (int j = i + 1; j < num_states; ++j) {
+      const qd_real v = SampleQd(rng, qd_real("0.10"), qd_real("1.00"));
+      s(i, j) = v;
+      s(j, i) = v;
+    }
+  }
+  return s;
+}
+
+hpf::VectorXq BuildRandomSqrtPi(int num_states, std::mt19937_64* rng) {
+  hpf::VectorXq sqrt_pi(num_states);
+  qd_real norm2 = qd_real(0.0);
+  for (int i = 0; i < num_states; ++i) {
+    const qd_real v = SampleQd(rng, qd_real("0.10"), qd_real("1.00"));
+    sqrt_pi[i] = v;
+    norm2 += v * v;
+  }
+
+  const qd_real inv_norm = qd_real(1.0) / sqrt(norm2);
+  for (int i = 0; i < num_states; ++i) {
+    sqrt_pi[i] *= inv_norm;
+  }
+  return sqrt_pi;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    std::cerr << "Usage: high_precision_felsenstein <tree.newick> <alignment.fasta>\n";
+  if (argc < 3 || argc > 4) {
+    std::cerr << "Usage: high_precision_felsenstein <tree_height> <num_states> [seed]\n";
     return 1;
   }
 
   try {
-    const std::string tree_path = argv[1];
-    const std::string msa_path = argv[2];
+    const int tree_height = std::stoi(argv[1]);
+    const int num_states = std::stoi(argv[2]);
+    const unsigned int seed = (argc == 4) ? static_cast<unsigned int>(std::stoul(argv[3])) : 1u;
 
-    const ParsedTree tree = LoadNewickTree(tree_path);
-    const MsaData msa = LoadFastaMsa(msa_path);
-    const std::vector<char> states = AminoStates();
-    const int k = static_cast<int>(states.size());
-    const auto state_index = BuildStateIndex(states);
-    const auto seq_by_name = BuildSequenceByName(msa);
-    const std::vector<int> leaf_nodes = CollectLeafNodes(tree);
+    if (tree_height < 1) {
+      throw std::invalid_argument("tree_height must be >= 1");
+    }
+    if (num_states < 2) {
+      throw std::invalid_argument("num_states must be >= 2");
+    }
 
-    for (int leaf : leaf_nodes) {
-      const std::string& label = tree.node_name[leaf];
-      if (label.empty()) {
-        throw std::runtime_error("leaf without label encountered");
+    std::mt19937_64 rng(seed);
+
+    std::vector<int> parent;
+    std::vector<qd_real> branch_length;
+    std::vector<int> leaf_nodes;
+
+    BuildRandomFullBinaryTree(
+        tree_height,
+        qd_real("0.01"),
+        qd_real("0.20"),
+        &rng,
+        &parent,
+        &branch_length,
+        &leaf_nodes);
+
+    const hpf::MatrixXq leaf_partials = BuildRandomLeafPartials(
+        static_cast<int>(leaf_nodes.size()),
+        num_states,
+        qd_real("0.10"),
+        qd_real("1.00"),
+        &rng);
+
+    const hpf::MatrixXq symmetric_s = BuildRandomSymmetricS(num_states, &rng);
+    const hpf::VectorXq sqrt_pi = BuildRandomSqrtPi(num_states, &rng);
+
+    const hpf::LikelihoodInput input{
+        .parent = parent,
+        .branch_length = branch_length,
+        .leaf_nodes = leaf_nodes,
+        .leaf_partials = leaf_partials,
+        .symmetric_s = symmetric_s,
+        .sqrt_pi = sqrt_pi,
+    };
+
+    const hpf::GradientOutput out = hpf::ComputeColumnLogLikelihoodAndGradients(input);
+    const qd_real log_likelihood = out.log_likelihood;
+    const qd_real likelihood = exp(log_likelihood);
+
+    qd_real max_abs_err_sqrt_pi = qd_real(0.0);
+    qd_real max_rel_err_sqrt_pi = qd_real(0.0);
+    int worst_sqrt_pi = -1;
+
+    for (int m = 0; m < num_states; ++m) {
+      hpf::LikelihoodInput plus_input = input;
+      hpf::LikelihoodInput minus_input = input;
+
+      const qd_real eps = SafePositiveStep(input.sqrt_pi[m]);
+      plus_input.sqrt_pi[m] += eps;
+      minus_input.sqrt_pi[m] -= eps;
+
+      const qd_real f_plus = hpf::ComputeColumnLogLikelihood(plus_input);
+      const qd_real f_minus = hpf::ComputeColumnLogLikelihood(minus_input);
+      const qd_real fd = (f_plus - f_minus) / (qd_real(2.0) * eps);
+      const qd_real analytic = out.grad_sqrt_pi[m];
+      const qd_real abs_err = AbsQd(fd - analytic);
+      const qd_real denom = AbsQd(fd) + AbsQd(analytic) + qd_real("1e-30");
+      const qd_real rel_err = abs_err / denom;
+
+      if (abs_err > max_abs_err_sqrt_pi) {
+        max_abs_err_sqrt_pi = abs_err;
+        worst_sqrt_pi = m;
       }
-      if (seq_by_name.find(label) == seq_by_name.end()) {
-        throw std::runtime_error("leaf '" + label + "' not found in alignment");
+      if (rel_err > max_rel_err_sqrt_pi) {
+        max_rel_err_sqrt_pi = rel_err;
       }
     }
 
-    const hpf::MatrixXq rate_matrix = BuildEqualRatesQ(k);
-    const hpf::VectorXq root_prior = BuildUniformRootPrior(k);
+    qd_real max_abs_err_s = qd_real(0.0);
+    qd_real max_rel_err_s = qd_real(0.0);
+    int worst_s_i = -1;
+    int worst_s_j = -1;
 
-    qd_real total_log_likelihood = qd_real(0.0);
-    for (int site = 0; site < msa.num_sites; ++site) {
-      hpf::LikelihoodInput input{
-          .parent = tree.parent,
-          .branch_length = tree.branch_length,
-          .leaf_nodes = leaf_nodes,
-          .leaf_partials = BuildLeafPartialsForSite(site, leaf_nodes, tree, seq_by_name, state_index, k),
-          .rate_matrix = rate_matrix,
-          .root_prior = root_prior,
-      };
-      hpf::HighPrecisionFelsenstein felsenstein(std::move(input));
-      total_log_likelihood += felsenstein.ComputeLogLikelihood();
+    for (int i = 0; i < num_states; ++i) {
+      for (int j = i + 1; j < num_states; ++j) {
+        hpf::LikelihoodInput plus_input = input;
+        hpf::LikelihoodInput minus_input = input;
+
+        const qd_real eps = SafePositiveStep(input.symmetric_s(i, j));
+
+        plus_input.symmetric_s(i, j) += eps;
+        plus_input.symmetric_s(j, i) += eps;
+        minus_input.symmetric_s(i, j) -= eps;
+        minus_input.symmetric_s(j, i) -= eps;
+
+        const qd_real f_plus = hpf::ComputeColumnLogLikelihood(plus_input);
+        const qd_real f_minus = hpf::ComputeColumnLogLikelihood(minus_input);
+        const qd_real fd = (f_plus - f_minus) / (qd_real(2.0) * eps);
+        const qd_real analytic = out.grad_symmetric_s(i, j);
+        const qd_real abs_err = AbsQd(fd - analytic);
+        const qd_real denom = AbsQd(fd) + AbsQd(analytic) + qd_real("1e-30");
+        const qd_real rel_err = abs_err / denom;
+
+        if (abs_err > max_abs_err_s) {
+          max_abs_err_s = abs_err;
+          worst_s_i = i;
+          worst_s_j = j;
+        }
+        if (rel_err > max_rel_err_s) {
+          max_rel_err_s = rel_err;
+        }
+      }
     }
 
-    const qd_real likelihood = exp(total_log_likelihood);
     std::cout << std::setprecision(70);
-    std::cout << "log_likelihood\t" << total_log_likelihood << "\n";
+    std::cout << "log_likelihood\t" << log_likelihood << "\n";
     std::cout << "likelihood\t" << likelihood << "\n";
+    std::cout << "grad_sqrt_pi\t";
+    for (int i = 0; i < out.grad_sqrt_pi.size(); ++i) {
+      if (i > 0) {
+        std::cout << ",";
+      }
+      std::cout << out.grad_sqrt_pi[i];
+    }
+    std::cout << "\n";
+
+    std::cout << "grad_symmetric_s_upper\t";
+    bool first = true;
+    for (int i = 0; i < out.grad_symmetric_s.rows(); ++i) {
+      for (int j = i + 1; j < out.grad_symmetric_s.cols(); ++j) {
+        if (!first) {
+          std::cout << ",";
+        }
+        first = false;
+        std::cout << "(" << i << "," << j << ")=" << out.grad_symmetric_s(i, j);
+      }
+    }
+    std::cout << "\n";
+
+    std::cout << "fdcheck_sqrt_pi\t"
+              << "max_abs_err=" << max_abs_err_sqrt_pi
+              << ",max_rel_err=" << max_rel_err_sqrt_pi
+              << ",worst_index=" << worst_sqrt_pi << "\n";
+
+    std::cout << "fdcheck_symmetric_s\t"
+              << "max_abs_err=" << max_abs_err_s
+              << ",max_rel_err=" << max_rel_err_s
+              << ",worst_pair=(" << worst_s_i << "," << worst_s_j << ")\n";
   } catch (const std::exception& e) {
     std::cerr << "error: " << e.what() << "\n";
     return 2;
