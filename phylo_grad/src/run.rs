@@ -6,7 +6,7 @@ use crate::tree::*;
 
 use nalgebra as na;
 
-/// log_p should have the leaf log_p initialized and all the other nodes set to zero
+/// lin_partial_likelihoods should have the leaf partial likelihoods initialized and all the other nodes set to one
 fn forward_column<const DIM: usize>(
     lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
     lin_child_contributions: &mut [na::SVector<f64, DIM>],
@@ -25,7 +25,7 @@ fn forward_column<const DIM: usize>(
             lin_partial_likelihoods,
             lin_child_contributions,
             forward_data,
-            &param,
+            param,
             offsets,
         );
     }

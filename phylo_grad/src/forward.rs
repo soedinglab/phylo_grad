@@ -132,7 +132,7 @@ pub fn forward_node<const DIM: usize>(
 ) {
     // Felsensteins rule
     // lin_partial_likelihoods[parent][a] *= sum_b lin_partial_likelihoods[child][b] * P(a -> b)
-    // This is a matrix vector mutliplication Tv, where T is the transition matrix and v is the vector of partial likelihoods of the child node
+    // This is a matrix vector multiplication Tv, where T is the transition matrix and v is the vector of partial likelihoods of the child node
     // T = V_pi * diag(exp_t_lambda) * V_pi_inv
 
     // All steps are quadratic, so no matrix matrix multiplication.
