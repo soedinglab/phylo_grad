@@ -58,11 +58,11 @@ def helper_test(dim : int, gradients: bool, single_model: bool = False):
         torch_logP = torch_tree.log_likelihood(S, sqrt_pi)
 
 
-        result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
-        
-        assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=rtol))
         
         if gradients:
+            result = rust_tree.calculate_gradients(S.numpy(), sqrt_pi.numpy())
+            
+            assert(np.allclose(result['log_likelihood'], torch_logP.numpy(), rtol=rtol))
             torch_S_grad, torch_sqrt_pi_grad = felsenstein.gradients(torch_tree, S.double(), sqrt_pi.double())
 
             if single_model:
@@ -87,6 +87,10 @@ def helper_test(dim : int, gradients: bool, single_model: bool = False):
             
             assert(np.allclose(result['grad_sqrt_pi'], torch_sqrt_pi_grad, rtol=rtol, atol=atol))
             assert(np.allclose(result['grad_s'], torch_S_grad, rtol=rtol, atol=atol))
+        else:
+            result = rust_tree.calculate_log_likelihoods(S.numpy(), sqrt_pi.numpy())
+            
+            assert(np.allclose(result, torch_logP.numpy(), rtol=rtol))
     
 def test_likelihood():
     helper_test(4, False, True)
