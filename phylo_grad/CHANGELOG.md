@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-08-06
+### Improvement
+- Gradients got approximatly twice as fast for 20 states. For more states the difference is bigger, because they only go in quadratically instead of cubic.
+
 ## [2.3.2] - 2026-07-14
 ### Fix
 - A non zero diagonal of S could lead to incorrect gradients, this has now been fixed and the diagonal is ignored like it is documented.
