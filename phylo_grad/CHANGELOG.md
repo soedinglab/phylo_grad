@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+- Added calculate_gradients_with_branch_lengths_sum function which calculates the same as calculate_gradients_with_branch_lengths but with branch length gradients summed up. This is purly for performance.
+
 ## [2.4.0] - 2026-08-06
 ### Improvement
 - Gradients got approximatly twice as fast for 20 states. For more states the difference is bigger, because they only go in quadratically instead of cubic.

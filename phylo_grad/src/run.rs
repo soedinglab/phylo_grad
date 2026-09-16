@@ -79,7 +79,14 @@ pub fn calculate_column<const DIM: usize>(
     let edge_data = forward_data_precompute_param(&param, tree.distances);
     let mut offsets = vec![0; tree.parents.len()];
     let mut lin_child_contributions = vec![na::SVector::<f64, DIM>::zeros(); tree.parents.len()];
-    forward_column(pl, &mut lin_child_contributions, tree.parents, &mut offsets, &edge_data, &param);
+    forward_column(
+        pl,
+        &mut lin_child_contributions,
+        tree.parents,
+        &mut offsets,
+        &edge_data,
+        &param,
+    );
     let lin_pl_root = pl.last().unwrap();
 
     let root_offset: u32 = offsets.iter().sum();
@@ -129,6 +136,73 @@ pub struct FelsensteinResultWithTree<const DIM: usize> {
     pub grad_s: Vec<na::SMatrix<f64, DIM, DIM>>,
     pub grad_sqrt_pi: Vec<na::SVector<f64, DIM>>,
     pub grad_tree: Vec<Vec<f64>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FelsensteinResultWithSingleTree<const DIM: usize> {
+    pub log_likelihood: Vec<f64>,
+    pub grad_s: Vec<na::SMatrix<f64, DIM, DIM>>,
+    pub grad_sqrt_pi: Vec<na::SVector<f64, DIM>>,
+    pub grad_tree: Vec<f64>,
+}
+
+pub fn calculate_column_parallel_single_tree_grad<
+    const DIM: usize,
+    A: AsMut<[na::SVector<f64, DIM>]> + Send,
+>(
+    leaf_pl: &mut [A],
+    S: &[na::SMatrix<f64, DIM, DIM>],
+    sqrt_pi: &[na::SVector<f64, DIM>],
+    tree: Tree,
+) -> FelsensteinResultWithSingleTree<DIM> {
+    let col_results = (leaf_pl, S, sqrt_pi)
+        .into_par_iter()
+        .fold(
+            || {
+                let tree_grads = vec![0.0; tree.distances.len()];
+                FelsensteinResultWithSingleTree {
+                    log_likelihood: vec![],
+                    grad_s: vec![],
+                    grad_sqrt_pi: vec![],
+                    grad_tree: tree_grads,
+                }
+            },
+            |mut acc, (leaf_log_p, S, sqrt_pi)| {
+                let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
+                let result = calculate_column(
+                    leaf_log_p.as_mut(),
+                    S.as_view(),
+                    sqrt_pi.as_view(),
+                    tree.clone(),
+                    false,
+                    Some(&mut acc.grad_tree),
+                ); // The clone is shallow, Tree is cheap to clone
+                acc.grad_s.push(result.grad_s);
+                acc.grad_sqrt_pi.push(result.grad_sqrt_pi);
+                acc.log_likelihood.push(result.log_likelihood);
+                acc
+            },
+        )
+        .reduce(
+            || FelsensteinResultWithSingleTree {
+                log_likelihood: vec![],
+                grad_s: vec![],
+                grad_sqrt_pi: vec![],
+                grad_tree: vec![0.0; tree.distances.len()],
+            },
+            |mut acc1, acc2| {
+                acc1.log_likelihood.extend(acc2.log_likelihood);
+                acc1.grad_s.extend(acc2.grad_s);
+                acc1.grad_sqrt_pi.extend(acc2.grad_sqrt_pi);
+                acc1.grad_tree
+                    .iter_mut()
+                    .zip(acc2.grad_tree.iter())
+                    .for_each(|(a, b)| *a += b);
+                acc1
+            },
+        );
+
+    col_results
 }
 
 pub fn calculate_column_parallel<const DIM: usize, A: AsMut<[na::SVector<f64, DIM>]> + Send>(
@@ -251,7 +325,14 @@ fn calculate_column_with_precompute<const DIM: usize>(
 ) -> SingleSideResult<f64, DIM> {
     let mut offsets = vec![0; tree.parents.len()];
     let mut lin_child_contributions = vec![na::SVector::<f64, DIM>::zeros(); tree.parents.len()];
-    forward_column(pl, &mut lin_child_contributions, tree.parents, &mut offsets, forward_data, param);
+    forward_column(
+        pl,
+        &mut lin_child_contributions,
+        tree.parents,
+        &mut offsets,
+        forward_data,
+        param,
+    );
 
     let lin_pl_root = pl.last().unwrap();
 

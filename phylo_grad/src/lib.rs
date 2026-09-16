@@ -23,6 +23,7 @@ mod run;
 mod tree;
 
 pub use run::FelsensteinResult;
+pub use run::FelsensteinResultWithSingleTree;
 pub use run::FelsensteinResultWithTree;
 pub use run::SingleSideResult;
 
@@ -168,7 +169,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         };
 
         let tree = tree::Tree::new(&self.parents, &branch_lengths, self.num_leaves);
-        
+
         // One out internal nodes in partial_likelihoods
         for pl in &mut self.partial_likelihoods {
             pl.iter_mut().skip(self.num_leaves).for_each(|p| {
@@ -269,6 +270,51 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         }
     }
 
+    /// Same as calculate_gradients_with_branch_lengths, but the gradient of the branch lengths is calculated as the sum of the log likelihoods over all sites in the alignment.
+    /// This is the same as summing up all the gradients of calculate_gradients_with_branch_lengths but it's faster.
+    pub fn calculate_gradients_with_branch_lengths_sum(
+        &mut self,
+        s: &[na::SMatrix<f64, DIM, DIM>],
+        sqrt_pi: &[na::SVector<f64, DIM>],
+        branch_lengths: &[f64],
+    ) -> FelsensteinResultWithSingleTree<DIM> {
+        // permute the branch lengths:
+        let branch_lengths = {
+            let mut permuted_branch_lengths = vec![0.0; branch_lengths.len()];
+            for (new, orig) in self.sorting_order.iter().enumerate() {
+                permuted_branch_lengths[new] = branch_lengths[*orig];
+            }
+            permuted_branch_lengths
+        };
+
+        let tree = tree::Tree::new(&self.parents, &branch_lengths, self.num_leaves);
+        // One out internal nodes in partial_likelihoods
+        for pl in &mut self.partial_likelihoods {
+            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
+                *p = na::SVector::<f64, DIM>::from_element(1.0);
+            });
+        }
+
+        let mut result = calculate_column_parallel_single_tree_grad(
+            &mut self.partial_likelihoods,
+            s,
+            sqrt_pi,
+            tree,
+        );
+
+        // Permute back the branch length gradients:
+        let branch_length_grads = {
+            let mut permuted_branch_length_grads = vec![0.0; self.parents.len()];
+            for (new, orig) in self.sorting_order.iter().enumerate() {
+                permuted_branch_length_grads[*orig] = result.grad_tree[new];
+            }
+            permuted_branch_length_grads
+        };
+
+        result.grad_tree = branch_length_grads;
+
+        result
+    }
     /// Same as `calculate_gradients`, but only calculates the log likelihoods for each side in the alignment.
     pub fn calculate_likelihoods(
         &mut self,
@@ -746,7 +792,6 @@ mod tests {
                 );
             }
         }
-
     }
 
     #[test]
@@ -774,10 +819,14 @@ mod tests {
 
         let result_with_grad =
             tree.calculate_gradients_with_branch_lengths(&vec![S], &vec![sqrt_pi], &distances2);
-        
-        let result_without_grad = tree.calculate_likelihoods_with_branch_lengths(&vec![S], &vec![sqrt_pi], &distances2);
 
-        println!("Log likelihoods with grad: {:?}", result_with_grad.log_likelihood);
+        let result_without_grad =
+            tree.calculate_likelihoods_with_branch_lengths(&vec![S], &vec![sqrt_pi], &distances2);
+
+        println!(
+            "Log likelihoods with grad: {:?}",
+            result_with_grad.log_likelihood
+        );
         println!("Log likelihoods without grad: {:?}", result_without_grad);
 
         for (l1, l2) in result_with_grad
@@ -792,7 +841,95 @@ mod tests {
                 l2
             );
         }
-        
+    }
+
+    #[test]
+    fn test_branch_grads_sum_ll_matches_per_site_sum() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+
+        let parents = vec![7, 7, 8, 8, 9, 9, -1, 6, 6, 6];
+        let distances = random_branch_lengths(&mut rng, parents.len());
+        let mut tree = FelsensteinTree::<4>::new(&parents, &distances);
+
+        let L = 5;
+        let pl = (0..L)
+            .map(|_| random_pl(&mut rng, tree.num_leaves()))
+            .collect::<Vec<Vec<na::SVector<f64, 4>>>>();
+        tree.bind_leaf_pl(pl);
+
+        let s = (0..L)
+            .map(|_| random_S(&mut rng))
+            .collect::<Vec<na::SMatrix<f64, 4, 4>>>();
+        let sqrt_pi = (0..L)
+            .map(|_| random_sqrt_pi(&mut rng))
+            .collect::<Vec<na::SVector<f64, 4>>>();
+        let branch_lengths = random_branch_lengths(&mut rng, parents.len());
+
+        let with_tree = tree.calculate_gradients_with_branch_lengths(&s, &sqrt_pi, &branch_lengths);
+        let with_tree_sum =
+            tree.calculate_gradients_with_branch_lengths_sum(&s, &sqrt_pi, &branch_lengths);
+
+        let mut summed_per_site_tree_grad = vec![0.0; parents.len()];
+        for col_grad in &with_tree.grad_tree {
+            for (i, g) in col_grad.iter().enumerate() {
+                summed_per_site_tree_grad[i] += g;
+            }
+        }
+
+        for (ll_a, ll_b) in with_tree
+            .log_likelihood
+            .iter()
+            .zip(with_tree_sum.log_likelihood.iter())
+        {
+            assert!(
+                (ll_a - ll_b).abs() < 1e-10,
+                "Log likelihoods differ: {} vs {}",
+                ll_a,
+                ll_b
+            );
+        }
+
+        for (grad_a, grad_b) in with_tree.grad_s.iter().zip(with_tree_sum.grad_s.iter()) {
+            for i in 0..4 {
+                for j in 0..4 {
+                    assert!(
+                        (grad_a[(i, j)] - grad_b[(i, j)]).abs() < 1e-10,
+                        "Grad s differs at ({}, {}): {} vs {}",
+                        i,
+                        j,
+                        grad_a[(i, j)],
+                        grad_b[(i, j)]
+                    );
+                }
+            }
+        }
+
+        for (grad_a, grad_b) in with_tree
+            .grad_sqrt_pi
+            .iter()
+            .zip(with_tree_sum.grad_sqrt_pi.iter())
+        {
+            for i in 0..4 {
+                assert!(
+                    (grad_a[i] - grad_b[i]).abs() < 1e-10,
+                    "Grad sqrt_pi differs at {}: {} vs {}",
+                    i,
+                    grad_a[i],
+                    grad_b[i]
+                );
+            }
+        }
+
+        for (i, summed_grad) in summed_per_site_tree_grad.iter().enumerate() {
+            let sum_ll_grad = with_tree_sum.grad_tree[i];
+            assert!(
+                (summed_grad - sum_ll_grad).abs() < 1e-10,
+                "Summed branch grad differs at {}: {} vs {}",
+                i,
+                summed_grad,
+                sum_ll_grad
+            );
+        }
     }
 
     #[test]
