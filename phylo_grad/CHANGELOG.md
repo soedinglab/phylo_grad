@@ -4,8 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [2.5.0] - 2026-10-23
+### Additions
 - Added calculate_gradients_with_branch_lengths_sum function which calculates the same as calculate_gradients_with_branch_lengths but with branch length gradients summed up. This is purly for performance.
+
+### Improvement
+- Gradients got faster, from 1.2x for 8 states up to 4x for 64 states. The divided differences of the eigenvalues in the backward pass do not need any transcendental functions or divisions per edge anymore.
+- The gradients are slightly more accurate for close eigenvalues.
 
 ## [2.4.0] - 2026-08-06
 ### Improvement
