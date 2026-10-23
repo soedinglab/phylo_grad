@@ -3,27 +3,16 @@ use crate::tree::Bifurcation;
 
 use nalgebra as na;
 
-fn X<const DIM: usize>(
-    eigenvalues: na::SVectorView<f64, DIM>,
-    t: f64,
-    exp_t_lambda: &na::SVector<f64, DIM>,
-) -> na::SMatrix<f64, DIM, DIM> {
-    na::SMatrix::<f64, DIM, DIM>::from_fn(|i, j| {
-        let diff = f64::abs(eigenvalues[i] - eigenvalues[j]);
-        if diff < 1e-10 {
-            t * exp_t_lambda[i]
-        } else if diff > 0.1 {
-            (exp_t_lambda[i] - exp_t_lambda[j]) / (eigenvalues[i] - eigenvalues[j])
-        } else {
-            exp_t_lambda[j]
-                * (f64::exp_m1(t * (eigenvalues[i] - eigenvalues[j]))
-                    / (eigenvalues[i] - eigenvalues[j]))
-        }
-    })
-}
+/// Below this |t * (lambda_i - lambda_j)| the divided difference is evaluated with a Taylor series,
+/// above it (exp(t lambda_i) - exp(t lambda_j)) / (lambda_i - lambda_j) has a relative error of at most ~eps / 1e-3.
+const DIVIDED_DIFFERENCE_TAYLOR_THRESHOLD: f64 = 1e-3;
 
 /// Backward pass for expm(distance * Q)x
 /// It gets the cotangent of expm(distance * Q)x and accumulates the cotangent of Q
+///
+/// Q_cotangent += X ∘ (A^T y)(A^-1 x)^T with the divided differences
+/// X_ij = (exp(t lambda_i) - exp(t lambda_j)) / (lambda_i - lambda_j), X_ii = t exp(t lambda_i)
+/// X is never materialized, so this is a single pass over Q_cotangent without divisions or transcendental functions.
 pub fn d_expm_vjp<const DIM: usize>(
     Q_cotangent_vector: &mut na::SMatrix<f64, DIM, DIM>,
     distance: f64,
@@ -35,14 +24,31 @@ pub fn d_expm_vjp<const DIM: usize>(
     // A^Ty
     let Aty = param.V_pi.tr_mul(&cotangent_vector);
 
-    // x^TA^-T
-    let xtAinv_t = x.transpose() * param.V_pi_inv.transpose();
+    // A^-1x
+    let Ainv_x = param.V_pi_inv * x;
 
-    let mut X = X(param.eigenvalues.as_view(), distance, exp_t_lambda);
-
-    X.component_mul_assign(&(Aty * xtAinv_t));
-
-    *Q_cotangent_vector += X;
+    let t = distance;
+    for j in 0..DIM {
+        let exp_j = exp_t_lambda[j];
+        let t_exp_j = t * exp_j;
+        let Ainv_x_j = Ainv_x[j];
+        let diff = param.eigenvalue_diff.column(j);
+        let diff_recip = param.eigenvalue_diff_recip.column(j);
+        let mut Q_cotangent_j = Q_cotangent_vector.column_mut(j);
+        for i in 0..DIM {
+            let z = t * diff[i];
+            let difference_quotient = (exp_t_lambda[i] - exp_j) * diff_recip[i];
+            // t exp(t lambda_j) expm1(z) / z
+            let taylor = t_exp_j
+                * (1.0 + z * (0.5 + z * (1.0 / 6.0 + z * (1.0 / 24.0 + z * (1.0 / 120.0)))));
+            let x_ij = if z.abs() > DIVIDED_DIFFERENCE_TAYLOR_THRESHOLD {
+                difference_quotient
+            } else {
+                taylor
+            };
+            Q_cotangent_j[i] += x_ij * Aty[i] * Ainv_x_j;
+        }
+    }
 }
 
 /// Backward pass for rho(W) = 1/sqrt_pi @ S @ sqrt_pi
