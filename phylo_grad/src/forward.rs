@@ -22,6 +22,10 @@ pub struct ParamPrecomp<const DIM: usize> {
     pub V_pi: na::SMatrix<f64, DIM, DIM>,
     /// A^-1 in the paper
     pub V_pi_inv: na::SMatrix<f64, DIM, DIM>,
+    /// lambda_i - lambda_j
+    pub eigenvalue_diff: na::SMatrix<f64, DIM, DIM>,
+    /// 1 / (lambda_i - lambda_j), 0 where the eigenvalues (almost) coincide
+    pub eigenvalue_diff_recip: na::SMatrix<f64, DIM, DIM>,
 }
 
 /// In-place multiplication by a diagonal matrix on the left
@@ -86,6 +90,17 @@ pub fn compute_param_data<const DIM: usize>(
     let mut V_pi_inv = eigenvectors.transpose();
     times_diag_assign(V_pi_inv.as_view_mut(), sqrt_pi.iter().copied());
 
+    // Edge independent parts of the divided differences in the backward pass
+    let eigenvalue_diff =
+        na::SMatrix::<f64, DIM, DIM>::from_fn(|i, j| eigenvalues[i] - eigenvalues[j]);
+    let eigenvalue_diff_recip = eigenvalue_diff.map(|diff| {
+        if diff.abs() > 1e-100 {
+            diff.recip()
+        } else {
+            0.0
+        }
+    });
+
     Some(ParamPrecomp {
         symmetric_matrix: S_symmetric,
         sqrt_pi: sqrt_pi.clone_owned(),
@@ -93,6 +108,8 @@ pub fn compute_param_data<const DIM: usize>(
         eigenvalues,
         V_pi,
         V_pi_inv,
+        eigenvalue_diff,
+        eigenvalue_diff_recip,
     })
 }
 
