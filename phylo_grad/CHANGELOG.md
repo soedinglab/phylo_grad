@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-10-24
+### Improvement
+- Gradients got 1.1x (8 states) to 1.35x (64 states) faster, because the backward pass reuses the eigenbasis projections of each edge.
+- Branch length gradients are almost free now. They used to cost 8-14% on top of the other gradients, so calculate_gradients_with_branch_lengths got 1.25-1.6x faster.
+
 ## [2.5.0] - 2026-10-23
 ### Additions
 - Added calculate_gradients_with_branch_lengths_sum function which calculates the same as calculate_gradients_with_branch_lengths but with branch length gradients summed up. This is purly for performance.

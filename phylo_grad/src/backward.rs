@@ -13,20 +13,15 @@ const DIVIDED_DIFFERENCE_TAYLOR_THRESHOLD: f64 = 1e-3;
 /// Q_cotangent += X ∘ (A^T y)(A^-1 x)^T with the divided differences
 /// X_ij = (exp(t lambda_i) - exp(t lambda_j)) / (lambda_i - lambda_j), X_ii = t exp(t lambda_i)
 /// X is never materialized, so this is a single pass over Q_cotangent without divisions or transcendental functions.
+/// Aty = A^T y and Ainv_x = A^-1 x are passed in, because the caller needs them as well.
 pub fn d_expm_vjp<const DIM: usize>(
     Q_cotangent_vector: &mut na::SMatrix<f64, DIM, DIM>,
     distance: f64,
     param: &ParamPrecomp<DIM>,
     exp_t_lambda: &na::SVector<f64, DIM>,
-    x: &na::SVector<f64, DIM>,
-    cotangent_vector: &na::SVector<f64, DIM>,
+    Aty: &na::SVector<f64, DIM>,
+    Ainv_x: &na::SVector<f64, DIM>,
 ) {
-    // A^Ty
-    let Aty = param.V_pi.tr_mul(&cotangent_vector);
-
-    // A^-1x
-    let Ainv_x = param.V_pi_inv * x;
-
     let t = distance;
     for j in 0..DIM {
         let exp_j = exp_t_lambda[j];
@@ -140,27 +135,21 @@ pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
         child_cotangent: &mut na::SVector<f64, DIM>,
         d_edge: bool,
     ) -> f64 {
-        d_expm_vjp(
-            d_Q_output,
-            distance,
-            param,
-            exp_t_lambda,
-            child_pl,
-            cotangent_vector,
-        );
+        // exp(tQ) = V_pi * diag(exp_t_lambda) * V_pi_inv, so all cotangents only need
+        // V_pi^T * cotangent_vector and V_pi_inv * child_pl
+        let Aty = param.V_pi.tr_mul(cotangent_vector);
+        let Ainv_x = param.V_pi_inv * child_pl;
 
-        // The child cotangent is exp(tQ)^T * cotangent_vector
-        // This is the same as V_pi_inv^T * diag(exp_t_lambda) * V_pi T * cotangent_vector
-        *child_cotangent = param.V_pi.transpose() * cotangent_vector;
-        child_cotangent.component_mul_assign(exp_t_lambda);
-        *child_cotangent = param.V_pi_inv.transpose() * *child_cotangent;
+        d_expm_vjp(d_Q_output, distance, param, exp_t_lambda, &Aty, &Ainv_x);
+
+        // The child cotangent is exp(tQ)^T * cotangent_vector = V_pi_inv^T * diag(exp_t_lambda) * V_pi^T * cotangent_vector
+        *child_cotangent = param.V_pi_inv.tr_mul(&Aty.component_mul(exp_t_lambda));
 
         if d_edge {
-            // d/dt exp(tQ) x = V_pi * diag(lambda_i * exp(t * lambda_i)) * V_pi_inv * x
-            let mut d_exp_t_lambda = exp_t_lambda.component_mul(&param.eigenvalues);
-            d_exp_t_lambda.component_mul_assign(&(param.V_pi_inv * *child_pl));
-            let d_parent_contribution_dt = param.V_pi * d_exp_t_lambda;
-            cotangent_vector.dot(&d_parent_contribution_dt)
+            // d/dt cotangent_vector^T exp(tQ) x = (V_pi^T cotangent_vector)^T diag(lambda_i * exp(t * lambda_i)) V_pi_inv x
+            Aty.component_mul(&param.eigenvalues)
+                .component_mul(exp_t_lambda)
+                .dot(&Ainv_x)
         } else {
             0.0
         }
