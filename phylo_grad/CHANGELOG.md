@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-10-27
+### Improvement
+- The eigendecomposition now uses nalgebra (at least 0.34.2) instead of faer. It is 2-3x faster, which makes gradients 1.15-1.3x faster for 30 taxa and 1.1x faster for 100 taxa.
+- faer is no longer a dependency.
+
 ## [2.6.0] - 2026-10-24
 ### Improvement
 - Gradients got 1.1x (8 states) to 1.35x (64 states) faster, because the backward pass reuses the eigenbasis projections of each edge.
