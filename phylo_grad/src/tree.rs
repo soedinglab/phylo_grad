@@ -23,62 +23,6 @@ impl<'a> Tree<'a> {
     }
 }
 
-/// middle is -1 for bifurcations, only at the root node it is one of the children.
-#[derive(Debug, Clone)]
-pub struct Bifurcation {
-    pub left: i32,
-    pub right: i32,
-    pub middle: i32,
-    pub parent: i32,
-}
-
-pub fn get_topological_bifurcations(tree: &Tree) -> Vec<Bifurcation> {
-    let mut childs = vec![Vec::new(); tree.parents.len()];
-    for (child, &parent) in tree.parents.iter().enumerate() {
-        if parent >= 0 {
-            childs[parent as usize].push(child as i32);
-        }
-    }
-
-    let mut bifurcations = Vec::new();
-
-    for node in tree.num_leaves..tree.parents.len() {
-        let children = &childs[node];
-        assert!(children.len() > 0, "Interior Node {} has no children", node);
-        
-        if children.len() == 2 {
-            // bifurcation case
-            let left = children[0];
-            let right = children[1];
-            bifurcations.push(Bifurcation {
-                left,
-                right,
-                parent : node as i32,
-                middle: -1,
-            });
-        } else if children.len() == 3 {
-            // trifurcation case, only at the root node
-            assert!(node == tree.parents.len() - 1, "Only the root node can have three children, but node {} has three children", node);
-            let left = children[0];
-            let right = children[1];
-            let middle = children[2];
-            bifurcations.push(Bifurcation {
-                left,
-                right,
-                middle,
-                parent : node as i32,
-            });
-        } else if children.len() > 3 {
-            panic!("Node {} has {} children, but only bifurcations with 2 or 3 children are supported", node, children.len());
-        } else if children.len() == 1 {
-            panic!("Node {} has only one child, but only bifurcations with 2 or 3 children are supported", node);
-        }
-    }
-
-
-    bifurcations
-}
-
 ///
 /// Returns the new parents, new distances, number of leaves and the number of branches below
 /// It also return the sorting order. i[new_index] = original_index

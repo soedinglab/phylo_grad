@@ -126,48 +126,106 @@ pub fn forward_data_precompute_param<const DIM: usize>(
     param: &ParamPrecomp<DIM>,
     distances: &[f64],
 ) -> Vec<ModelEdgeData<DIM>> {
-    distances
-        .iter()
-        .map(|dist| precompute_model_edge_data(param, *dist))
-        .collect()
+    let mut edge_data = Vec::with_capacity(distances.len());
+    forward_data_precompute_param_into(param, distances, &mut edge_data);
+    edge_data
 }
 
-/// adds the log_p of the children to the log_p of the parent
-/// Main part of the Felsenstein in Forward
-/// log_p are the partial log likelihoods, they start with the leave nodes initialized. This function takes 2 computed log_p vectors
-/// and writes the combined result in the parent log_p vector
+/// Same as `forward_data_precompute_param`, but reuses the allocation of `edge_data`
+pub fn forward_data_precompute_param_into<const DIM: usize>(
+    param: &ParamPrecomp<DIM>,
+    distances: &[f64],
+    edge_data: &mut Vec<ModelEdgeData<DIM>>,
+) {
+    edge_data.clear();
+    edge_data.extend(
+        distances
+            .iter()
+            .map(|dist| precompute_model_edge_data(param, *dist)),
+    );
+}
+
+/// The leaf data of one column
+#[derive(Debug, Clone, Copy)]
+pub enum Leaves<'a, const DIM: usize> {
+    /// Partial likelihoods of the leaves
+    Vectors(&'a [na::SVector<f64, DIM>]),
+    /// States of the leaves in `0..DIM`, `DIM` is a gap
+    Discrete(&'a [u8]),
+}
+
+impl<const DIM: usize> Leaves<'_, DIM> {
+    pub fn len(&self) -> usize {
+        match self {
+            Leaves::Vectors(pl) => pl.len(),
+            Leaves::Discrete(states) => states.len(),
+        }
+    }
+
+    /// V_pi_inv * partial likelihood of the leaf.
+    /// None for a gap: its contribution exp(tQ) * 1 = 1 does not depend on the model, so the edge can be skipped.
+    pub fn projection(
+        &self,
+        leaf: usize,
+        param: &ParamPrecomp<DIM>,
+    ) -> Option<na::SVector<f64, DIM>> {
+        match self {
+            Leaves::Vectors(pl) => Some(param.V_pi_inv * pl[leaf]),
+            Leaves::Discrete(states) => {
+                let state = states[leaf] as usize;
+                if state == DIM {
+                    None
+                } else {
+                    Some(param.V_pi_inv.column(state).into_owned())
+                }
+            }
+        }
+    }
+}
+
+/// Main part of the Felsenstein in Forward: multiplies the contribution of the child into the partial likelihood of the parent.
+/// child_projection is V_pi_inv * partial likelihood of the child.
 /// Offsets are scaling factors to prevent underflow. offsets[i] = 10 means that the values of this nodes are scaled by 2**10 more than the child values.
 /// The absolut offset is obtained by adding the offsets of all the nodes below this node (including)
+///
+/// lin_sibling_prefix[child] is the product of the contributions of the siblings which were added before this child (without the offset).
+/// The backward pass needs it to get the product of all other sibling contributions without a division.
 pub fn forward_node<const DIM: usize>(
     child: usize,
-    parent: usize,
-    lin_partial_likelihoods: &mut [na::SVector<f64, DIM>],
+    child_projection: &na::SVector<f64, DIM>,
+    parent_pl: &mut na::SVector<f64, DIM>,
+    parent_offset: &mut u32,
     lin_child_contributions: &mut [na::SVector<f64, DIM>],
+    lin_sibling_prefix: &mut [na::SVector<f64, DIM>],
     forward_data: &[ModelEdgeData<DIM>],
     param: &ParamPrecomp<DIM>,
-    offsets: &mut [u32],
 ) {
+    lin_sibling_prefix[child] = if *parent_offset == 0 {
+        *parent_pl
+    } else {
+        *parent_pl * f64::powi(2.0, -(*parent_offset as i32))
+    };
+
     // Felsensteins rule
-    // lin_partial_likelihoods[parent][a] *= sum_b lin_partial_likelihoods[child][b] * P(a -> b)
+    // parent_pl[a] *= sum_b child_pl[b] * P(a -> b)
     // This is a matrix vector multiplication Tv, where T is the transition matrix and v is the vector of partial likelihoods of the child node
     // T = V_pi * diag(exp_t_lambda) * V_pi_inv
 
     // All steps are quadratic, so no matrix matrix multiplication.
-    let mul1 = param.V_pi_inv * lin_partial_likelihoods[child];
-    let mul2 = forward_data[child].exp_t_lambda.component_mul(&mul1);
+    let mul2 = forward_data[child].exp_t_lambda.component_mul(child_projection);
     let parent_contribution = param.V_pi * mul2;
 
-    lin_child_contributions[child] = parent_contribution.clone();
+    lin_child_contributions[child] = parent_contribution;
 
     let mut max = 0.0;
     for a in 0..DIM {
-        lin_partial_likelihoods[parent][a] *= parent_contribution[a];
-        max = f64::max(max, lin_partial_likelihoods[parent][a]);
+        parent_pl[a] *= parent_contribution[a];
+        max = f64::max(max, parent_pl[a]);
     }
     if max < f64::powi(2.0, -100) {
         for a in 0..DIM {
-            lin_partial_likelihoods[parent][a] *= f64::powi(2.0, 100);
+            parent_pl[a] *= f64::powi(2.0, 100);
         }
-        offsets[parent] += 100;
+        *parent_offset += 100;
     }
 }

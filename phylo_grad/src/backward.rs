@@ -1,5 +1,4 @@
 use crate::forward::*;
-use crate::tree::Bifurcation;
 
 use nalgebra as na;
 
@@ -107,136 +106,36 @@ pub fn d_param<const DIM: usize>(
     (grad_s, grad_sqrt_pi)
 }
 
-pub fn d_log_transition_bifurcation_vjp<const DIM: usize>(
-    cotangents: &mut [na::SVector<f64, DIM>],
-    lin_pl: &[na::SVector<f64, DIM>],
-    lin_child_contributions: &[na::SVector<f64, DIM>],
-    forward: &[ModelEdgeData<DIM>],
-    param: &ParamPrecomp<DIM>,
+/// Backward pass for the contribution of a single edge to its parent: exp(tQ) child_pl
+/// Ainv_x is V_pi_inv * child_pl.
+/// cotangent_vector is the cotangent of this contribution, it accumulates the cotangent of Q.
+/// If needed, it writes the cotangent of child_pl and adds the derivative with respect to the edge length.
+pub fn d_edge_vjp<const DIM: usize>(
     d_Q_output: &mut na::SMatrix<f64, DIM, DIM>,
-    bifurcation: &Bifurcation,
-    distances: &[f64],
-    offsets: &[u32],
-    d_edge_lengths: Option<&mut [f64]>,
+    cotangent_vector: &na::SVector<f64, DIM>,
+    distance: f64,
+    param: &ParamPrecomp<DIM>,
+    exp_t_lambda: &na::SVector<f64, DIM>,
+    Ainv_x: &na::SVector<f64, DIM>,
+    child_cotangent: Option<&mut na::SVector<f64, DIM>>,
+    d_edge_length: Option<&mut f64>,
 ) {
-    let scaler = if offsets[bifurcation.parent as usize] == 0 {
-        1.0
-    } else {
-        f64::powi(2.0, offsets[bifurcation.parent as usize] as i32)
-    };
+    // exp(tQ) = V_pi * diag(exp_t_lambda) * V_pi_inv, so all cotangents only need
+    // V_pi^T * cotangent_vector and V_pi_inv * child_pl
+    let Aty = param.V_pi.tr_mul(cotangent_vector);
 
-    fn single_edge<const DIM: usize>(
-        d_Q_output: &mut na::SMatrix<f64, DIM, DIM>,
-        cotangent_vector: &na::SVector<f64, DIM>,
-        distance: f64,
-        param: &ParamPrecomp<DIM>,
-        exp_t_lambda: &na::SVector<f64, DIM>,
-        child_pl: &na::SVector<f64, DIM>,
-        child_cotangent: &mut na::SVector<f64, DIM>,
-        d_edge: bool,
-    ) -> f64 {
-        // exp(tQ) = V_pi * diag(exp_t_lambda) * V_pi_inv, so all cotangents only need
-        // V_pi^T * cotangent_vector and V_pi_inv * child_pl
-        let Aty = param.V_pi.tr_mul(cotangent_vector);
-        let Ainv_x = param.V_pi_inv * child_pl;
+    d_expm_vjp(d_Q_output, distance, param, exp_t_lambda, &Aty, Ainv_x);
 
-        d_expm_vjp(d_Q_output, distance, param, exp_t_lambda, &Aty, &Ainv_x);
-
+    if let Some(child_cotangent) = child_cotangent {
         // The child cotangent is exp(tQ)^T * cotangent_vector = V_pi_inv^T * diag(exp_t_lambda) * V_pi^T * cotangent_vector
         *child_cotangent = param.V_pi_inv.tr_mul(&Aty.component_mul(exp_t_lambda));
-
-        if d_edge {
-            // d/dt cotangent_vector^T exp(tQ) x = (V_pi^T cotangent_vector)^T diag(lambda_i * exp(t * lambda_i)) V_pi_inv x
-            Aty.component_mul(&param.eigenvalues)
-                .component_mul(exp_t_lambda)
-                .dot(&Ainv_x)
-        } else {
-            0.0
-        }
     }
 
-    if bifurcation.middle == -1 {
-        let parent_cotangent = cotangents[bifurcation.parent as usize] * scaler;
-
-        let left_cotangent =
-            parent_cotangent.component_mul(&lin_child_contributions[bifurcation.right as usize]);
-        let right_cotangent =
-            parent_cotangent.component_mul(&lin_child_contributions[bifurcation.left as usize]);
-
-        let d_left_t = single_edge(
-            d_Q_output,
-            &left_cotangent,
-            distances[bifurcation.left as usize],
-            param,
-            &forward[bifurcation.left as usize].exp_t_lambda,
-            &lin_pl[bifurcation.left as usize],
-            &mut cotangents[bifurcation.left as usize],
-            d_edge_lengths.is_some(),
-        );
-        let d_right_t = single_edge(
-            d_Q_output,
-            &right_cotangent,
-            distances[bifurcation.right as usize],
-            param,
-            &forward[bifurcation.right as usize].exp_t_lambda,
-            &lin_pl[bifurcation.right as usize],
-            &mut cotangents[bifurcation.right as usize],
-            d_edge_lengths.is_some(),
-        );
-
-        if let Some(d_edge_lengths) = d_edge_lengths {
-            d_edge_lengths[bifurcation.left as usize] += d_left_t;
-            d_edge_lengths[bifurcation.right as usize] += d_right_t;
-        }
-    } else {
-        // trifurcation case
-        let parent_cotangent = cotangents[bifurcation.parent as usize] * scaler;
-
-        let left_cotangent = parent_cotangent
-            .component_mul(&lin_child_contributions[bifurcation.middle as usize])
-            .component_mul(&lin_child_contributions[bifurcation.right as usize]);
-        let middle_cotangent = parent_cotangent
-            .component_mul(&lin_child_contributions[bifurcation.left as usize])
-            .component_mul(&lin_child_contributions[bifurcation.right as usize]);
-        let right_cotangent = parent_cotangent
-            .component_mul(&lin_child_contributions[bifurcation.left as usize])
-            .component_mul(&lin_child_contributions[bifurcation.middle as usize]);
-
-        let d_left_t = single_edge(
-            d_Q_output,
-            &left_cotangent,
-            distances[bifurcation.left as usize],
-            param,
-            &forward[bifurcation.left as usize].exp_t_lambda,
-            &lin_pl[bifurcation.left as usize],
-            &mut cotangents[bifurcation.left as usize],
-            d_edge_lengths.is_some(),
-        );
-        let d_middle_t = single_edge(
-            d_Q_output,
-            &middle_cotangent,
-            distances[bifurcation.middle as usize],
-            param,
-            &forward[bifurcation.middle as usize].exp_t_lambda,
-            &lin_pl[bifurcation.middle as usize],
-            &mut cotangents[bifurcation.middle as usize],
-            d_edge_lengths.is_some(),
-        );
-        let d_right_t = single_edge(
-            d_Q_output,
-            &right_cotangent,
-            distances[bifurcation.right as usize],
-            param,
-            &forward[bifurcation.right as usize].exp_t_lambda,
-            &lin_pl[bifurcation.right as usize],
-            &mut cotangents[bifurcation.right as usize],
-            d_edge_lengths.is_some(),
-        );
-
-        if let Some(d_edge_lengths) = d_edge_lengths {
-            d_edge_lengths[bifurcation.left as usize] += d_left_t;
-            d_edge_lengths[bifurcation.middle as usize] += d_middle_t;
-            d_edge_lengths[bifurcation.right as usize] += d_right_t;
-        }
-    };
+    if let Some(d_edge_length) = d_edge_length {
+        // d/dt cotangent_vector^T exp(tQ) x = (V_pi^T cotangent_vector)^T diag(lambda_i * exp(t * lambda_i)) V_pi_inv x
+        *d_edge_length += Aty
+            .component_mul(&param.eigenvalues)
+            .component_mul(exp_t_lambda)
+            .dot(Ainv_x);
+    }
 }

@@ -26,6 +26,7 @@ pub use run::FelsensteinResult;
 pub use run::FelsensteinResultWithSingleTree;
 pub use run::FelsensteinResultWithTree;
 pub use run::SingleSideResult;
+pub use run::Workspace;
 
 use crate::run::*;
 
@@ -84,13 +85,10 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
     /// The outer vector is over the sites, the inner vector over the leaf nodes.
     /// This enables usage of the `calculate_gradients` function.
     pub fn bind_leaf_pl(&mut self, pl: Vec<Vec<na::SVector<f64, DIM>>>) {
-        self.partial_likelihoods = pl;
-
-        // resize the partial_likelihoods to the number of all nodes
-        let num_nodes = self.parents.len();
-        for pl in &mut self.partial_likelihoods {
-            pl.resize(num_nodes, na::SVector::<f64, DIM>::zeros());
+        for column in &pl {
+            assert!(column.len() >= self.num_leaves);
         }
+        self.partial_likelihoods = pl;
     }
 
     pub fn num_nodes(&self) -> usize {
@@ -123,12 +121,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         sqrt_pi: &[na::SVector<f64, DIM>],
     ) -> FelsensteinResult<DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // One out internal nodes in partial_likelihoods
-        for pl in &mut self.partial_likelihoods {
-            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<f64, DIM>::from_element(1.0);
-            });
-        }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
             calculate_columns_single_S_parallel(
@@ -170,12 +162,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
 
         let tree = tree::Tree::new(&self.parents, &branch_lengths, self.num_leaves);
 
-        // One out internal nodes in partial_likelihoods
-        for pl in &mut self.partial_likelihoods {
-            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<f64, DIM>::from_element(1.0);
-            });
-        }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
             calculate_columns_single_S_parallel(
@@ -217,12 +203,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         };
 
         let tree = tree::Tree::new(&self.parents, &branch_lengths, self.num_leaves);
-        // One out internal nodes in partial_likelihoods
-        for pl in &mut self.partial_likelihoods {
-            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<f64, DIM>::from_element(1.0);
-            });
-        }
 
         let mut branch_length_grads =
             vec![vec![0.0; self.parents.len()]; self.partial_likelihoods.len()];
@@ -288,12 +268,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         };
 
         let tree = tree::Tree::new(&self.parents, &branch_lengths, self.num_leaves);
-        // One out internal nodes in partial_likelihoods
-        for pl in &mut self.partial_likelihoods {
-            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<f64, DIM>::from_element(1.0);
-            });
-        }
 
         let mut result = calculate_column_parallel_single_tree_grad(
             &mut self.partial_likelihoods,
@@ -322,12 +296,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         sqrt_pi: &[na::SVector<f64, DIM>],
     ) -> Vec<f64> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // One out internal nodes in partial_likelihoods
-        for pl in &mut self.partial_likelihoods {
-            pl.iter_mut().skip(self.num_leaves).for_each(|p| {
-                *p = na::SVector::<f64, DIM>::from_element(1.0);
-            });
-        }
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
             calculate_columns_single_S_parallel(
@@ -354,7 +322,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
     }
 
     /// Same as `calculate_gradients`, but it takes also an array of the partial likelihoods of the leaves.
-    /// It expects `pl` to have enough space for all nodes with internal nodes initialized to one and leaf nodes properly initialized.
+    /// Only the leaf nodes at the start of each column of `pl` are read, everything after them is ignored.
     pub fn calculate_gradients_with_pl(
         &self,
         s: &[na::SMatrix<f64, DIM, DIM>],
@@ -369,8 +337,7 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
     /// This function calculates the gradients for a single side in the alignment.
     /// This can be useful if you want to control the parallelization yourself or if you want to calculate the gradients for a single side.
     ///
-    /// partial_likelihood is expected to have enough space to hold the partial likelihoods for all nodes
-    /// internal nodes will be initialized to one and leaf nodes should be properly initialized.
+    /// Only the leaf nodes at the start of `partial_likelihood` are read, everything after them is ignored.
     pub fn calculate_gradients_single_side(
         &self,
         s: na::SMatrixView<f64, DIM, DIM>,
@@ -378,12 +345,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         partial_likelihood: &mut [na::SVector<f64, DIM>],
     ) -> SingleSideResult<f64, DIM> {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // one out internal nodes in partial_likelihood
-        partial_likelihood[self.num_leaves..]
-            .iter_mut()
-            .for_each(|p| {
-                *p = na::SVector::<f64, DIM>::from_element(1.0);
-            });
         let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
         calculate_column(
             partial_likelihood,
@@ -403,12 +364,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         partial_likelihood: &mut [na::SVector<f64, DIM>],
     ) -> f64 {
         let tree = tree::Tree::new(&self.parents, &self.distances, self.num_leaves);
-        // one out internal nodes in partial_likelihood
-        partial_likelihood[self.num_leaves..]
-            .iter_mut()
-            .for_each(|p| {
-                *p = na::SVector::<f64, DIM>::from_element(1.0);
-            });
         let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
         let result = calculate_column(
             partial_likelihood,
@@ -420,6 +375,109 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         );
         result.log_likelihood
     }
+}
+/// Checks the input of [calculate_gradients_single_column] and [calculate_gradients_columns]
+/// Checks the input of [calculate_gradients_single_column] and [calculate_gradients_columns]
+fn check_sorted_tree(parents: &[i32], num_leaves: usize, branch_lengths: &[f64]) {
+    let num_nodes = parents.len();
+    assert_eq!(branch_lengths.len(), num_nodes);
+    assert!(num_leaves < num_nodes);
+    assert_eq!(parents.last(), Some(&-1)); // root node is the last node
+    assert!(
+        parents[..num_nodes - 1]
+            .iter()
+            .enumerate()
+            .all(|(child, &parent)| parent as usize > child && (parent as usize) < num_nodes),
+        "parents are not topologically sorted"
+    );
+}
+
+fn check_discrete_leaves<const DIM: usize>(leaves: &[u8], num_leaves: usize) {
+    assert_eq!(leaves.len(), num_leaves);
+    assert!(
+        leaves.iter().all(|&state| state as usize <= DIM),
+        "leaf states have to be in 0..={}",
+        DIM
+    );
+}
+
+/// Calculates the log likelihood and the gradients for a single column without building a [FelsensteinTree].
+///
+/// `parents` has to be topologically sorted already: the leaves are the first `leaves.len()` nodes,
+/// the parent of every node has a bigger index than the node itself and the root is the last node with parent `-1`.
+/// Nodes can have any number of children. The input is only checked in debug builds.
+///
+/// `leaves` gives the state of each leaf as an integer in `0..DIM`, `DIM` stands for a gap (all states are possible).
+/// Gaps cost nothing, a leaf with a state is cheaper than a leaf partial likelihood vector.
+///
+/// `branch_lengths` has the same order as `parents`, the entry of the root is ignored.
+///
+/// `workspace` holds all buffers, create it with `Workspace::new(parents.len(), leaves.len())` and reuse it for all columns,
+/// then nothing is allocated.
+///
+/// If `grad_branch_lengths` is given, the gradients of the branch lengths are added to it (it is not zeroed out).
+pub fn calculate_gradients_single_column<const DIM: usize>(
+    parents: &[i32],
+    leaves: &[u8],
+    branch_lengths: &[f64],
+    s: na::SMatrixView<f64, DIM, DIM>,
+    sqrt_pi: na::SVectorView<f64, DIM>,
+    workspace: &mut Workspace<DIM>,
+    grad_branch_lengths: Option<&mut [f64]>,
+) -> SingleSideResult<f64, DIM> {
+    let num_leaves = leaves.len();
+    if cfg!(debug_assertions) {
+        check_sorted_tree(parents, num_leaves, branch_lengths);
+        check_discrete_leaves::<DIM>(leaves, num_leaves);
+        if let Some(grad) = grad_branch_lengths.as_deref() {
+            assert_eq!(grad.len(), parents.len());
+        }
+    }
+
+    let tree = tree::Tree::new(parents, branch_lengths, num_leaves);
+    calculate_column_workspace(leaves, s, sqrt_pi, tree, workspace, grad_branch_lengths)
+}
+
+/// Parallel version of [calculate_gradients_single_column] over the columns of an alignment.
+///
+/// `leaves[col]` holds the states of the leaves in column `col`, with the same conventions as in [calculate_gradients_single_column].
+///
+/// `s` and `sqrt_pi` have one entry per column, or a single entry which is used for all columns.
+/// With a single entry, the eigendecomposition is only done once.
+///
+/// If `grad_branch_lengths` has one entry per column, the branch length gradients of each column are added to its entry.
+/// If it has a single entry, the gradients summed over all columns are added to it. The entries are in the order of `parents`.
+///
+/// Every rayon task allocates its buffers once and reuses them for all its columns.
+/// You can control the number of threads with the `RAYON_NUM_THREADS` environment variable.
+pub fn calculate_gradients_columns<
+    const DIM: usize,
+    L: AsRef<[u8]> + Sync,
+    G: AsMut<[f64]> + Send,
+>(
+    parents: &[i32],
+    leaves: &[L],
+    branch_lengths: &[f64],
+    s: &[na::SMatrix<f64, DIM, DIM>],
+    sqrt_pi: &[na::SVector<f64, DIM>],
+    grad_branch_lengths: Option<&mut [G]>,
+) -> FelsensteinResult<DIM> {
+    let num_leaves = leaves.first().map_or(0, |col| col.as_ref().len());
+    if cfg!(debug_assertions) {
+        check_sorted_tree(parents, num_leaves, branch_lengths);
+        for col in leaves {
+            check_discrete_leaves::<DIM>(col.as_ref(), num_leaves);
+        }
+    }
+    let mut grad_branch_lengths = grad_branch_lengths;
+    if cfg!(debug_assertions) {
+        for grad in grad_branch_lengths.iter_mut().flat_map(|grads| grads.iter_mut()) {
+            assert_eq!(grad.as_mut().len(), parents.len());
+        }
+    }
+
+    let tree = tree::Tree::new(parents, branch_lengths, num_leaves);
+    calculate_columns_discrete_parallel(leaves, s, sqrt_pi, tree, grad_branch_lengths)
 }
 
 // Unit tests:
@@ -929,6 +987,179 @@ mod tests {
                 summed_grad,
                 sum_ll_grad
             );
+        }
+    }
+
+    #[test]
+    fn test_multifurcations() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+
+        // Node 7 has 4 children, node 8 a single child
+        let parents = vec![7, 7, 7, 7, 8, 9, 9, 9, 9, -1];
+        let distances = random_branch_lengths(&mut rng, parents.len());
+        let mut tree = FelsensteinTree::<4>::new(&parents, &distances);
+
+        let L = 3;
+        let pl = (0..L)
+            .map(|_| random_pl(&mut rng, tree.num_leaves()))
+            .collect::<Vec<Vec<na::SVector<f64, 4>>>>();
+        tree.bind_leaf_pl(pl.clone());
+
+        let S = (0..L)
+            .map(|_| random_S(&mut rng))
+            .collect::<Vec<na::SMatrix<f64, 4, 4>>>();
+        let sqrt_pi = (0..L)
+            .map(|_| random_sqrt_pi(&mut rng))
+            .collect::<Vec<na::SVector<f64, 4>>>();
+
+        let result = tree.calculate_gradients_with_branch_lengths(&S, &sqrt_pi, &distances);
+        let numerical =
+            numerical_grads(&mut tree, &mut S.clone(), &mut sqrt_pi.clone(), 1e-5);
+        let (numerical_tree, _) = numerical_grads_branches(
+            &parents,
+            pl,
+            &S,
+            &sqrt_pi,
+            &mut distances.clone(),
+            1e-5,
+        );
+
+        for col in 0..L {
+            assert!((result.grad_s[col] - numerical.grad_s[col]).abs().max() < 1e-3);
+            assert!((result.grad_sqrt_pi[col] - numerical.grad_sqrt_pi[col]).abs().max() < 1e-3);
+            for i in 0..parents.len() {
+                let (grad, numerical_grad) = (result.grad_tree[col][i], numerical_tree[col][i]);
+                assert!(
+                    (grad - numerical_grad).abs() < 1e-3,
+                    "Grad tree at {} differs: {} vs {}",
+                    i,
+                    grad,
+                    numerical_grad
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_columns_parallel_matches_single_column() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+
+        let parents = vec![6, 6, 7, 7, 8, 8, 9, 9, 9, -1];
+        let branch_lengths = random_branch_lengths(&mut rng, parents.len());
+        let L = 50;
+        // Different gap patterns per column, a reused workspace must not leak anything between columns
+        let leaves = (0..L)
+            .map(|_| {
+                (0..6)
+                    .map(|_| rand::distr::Uniform::new(0, 5).unwrap().sample(&mut rng))
+                    .collect::<Vec<u8>>()
+            })
+            .collect::<Vec<_>>();
+        let s = (0..L).map(|_| random_S(&mut rng)).collect::<Vec<_>>();
+        let sqrt_pi = (0..L).map(|_| random_sqrt_pi(&mut rng)).collect::<Vec<_>>();
+
+        for single_model in [false, true] {
+            let (s, sqrt_pi) = if single_model {
+                (&s[..1], &sqrt_pi[..1])
+            } else {
+                (&s[..], &sqrt_pi[..])
+            };
+
+            // The expected values column by column, with one reused workspace
+            let mut workspace = Workspace::<4>::new(parents.len(), 6);
+            let mut expected_grads = vec![vec![0.0; parents.len()]; L];
+            let expected = (0..L)
+                .map(|col| {
+                    let model = if single_model { 0 } else { col };
+                    calculate_gradients_single_column(
+                        &parents,
+                        &leaves[col],
+                        &branch_lengths,
+                        s[model].as_view(),
+                        sqrt_pi[model].as_view(),
+                        &mut workspace,
+                        Some(&mut expected_grads[col]),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let mut expected_sum = vec![0.0; parents.len()];
+            for grad in &expected_grads {
+                expected_sum.iter_mut().zip(grad).for_each(|(a, b)| *a += b);
+            }
+
+            let mut grads_per_column = vec![vec![0.0; parents.len()]; L];
+            // Starts at one, the gradients are added
+            let mut grads_sum = vec![vec![1.0; parents.len()]];
+            for grads in [None, Some(&mut grads_per_column), Some(&mut grads_sum)] {
+                let result = calculate_gradients_columns(
+                    &parents,
+                    &leaves,
+                    &branch_lengths,
+                    s,
+                    sqrt_pi,
+                    grads.map(|grads| &mut grads[..]),
+                );
+                for col in 0..L {
+                    assert_eq!(result.log_likelihood[col], expected[col].log_likelihood);
+                    assert_eq!(result.grad_s[col], expected[col].grad_s);
+                    assert_eq!(result.grad_sqrt_pi[col], expected[col].grad_sqrt_pi);
+                }
+            }
+
+            assert_eq!(grads_per_column, expected_grads);
+            for (a, b) in grads_sum[0].iter().zip(expected_sum.iter()) {
+                assert!((a - (b + 1.0)).abs() < 1e-10, "Branch grad differs: {} vs {}", a, b + 1.0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_single_column_matches_tree() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(42);
+
+        // Already topologically sorted, trifurcation at the root
+        let parents = vec![6, 6, 7, 7, 8, 8, 9, 9, 9, -1];
+        let branch_lengths = random_branch_lengths(&mut rng, parents.len());
+        let leaves: Vec<u8> = vec![0, 3, 4, 1, 2, 4]; // 4 is a gap
+
+        let leaf_pl = leaves
+            .iter()
+            .map(|&state| {
+                if state == 4 {
+                    na::SVector::<f64, 4>::from_element(1.0)
+                } else {
+                    let mut v = na::SVector::<f64, 4>::zeros();
+                    v[state as usize] = 1.0;
+                    v
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let s = random_S(&mut rng);
+        let sqrt_pi = random_sqrt_pi(&mut rng);
+
+        let mut tree = FelsensteinTree::<4>::new(&parents, &branch_lengths);
+        tree.bind_leaf_pl(vec![leaf_pl]);
+        let expected =
+            tree.calculate_gradients_with_branch_lengths(&[s], &[sqrt_pi], &branch_lengths);
+
+        let mut workspace = Workspace::<4>::new(parents.len(), leaves.len());
+        let mut grad_branch_lengths = vec![0.0; parents.len()];
+        let result = calculate_gradients_single_column(
+            &parents,
+            &leaves,
+            &branch_lengths,
+            s.as_view(),
+            sqrt_pi.as_view(),
+            &mut workspace,
+            Some(&mut grad_branch_lengths),
+        );
+
+        assert!((result.log_likelihood - expected.log_likelihood[0]).abs() < 1e-10);
+        assert!((result.grad_s - expected.grad_s[0]).abs().max() < 1e-10);
+        assert!((result.grad_sqrt_pi - expected.grad_sqrt_pi[0]).abs().max() < 1e-10);
+        for (a, b) in grad_branch_lengths.iter().zip(expected.grad_tree[0].iter()) {
+            assert!((a - b).abs() < 1e-10, "Branch grad differs: {} vs {}", a, b);
         }
     }
 
