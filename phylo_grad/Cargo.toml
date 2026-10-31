@@ -1,6 +1,6 @@
 [package]
 name = "phylo_grad"
-version = "2.7.0"
+version = "2.7.1"
 edition = "2024"
 authors = ["Benjamin Lieser <benjamin.lieser@mpinat.mpg.de>", "Jora Belousov <jorabelousov@gmail.com>"]
 description = "Fast gradient calculation of the Felsenstein algorithm with respect to the rate matrix"
@@ -12,7 +12,6 @@ rust-version = "1.87"
 
 [dependencies]
 nalgebra = {version ="0.34.2", features = []}
-glam = {version="0.30.10", features = ["fast-math"]}
 rayon = "1.10.0"
 
 [dev-dependencies]

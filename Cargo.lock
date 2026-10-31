@@ -1205,9 +1205,8 @@ dependencies = [
 
 [[package]]
 name = "phylo_grad"
-version = "2.7.0"
+version = "2.7.1"
 dependencies = [
- "glam 0.30.10",
  "nalgebra",
  "rand 0.10.0",
  "rayon",
@@ -1215,7 +1214,7 @@ dependencies = [
 
 [[package]]
 name = "phylo_grad_py"
-version = "2.7.0"
+version = "2.7.1"
 dependencies = [
  "nalgebra",
  "numpy",

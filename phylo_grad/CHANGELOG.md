@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-10-31
+### Additions
+- `calculate_gradients_single_column` and `calculate_gradients_columns` work directly on an already topologically sorted parent array and discrete leaf states (`DIM` is a gap), without a `FelsensteinTree`. All buffers live in a reusable `Workspace`, the parallel version reuses one per rayon task. The branch length gradients can be skipped, summed over the columns or given per column.
+- Gaps cost nothing with discrete leaves and a leaf state is cheaper than a one-hot vector, 1.05x faster without gaps and 1.13x with 20% gaps.
+
+### Improvement
+- Gradients got 1.1x faster: the backward pass is a single loop over the edges and reuses the eigenbasis projections of the interior nodes from the forward pass.
+- Nodes can have any number of children, not only the root.
+- `FelsensteinTree` only stores the leaves per column, which halves its memory.
+- `calculate_gradients_with_pl` and `calculate_gradients_single_side` only read the leaves, the interior nodes don't have to be initialized anymore. This fixes `calculate_gradients_with_pl` in Python, which initialized them with zeros.
+- glam is no longer a dependency.
+
 ## [2.7.0] - 2026-10-27
 ### Improvement
 - The eigendecomposition now uses nalgebra (at least 0.34.2) instead of faer. It is 2-3x faster, which makes gradients 1.15-1.3x faster for 30 taxa and 1.1x faster for 100 taxa.
