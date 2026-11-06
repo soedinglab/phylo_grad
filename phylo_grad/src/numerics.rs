@@ -25,6 +25,41 @@ pub fn symmetric_eigen<const N: usize>(
     ))
 }
 
+/// exp(x) with at most 1 ulp difference to the libm exp, written without branches so it vectorizes.
+/// Results below exp(-708) (~1e-308) are flushed to zero instead of being subnormal.
+#[inline(always)]
+pub fn exp(x: f64) -> f64 {
+    const LOG2E: f64 = std::f64::consts::LOG2_E;
+    const LN2_HI: f64 = 6.931_471_803_691_238e-1;
+    const LN2_LO: f64 = 1.908_214_929_270_587_7e-10;
+    let xc = x.clamp(-708.0, 709.0);
+    let k = (xc * LOG2E).round();
+    let r = (xc - k * LN2_HI) - k * LN2_LO;
+    // Taylor series up to r^13, the error for |r| <= ln2 / 2 is below 1e-17
+    let mut p = 1.0 / 6227020800.0;
+    for c in [
+        1.0 / 479001600.0,
+        1.0 / 39916800.0,
+        1.0 / 3628800.0,
+        1.0 / 362880.0,
+        1.0 / 40320.0,
+        1.0 / 5040.0,
+        1.0 / 720.0,
+        1.0 / 120.0,
+        1.0 / 24.0,
+        1.0 / 6.0,
+        0.5,
+        1.0,
+        1.0,
+    ] {
+        p = p * r + c;
+    }
+    // k + 1023 is in the low mantissa bits of k + 1023 + 2^52, shifting them into the exponent gives 2^k
+    // without a float to int conversion, which does not vectorize on AVX2
+    let scale = f64::from_bits((k + (1023.0 + 4503599627370496.0)).to_bits() << 52);
+    if x < -708.0 { 0.0 } else { p * scale }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,5 +229,21 @@ mod tests {
         matrix[(1, 0)] = f64::NAN;
         matrix[(0, 1)] = f64::NAN;
         assert!(symmetric_eigen(matrix).is_none());
+    }
+
+    #[test]
+    fn exp_matches_libm() {
+        let mut state = 1u64;
+        for _ in 0..1_000_000 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let x = -700.0 * ((state >> 11) as f64 / (1u64 << 53) as f64) + 5.0;
+            let (fast, libm) = (super::exp(x), x.exp());
+            let ulps = (fast.to_bits() as i64 - libm.to_bits() as i64).unsigned_abs();
+            assert!(ulps <= 1, "exp({x}) = {fast} vs {libm}");
+        }
+        assert_eq!(super::exp(0.0), 1.0);
+        assert_eq!(super::exp(-1000.0), 0.0);
+        assert_eq!(super::exp(f64::NEG_INFINITY), 0.0);
+        assert!(super::exp(f64::NAN).is_nan());
     }
 }

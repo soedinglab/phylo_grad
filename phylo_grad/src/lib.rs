@@ -25,6 +25,8 @@ mod tree;
 pub use run::FelsensteinResult;
 pub use run::FelsensteinResultWithSingleTree;
 pub use run::FelsensteinResultWithTree;
+pub use run::MixtureResult;
+pub use run::MixtureWorkspace;
 pub use run::SingleSideResult;
 pub use run::Workspace;
 
@@ -161,7 +163,6 @@ impl<const DIM: usize> FelsensteinTree<DIM> {
         };
 
         let tree = tree::Tree::new(&self.parents, &branch_lengths, self.num_leaves);
-
 
         let result = if s.len() == 1 && sqrt_pi.len() == 1 {
             calculate_columns_single_S_parallel(
@@ -438,6 +439,55 @@ pub fn calculate_gradients_single_column<const DIM: usize>(
     calculate_column_workspace(leaves, s, sqrt_pi, tree, workspace, grad_branch_lengths)
 }
 
+/// Like [calculate_gradients_single_column], but with a rate mixture: the likelihood of the column is
+/// `sum_c weights[c] * L(rates[c] * Q)`, for example a discretized Gamma model of rate heterogeneity.
+///
+/// This is faster than calling [calculate_gradients_single_column] once per rate category, because the
+/// eigendecomposition and the gradient transformation of S and sqrt_pi are shared by all categories.
+///
+/// The weights are not normalized, pass weights which sum to one for a proper mixture.
+/// `workspace` is created with `MixtureWorkspace::new(parents.len(), leaves.len(), rates.len())`.
+///
+/// `grad_rates` and `grad_weights` are overwritten with the gradients of the log likelihood with respect to
+/// `rates` and `weights`. If `grad_branch_lengths` is given, the gradients of the branch lengths are added to it.
+#[allow(clippy::too_many_arguments)]
+pub fn calculate_gradients_single_column_rate_mixture<const DIM: usize>(
+    parents: &[i32],
+    leaves: &[u8],
+    branch_lengths: &[f64],
+    s: na::SMatrixView<f64, DIM, DIM>,
+    sqrt_pi: na::SVectorView<f64, DIM>,
+    rates: &[f64],
+    weights: &[f64],
+    workspace: &mut MixtureWorkspace<DIM>,
+    grad_branch_lengths: Option<&mut [f64]>,
+    grad_rates: &mut [f64],
+    grad_weights: &mut [f64],
+) -> SingleSideResult<f64, DIM> {
+    let num_leaves = leaves.len();
+    if cfg!(debug_assertions) {
+        check_sorted_tree(parents, num_leaves, branch_lengths);
+        check_discrete_leaves::<DIM>(leaves, num_leaves);
+        if let Some(grad) = grad_branch_lengths.as_deref() {
+            assert_eq!(grad.len(), parents.len());
+        }
+    }
+
+    let tree = tree::Tree::new(parents, branch_lengths, num_leaves);
+    calculate_column_rate_mixture(
+        leaves,
+        s,
+        sqrt_pi,
+        rates,
+        weights,
+        tree,
+        workspace,
+        grad_branch_lengths,
+        grad_rates,
+        grad_weights,
+    )
+}
+
 /// Parallel version of [calculate_gradients_single_column] over the columns of an alignment.
 ///
 /// `leaves[col]` holds the states of the leaves in column `col`, with the same conventions as in [calculate_gradients_single_column].
@@ -478,6 +528,55 @@ pub fn calculate_gradients_columns<
 
     let tree = tree::Tree::new(parents, branch_lengths, num_leaves);
     calculate_columns_discrete_parallel(leaves, s, sqrt_pi, tree, grad_branch_lengths)
+}
+
+/// Parallel version of [calculate_gradients_single_column_rate_mixture] over the columns of an alignment.
+///
+/// `leaves`, `s`, `sqrt_pi` and `grad_branch_lengths` follow the conventions of [calculate_gradients_columns].
+/// `rates` and `weights` are shared by all columns. With a single entry in `s` and `sqrt_pi`, the
+/// eigendecomposition and the transition data of all rate categories are only computed once.
+///
+/// The result has the gradients of `rates` and `weights` per column, sum them for the gradient of the
+/// total log likelihood.
+pub fn calculate_gradients_columns_rate_mixture<
+    const DIM: usize,
+    L: AsRef<[u8]> + Sync,
+    G: AsMut<[f64]> + Send,
+>(
+    parents: &[i32],
+    leaves: &[L],
+    branch_lengths: &[f64],
+    s: &[na::SMatrix<f64, DIM, DIM>],
+    sqrt_pi: &[na::SVector<f64, DIM>],
+    rates: &[f64],
+    weights: &[f64],
+    grad_branch_lengths: Option<&mut [G]>,
+) -> MixtureResult<DIM> {
+    let num_leaves = leaves.first().map_or(0, |col| col.as_ref().len());
+    let mut grad_branch_lengths = grad_branch_lengths;
+    if cfg!(debug_assertions) {
+        check_sorted_tree(parents, num_leaves, branch_lengths);
+        for col in leaves {
+            check_discrete_leaves::<DIM>(col.as_ref(), num_leaves);
+        }
+        for grad in grad_branch_lengths
+            .iter_mut()
+            .flat_map(|grads| grads.iter_mut())
+        {
+            assert_eq!(grad.as_mut().len(), parents.len());
+        }
+    }
+
+    let tree = tree::Tree::new(parents, branch_lengths, num_leaves);
+    calculate_columns_rate_mixture_parallel(
+        leaves,
+        s,
+        sqrt_pi,
+        rates,
+        weights,
+        tree,
+        grad_branch_lengths,
+    )
 }
 
 // Unit tests:
@@ -1191,6 +1290,182 @@ mod tests {
                 before,
                 after
             );
+        }
+    }
+    /// The rate mixture has to match one call of calculate_gradients_single_column per category with S scaled by the rate.
+    /// The rate gradient is checked through S: L(r * S) has d/dr = <grad_S, S>.
+    #[test]
+    fn test_rate_mixture_matches_separate_calls() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(7);
+        // node 9 has three children
+        let parents = vec![6, 6, 7, 7, 8, 8, 9, 9, 9, -1];
+        let branch_lengths = random_branch_lengths(&mut rng, parents.len());
+        let rates: [f64; 4] = [0.1, 0.5, 1.2, 2.7];
+        let weights: [f64; 4] = [0.1, 0.2, 0.3, 0.4];
+        let close = |a: f64, b: f64| (a - b).abs() <= 1e-9 * (1.0 + a.abs().max(b.abs()));
+
+        let mut workspace = Workspace::<4>::new(parents.len(), 6);
+        let mut mixture_workspace = MixtureWorkspace::<4>::new(parents.len(), 6, rates.len());
+        for _ in 0..30 {
+            // state 4 is a gap
+            let leaves: Vec<u8> = (0..6)
+                .map(|_| rand::distr::Uniform::new(0, 5).unwrap().sample(&mut rng))
+                .collect();
+            let s = random_S(&mut rng);
+            let sqrt_pi = random_sqrt_pi(&mut rng);
+
+            let separate: Vec<_> = rates
+                .iter()
+                .map(|&r| {
+                    let mut grad = vec![0.0; parents.len()];
+                    let result = calculate_gradients_single_column(
+                        &parents,
+                        &leaves,
+                        &branch_lengths,
+                        (s * r).as_view(),
+                        sqrt_pi.as_view(),
+                        &mut workspace,
+                        Some(&mut grad),
+                    );
+                    (result, grad)
+                })
+                .collect();
+            let log_terms: Vec<f64> = (0..rates.len())
+                .map(|c| weights[c].ln() + separate[c].0.log_likelihood)
+                .collect();
+            let max = log_terms.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let expected_ll = max + log_terms.iter().map(|x| (x - max).exp()).sum::<f64>().ln();
+            let posterior: Vec<f64> = log_terms.iter().map(|x| (x - expected_ll).exp()).collect();
+
+            let mut grad_bl = vec![0.5; parents.len()];
+            let mut grad_rates = vec![0.0; rates.len()];
+            let mut grad_weights = vec![0.0; rates.len()];
+            let result = calculate_gradients_single_column_rate_mixture(
+                &parents,
+                &leaves,
+                &branch_lengths,
+                s.as_view(),
+                sqrt_pi.as_view(),
+                &rates,
+                &weights,
+                &mut mixture_workspace,
+                Some(&mut grad_bl),
+                &mut grad_rates,
+                &mut grad_weights,
+            );
+
+            assert!(close(result.log_likelihood, expected_ll));
+            for i in 0..4 {
+                for j in 0..4 {
+                    let expected: f64 = (0..rates.len())
+                        .map(|c| posterior[c] * rates[c] * separate[c].0.grad_s[(i, j)])
+                        .sum();
+                    assert!(close(result.grad_s[(i, j)], expected), "grad_s {i} {j}");
+                }
+                let expected: f64 = (0..rates.len())
+                    .map(|c| posterior[c] * separate[c].0.grad_sqrt_pi[i])
+                    .sum();
+                assert!(close(result.grad_sqrt_pi[i], expected), "grad_sqrt_pi {i}");
+            }
+            for e in 0..parents.len() {
+                let expected: f64 = 0.5 + (0..rates.len()).map(|c| posterior[c] * separate[c].1[e]).sum::<f64>();
+                assert!(close(grad_bl[e], expected), "branch {e}: {} vs {}", grad_bl[e], expected);
+            }
+            for c in 0..rates.len() {
+                assert!(close(grad_weights[c], posterior[c] / weights[c]), "weight {c}");
+                let d_rate: f64 = (0..4)
+                    .flat_map(|j| (0..j).map(move |i| (i, j)))
+                    .map(|(i, j)| separate[c].0.grad_s[(i, j)] * s[(i, j)])
+                    .sum();
+                assert!(close(grad_rates[c], posterior[c] * d_rate), "rate {c}: {} vs {}", grad_rates[c], posterior[c] * d_rate);
+            }
+        }
+    }
+
+    #[test]
+    fn test_rate_mixture_parallel_matches_single_column() {
+        let mut rng = rand::rngs::Xoshiro256PlusPlus::seed_from_u64(11);
+        let parents = vec![6, 6, 7, 7, 8, 8, 9, 9, 9, -1];
+        let branch_lengths = random_branch_lengths(&mut rng, parents.len());
+        let rates = [0.3, 1.0, 2.2];
+        let weights = [0.2, 0.5, 0.3];
+        let L = 40;
+        let leaves = (0..L)
+            .map(|_| {
+                (0..6)
+                    .map(|_| rand::distr::Uniform::new(0, 5).unwrap().sample(&mut rng))
+                    .collect::<Vec<u8>>()
+            })
+            .collect::<Vec<_>>();
+        let s = (0..L).map(|_| random_S(&mut rng)).collect::<Vec<_>>();
+        let sqrt_pi = (0..L).map(|_| random_sqrt_pi(&mut rng)).collect::<Vec<_>>();
+
+        for single_model in [false, true] {
+            let (s, sqrt_pi) = if single_model {
+                (&s[..1], &sqrt_pi[..1])
+            } else {
+                (&s[..], &sqrt_pi[..])
+            };
+
+            let mut workspace = MixtureWorkspace::<4>::new(parents.len(), 6, rates.len());
+            let mut expected_grads = vec![vec![0.0; parents.len()]; L];
+            let expected = (0..L)
+                .map(|col| {
+                    let model = if single_model { 0 } else { col };
+                    let mut grad_rates = vec![0.0; rates.len()];
+                    let mut grad_weights = vec![0.0; rates.len()];
+                    let result = calculate_gradients_single_column_rate_mixture(
+                        &parents,
+                        &leaves[col],
+                        &branch_lengths,
+                        s[model].as_view(),
+                        sqrt_pi[model].as_view(),
+                        &rates,
+                        &weights,
+                        &mut workspace,
+                        Some(&mut expected_grads[col]),
+                        &mut grad_rates,
+                        &mut grad_weights,
+                    );
+                    (result, grad_rates, grad_weights)
+                })
+                .collect::<Vec<_>>();
+            let mut expected_sum = vec![0.0; parents.len()];
+            for grad in &expected_grads {
+                expected_sum.iter_mut().zip(grad).for_each(|(a, b)| *a += b);
+            }
+
+            let mut grads_per_column = vec![vec![0.0; parents.len()]; L];
+            let mut grads_sum = vec![vec![1.0; parents.len()]];
+            for grads in [None, Some(&mut grads_per_column), Some(&mut grads_sum)] {
+                let result = calculate_gradients_columns_rate_mixture(
+                    &parents,
+                    &leaves,
+                    &branch_lengths,
+                    s,
+                    sqrt_pi,
+                    &rates,
+                    &weights,
+                    grads.map(|grads| &mut grads[..]),
+                );
+                for col in 0..L {
+                    assert_eq!(result.log_likelihood[col], expected[col].0.log_likelihood);
+                    assert_eq!(result.grad_s[col], expected[col].0.grad_s);
+                    assert_eq!(result.grad_sqrt_pi[col], expected[col].0.grad_sqrt_pi);
+                    assert_eq!(result.grad_rates[col], expected[col].1);
+                    assert_eq!(result.grad_weights[col], expected[col].2);
+                }
+            }
+
+            assert_eq!(grads_per_column, expected_grads);
+            for (a, b) in grads_sum[0].iter().zip(expected_sum.iter()) {
+                assert!(
+                    (a - (b + 1.0)).abs() < 1e-10,
+                    "Branch grad differs: {} vs {}",
+                    a,
+                    b + 1.0
+                );
+            }
         }
     }
 }
