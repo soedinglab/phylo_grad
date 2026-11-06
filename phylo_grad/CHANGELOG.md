@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.8.0] - 2026-11-06
 ### Additions
 - Rate mixtures (e.g. discrete Gamma rate heterogeneity): `calculate_gradients_single_column_rate_mixture` and the parallel `calculate_gradients_columns_rate_mixture` compute `log sum_c w_c L(r_c Q)` with the gradients of S, sqrt_pi, the branch lengths, the rates and the weights. The eigendecomposition and the S/sqrt_pi gradient transformation are shared by all categories, 1.4x faster than one call per category with 4 categories (N=40, K=20), 1.5x with 8. With a single S for all columns, the decomposition and the transition data of all categories are computed once.
 
