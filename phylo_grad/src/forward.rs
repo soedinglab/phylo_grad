@@ -117,7 +117,7 @@ fn precompute_model_edge_data<const DIM: usize>(
     param: &ParamPrecomp<DIM>,
     distance: f64,
 ) -> ModelEdgeData<DIM> {
-    let exp_t_lambda = param.eigenvalues.map(|lam| f64::exp(lam * distance));
+    let exp_t_lambda = param.eigenvalues.map(|lam| crate::numerics::exp(lam * distance));
 
     ModelEdgeData { exp_t_lambda }
 }

@@ -21,8 +21,6 @@ mod forward;
 mod numerics;
 mod run;
 mod tree;
-#[cfg(test)]
-mod timing_probe;
 
 pub use run::FelsensteinResult;
 pub use run::FelsensteinResultWithSingleTree;
