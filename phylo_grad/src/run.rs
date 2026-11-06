@@ -775,6 +775,7 @@ impl<const DIM: usize> MixtureWorkspace<DIM> {
 /// Only the forward and backward pass over the tree is done per category.
 ///
 /// grad_rates and grad_weights are overwritten with d log L / d rates and d log L / d weights.
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_column_rate_mixture<const DIM: usize>(
     leaves: &[u8],
     S: na::SMatrixView<f64, DIM, DIM>,

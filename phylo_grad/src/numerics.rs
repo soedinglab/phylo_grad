@@ -30,8 +30,8 @@ pub fn symmetric_eigen<const N: usize>(
 #[inline(always)]
 pub fn exp(x: f64) -> f64 {
     const LOG2E: f64 = std::f64::consts::LOG2_E;
-    const LN2_HI: f64 = 6.93147180369123816490e-01;
-    const LN2_LO: f64 = 1.90821492927058770002e-10;
+    const LN2_HI: f64 = 6.931_471_803_691_238e-1;
+    const LN2_LO: f64 = 1.908_214_929_270_587_7e-10;
     let xc = x.clamp(-708.0, 709.0);
     let k = (xc * LOG2E).round();
     let r = (xc - k * LN2_HI) - k * LN2_LO;
