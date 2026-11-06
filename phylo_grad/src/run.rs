@@ -784,6 +784,65 @@ pub fn calculate_column_rate_mixture<const DIM: usize>(
     weights: &[f64],
     tree: Tree,
     workspace: &mut MixtureWorkspace<DIM>,
+    grad_edge_lengths: Option<&mut [f64]>,
+    grad_rates: &mut [f64],
+    grad_weights: &mut [f64],
+) -> SingleSideResult<f64, DIM> {
+    let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
+    let param = match compute_param_data(S, sqrt_pi.as_view()) {
+        Some(param) => param,
+        None => {
+            grad_rates.fill(0.0);
+            grad_weights.fill(0.0);
+            return SingleSideResult::<f64, DIM> {
+                log_likelihood: f64::NEG_INFINITY,
+                grad_s: na::SMatrix::<f64, DIM, DIM>::zeros(),
+                grad_sqrt_pi: na::SVector::<f64, DIM>::zeros(),
+            };
+        }
+    };
+    rate_mixture_with_param(
+        leaves,
+        &param,
+        None,
+        rates,
+        weights,
+        tree,
+        workspace,
+        grad_edge_lengths,
+        grad_rates,
+        grad_weights,
+    )
+}
+
+/// exp(r_c * t * lambda) for every category and edge
+fn mixture_edge_data_into<const DIM: usize>(
+    param: &ParamPrecomp<DIM>,
+    rates: &[f64],
+    distances: &[f64],
+    scaled_distances: &mut [f64],
+    edge_data: &mut [Vec<ModelEdgeData<DIM>>],
+) {
+    for (rate, edge_data) in rates.iter().zip(edge_data.iter_mut()) {
+        for (scaled, &t) in scaled_distances.iter_mut().zip(distances) {
+            *scaled = rate * t;
+        }
+        forward_data_precompute_param_into(param, scaled_distances, edge_data);
+    }
+}
+
+/// The rate mixture for a model which is already decomposed.
+/// If `shared_edge_data` is given, it holds the edge data of every category (for a model shared by many columns),
+/// otherwise it is computed into the workspace.
+#[allow(clippy::too_many_arguments)]
+fn rate_mixture_with_param<const DIM: usize>(
+    leaves: &[u8],
+    param: &ParamPrecomp<DIM>,
+    shared_edge_data: Option<&[Vec<ModelEdgeData<DIM>>]>,
+    rates: &[f64],
+    weights: &[f64],
+    tree: Tree,
+    workspace: &mut MixtureWorkspace<DIM>,
     mut grad_edge_lengths: Option<&mut [f64]>,
     grad_rates: &mut [f64],
     grad_weights: &mut [f64],
@@ -804,27 +863,30 @@ pub fn calculate_column_rate_mixture<const DIM: usize>(
         }
     };
 
-    let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
-    let param = match compute_param_data(S, sqrt_pi.as_view()) {
-        Some(param) => param,
-        None => return failed(grad_rates, grad_weights),
-    };
-
     let MixtureWorkspace {
         buffers,
-        edge_data,
+        edge_data: own_edge_data,
         scaled_distances,
         edge_grad,
         log_likelihoods,
         root_grads,
     } = workspace;
+    let edge_data: &[Vec<ModelEdgeData<DIM>>] = match shared_edge_data {
+        Some(edge_data) => edge_data,
+        None => {
+            mixture_edge_data_into(
+                param,
+                rates,
+                tree.distances,
+                scaled_distances,
+                own_edge_data,
+            );
+            own_edge_data
+        }
+    };
 
     // Forward pass of every category
     for c in 0..num_categories {
-        for (scaled, &t) in scaled_distances.iter_mut().zip(tree.distances) {
-            *scaled = rates[c] * t;
-        }
-        forward_data_precompute_param_into(&param, scaled_distances, &mut edge_data[c]);
         let ColumnBuffers {
             internal_pl,
             offsets,
@@ -840,7 +902,7 @@ pub fn calculate_column_rate_mixture<const DIM: usize>(
             tree.parents,
             offsets,
             &edge_data[c],
-            &param,
+            param,
         );
         let root_offset: u32 = offsets.iter().sum();
         let (log_likelihood, d_root, d_sqrt_pi) = final_likelihood(
@@ -897,7 +959,7 @@ pub fn calculate_column_rate_mixture<const DIM: usize>(
             internal_pl,
             lin_child_contributions,
             lin_sibling_prefix,
-            &param,
+            param,
             &edge_data[c],
             offsets,
             Some(edge_grad),
@@ -917,13 +979,197 @@ pub fn calculate_column_rate_mixture<const DIM: usize>(
         }
     }
 
-    let d_Q = d_Q_from_eigenbasis(&d_Q_eigen, &param);
-    let (grad_s, d_sqrt_pi) = d_param(d_Q.as_view(), &param);
+    let d_Q = d_Q_from_eigenbasis(&d_Q_eigen, param);
+    let (grad_s, d_sqrt_pi) = d_param(d_Q.as_view(), param);
     grad_sqrt_pi += d_sqrt_pi;
 
     SingleSideResult::<f64, DIM> {
         log_likelihood,
         grad_s,
         grad_sqrt_pi,
+    }
+}
+
+/// Result of the rate mixture for many columns. grad_rates and grad_weights have one entry per column,
+/// each with one value per rate category.
+#[derive(Debug, Clone)]
+pub struct MixtureResult<const DIM: usize> {
+    pub log_likelihood: Vec<f64>,
+    pub grad_s: Vec<na::SMatrix<f64, DIM, DIM>>,
+    pub grad_sqrt_pi: Vec<na::SVector<f64, DIM>>,
+    pub grad_rates: Vec<Vec<f64>>,
+    pub grad_weights: Vec<Vec<f64>>,
+}
+
+/// Rate mixture parallel over the columns with discrete leaves, the rates and weights are shared by all columns.
+/// Every rayon task has its own workspace, which is reused for all its columns.
+///
+/// S and sqrt_pi have either one entry per column or a single entry for all columns, then the eigendecomposition
+/// and the edge data of all categories are computed once.
+/// grad_branch_lengths has one entry per column or a single entry for the sum over all columns.
+pub fn calculate_columns_rate_mixture_parallel<
+    const DIM: usize,
+    L: AsRef<[u8]> + Sync,
+    G: AsMut<[f64]> + Send,
+>(
+    leaves: &[L],
+    S: &[na::SMatrix<f64, DIM, DIM>],
+    sqrt_pi: &[na::SVector<f64, DIM>],
+    rates: &[f64],
+    weights: &[f64],
+    tree: Tree,
+    grad_branch_lengths: Option<&mut [G]>,
+) -> MixtureResult<DIM> {
+    let num_columns = leaves.len();
+    let num_nodes = tree.parents.len();
+    let num_categories = rates.len();
+    assert_eq!(
+        weights.len(),
+        num_categories,
+        "rates and weights need the same length"
+    );
+    let single_model = S.len() == 1 && sqrt_pi.len() == 1;
+    assert!(
+        single_model || (S.len() == num_columns && sqrt_pi.len() == num_columns),
+        "S and sqrt_pi need one entry per column or a single entry"
+    );
+
+    let mut grad_per_column: Vec<Option<&mut [f64]>> = Vec::with_capacity(num_columns);
+    let mut grad_sum_output = None;
+    match grad_branch_lengths {
+        Some(grads) if grads.len() == num_columns => {
+            grad_per_column.extend(grads.iter_mut().map(|grad| Some(grad.as_mut())));
+        }
+        Some(grads) => {
+            assert_eq!(
+                grads.len(),
+                1,
+                "grad_branch_lengths needs one entry per column or a single entry"
+            );
+            grad_sum_output = Some(grads[0].as_mut());
+            grad_per_column.resize_with(num_columns, || None);
+        }
+        None => grad_per_column.resize_with(num_columns, || None),
+    }
+    let summed = grad_sum_output.is_some();
+
+    let mut log_likelihood = vec![f64::NEG_INFINITY; num_columns];
+    let mut grad_s = vec![na::SMatrix::<f64, DIM, DIM>::zeros(); num_columns];
+    let mut grad_sqrt_pi = vec![na::SVector::<f64, DIM>::zeros(); num_columns];
+    let mut grad_rates = vec![vec![0.0; num_categories]; num_columns];
+    let mut grad_weights = vec![vec![0.0; num_categories]; num_columns];
+
+    // With a single model the eigendecomposition and the edge data of all categories are shared by all columns
+    let shared_model = if single_model {
+        let sqrt_pi = sqrt_pi[0].map(|x| f64::max(x, crate::MIN_SQRT_PI));
+        match compute_param_data(S[0].as_view(), sqrt_pi.as_view()) {
+            Some(param) => {
+                let mut edge_data: Vec<_> = (0..num_categories)
+                    .map(|_| Vec::with_capacity(num_nodes))
+                    .collect();
+                mixture_edge_data_into(
+                    &param,
+                    rates,
+                    tree.distances,
+                    &mut vec![0.0; num_nodes],
+                    &mut edge_data,
+                );
+                Some((param, edge_data))
+            }
+            None => {
+                return MixtureResult {
+                    log_likelihood,
+                    grad_s,
+                    grad_sqrt_pi,
+                    grad_rates,
+                    grad_weights,
+                };
+            }
+        }
+    } else {
+        None
+    };
+
+    let grad_sum = (
+        log_likelihood.par_iter_mut(),
+        grad_s.par_iter_mut(),
+        grad_sqrt_pi.par_iter_mut(),
+        grad_rates.par_iter_mut(),
+        grad_weights.par_iter_mut(),
+        grad_per_column.par_iter_mut(),
+    )
+        .into_par_iter()
+        .enumerate()
+        .fold(
+            || {
+                (
+                    MixtureWorkspace::<DIM>::new(num_nodes, tree.num_leaves, num_categories),
+                    vec![0.0; if summed { num_nodes } else { 0 }],
+                )
+            },
+            |(mut workspace, mut grad_sum),
+             (
+                col,
+                (log_likelihood, grad_s, grad_sqrt_pi, grad_rates, grad_weights, grad_column),
+            )| {
+                let grad = if summed {
+                    Some(&mut grad_sum[..])
+                } else {
+                    grad_column.as_deref_mut()
+                };
+                let result = match &shared_model {
+                    Some((param, edge_data)) => rate_mixture_with_param(
+                        leaves[col].as_ref(),
+                        param,
+                        Some(edge_data),
+                        rates,
+                        weights,
+                        tree.clone(),
+                        &mut workspace,
+                        grad,
+                        grad_rates,
+                        grad_weights,
+                    ),
+                    None => calculate_column_rate_mixture(
+                        leaves[col].as_ref(),
+                        S[col].as_view(),
+                        sqrt_pi[col].as_view(),
+                        rates,
+                        weights,
+                        tree.clone(),
+                        &mut workspace,
+                        grad,
+                        grad_rates,
+                        grad_weights,
+                    ),
+                };
+                *log_likelihood = result.log_likelihood;
+                *grad_s = result.grad_s;
+                *grad_sqrt_pi = result.grad_sqrt_pi;
+                (workspace, grad_sum)
+            },
+        )
+        .map(|(_, grad_sum)| grad_sum)
+        .reduce(
+            || vec![0.0; if summed { num_nodes } else { 0 }],
+            |mut a, b| {
+                a.iter_mut().zip(b.iter()).for_each(|(a, b)| *a += b);
+                a
+            },
+        );
+
+    if let Some(output) = grad_sum_output {
+        output
+            .iter_mut()
+            .zip(grad_sum.iter())
+            .for_each(|(a, b)| *a += b);
+    }
+
+    MixtureResult {
+        log_likelihood,
+        grad_s,
+        grad_sqrt_pi,
+        grad_rates,
+        grad_weights,
     }
 }
