@@ -334,7 +334,10 @@ fn d_Q<const DIM: usize>(
     forward: &[ModelEdgeData<DIM>],
     offsets: &[u32],
     mut d_edge_lengths: Option<&mut [f64]>,
-) -> na::SMatrix<f64, DIM, DIM> {
+    // Cotangent of Q in the eigenbasis, it is accumulated. The caller transforms it back with
+    // V_pi_inv^T * d_Q * V_pi^T, so several passes with the same eigenbasis need this only once.
+    d_Q: &mut na::SMatrix<f64, DIM, DIM>,
+) {
     // The cotangents are stored in the sibling prefix buffer: the prefix of a node is read exactly once,
     // right before its cotangent is written. The root has no prefix.
     let cotangents = lin_sibling_prefix;
@@ -351,8 +354,6 @@ fn d_Q<const DIM: usize>(
     let num_nodes = tree.parents.len();
     let num_leaves = tree.num_leaves;
     cotangents[num_nodes - 1] = grad_p_root * offset_scaler(offsets[num_nodes - 1]);
-
-    let mut d_Q = na::SMatrix::<f64, DIM, DIM>::zeros();
 
     // Reverse topological order, so the cotangent of the parent is final before its children are visited
     for child in (0..num_nodes - 1).rev() {
@@ -376,7 +377,7 @@ fn d_Q<const DIM: usize>(
         cotangents[parent].component_mul_assign(&lin_child_contributions[child]);
 
         backward::d_edge_vjp(
-            &mut d_Q,
+            d_Q,
             &cotangent_vector,
             tree.distances[child],
             param,
@@ -389,8 +390,14 @@ fn d_Q<const DIM: usize>(
             cotangents[child] *= offset_scaler(offsets[child]);
         }
     }
+}
 
-    param.V_pi_inv.tr_mul(&d_Q) * param.V_pi.transpose()
+/// Transforms the cotangent of Q from the eigenbasis back
+fn d_Q_from_eigenbasis<const DIM: usize>(
+    d_Q_eigen: &na::SMatrix<f64, DIM, DIM>,
+    param: &ParamPrecomp<DIM>,
+) -> na::SMatrix<f64, DIM, DIM> {
+    param.V_pi_inv.tr_mul(d_Q_eigen) * param.V_pi.transpose()
 }
 
 fn calculate_column_with_precompute<const DIM: usize>(
@@ -439,7 +446,8 @@ fn calculate_column_with_precompute<const DIM: usize>(
         };
     }
 
-    let d_Q = d_Q(
+    let mut d_Q_eigen = na::SMatrix::<f64, DIM, DIM>::zeros();
+    d_Q(
         &d_lin_pl_root,
         tree,
         leaves,
@@ -450,7 +458,9 @@ fn calculate_column_with_precompute<const DIM: usize>(
         forward_data,
         offsets,
         grad_edge_lengths,
+        &mut d_Q_eigen,
     );
+    let d_Q = d_Q_from_eigenbasis(&d_Q_eigen, param);
 
     let (grad_s, mut grad_sqrt_pi) = d_param(d_Q.as_view(), param);
     grad_sqrt_pi += d_sqrt_pi;
@@ -715,6 +725,202 @@ pub fn calculate_columns_discrete_parallel<
     }
 
     FelsensteinResult {
+        log_likelihood,
+        grad_s,
+        grad_sqrt_pi,
+    }
+}
+
+/// Buffers for a rate mixture of one column with discrete leaves, reused for any number of columns of the same tree
+/// and the same number of rate categories.
+#[derive(Debug)]
+pub struct MixtureWorkspace<const DIM: usize> {
+    /// One set of column buffers per rate category, the backward pass needs the forward results of all categories
+    buffers: Vec<ColumnBuffers<DIM>>,
+    /// exp(r_c * t * lambda) per category and edge
+    edge_data: Vec<Vec<ModelEdgeData<DIM>>>,
+    /// Branch lengths scaled with the rate of the category
+    scaled_distances: Vec<f64>,
+    /// Gradient of the branch lengths of one category, weighted with its posterior
+    edge_grad: Vec<f64>,
+    log_likelihoods: Vec<f64>,
+    root_grads: Vec<(na::SVector<f64, DIM>, na::SVector<f64, DIM>)>,
+}
+
+impl<const DIM: usize> MixtureWorkspace<DIM> {
+    pub fn new(num_nodes: usize, num_leaves: usize, num_categories: usize) -> Self {
+        MixtureWorkspace {
+            buffers: (0..num_categories)
+                .map(|_| ColumnBuffers::new(num_nodes, num_leaves))
+                .collect(),
+            edge_data: (0..num_categories)
+                .map(|_| Vec::with_capacity(num_nodes))
+                .collect(),
+            scaled_distances: vec![0.0; num_nodes],
+            edge_grad: vec![0.0; num_nodes],
+            log_likelihoods: vec![0.0; num_categories],
+            root_grads: vec![(na::SVector::zeros(), na::SVector::zeros()); num_categories],
+        }
+    }
+
+    pub fn num_categories(&self) -> usize {
+        self.buffers.len()
+    }
+}
+
+/// One column with discrete leaves under a rate mixture: L = sum_c weights[c] * L(rates[c] * Q).
+///
+/// A rate category is the same model with all branch lengths scaled by its rate, so the eigendecomposition,
+/// the back transformation of the Q cotangent and the gradient of S and sqrt_pi are done once for all categories.
+/// Only the forward and backward pass over the tree is done per category.
+///
+/// grad_rates and grad_weights are overwritten with d log L / d rates and d log L / d weights.
+pub fn calculate_column_rate_mixture<const DIM: usize>(
+    leaves: &[u8],
+    S: na::SMatrixView<f64, DIM, DIM>,
+    sqrt_pi: na::SVectorView<f64, DIM>,
+    rates: &[f64],
+    weights: &[f64],
+    tree: Tree,
+    workspace: &mut MixtureWorkspace<DIM>,
+    mut grad_edge_lengths: Option<&mut [f64]>,
+    grad_rates: &mut [f64],
+    grad_weights: &mut [f64],
+) -> SingleSideResult<f64, DIM> {
+    let num_categories = rates.len();
+    assert_eq!(weights.len(), num_categories);
+    assert_eq!(grad_rates.len(), num_categories);
+    assert_eq!(grad_weights.len(), num_categories);
+    assert_eq!(workspace.num_categories(), num_categories);
+
+    let failed = |grad_rates: &mut [f64], grad_weights: &mut [f64]| {
+        grad_rates.fill(0.0);
+        grad_weights.fill(0.0);
+        SingleSideResult::<f64, DIM> {
+            log_likelihood: f64::NEG_INFINITY,
+            grad_s: na::SMatrix::<f64, DIM, DIM>::zeros(),
+            grad_sqrt_pi: na::SVector::<f64, DIM>::zeros(),
+        }
+    };
+
+    let sqrt_pi = sqrt_pi.map(|x| f64::max(x, crate::MIN_SQRT_PI));
+    let param = match compute_param_data(S, sqrt_pi.as_view()) {
+        Some(param) => param,
+        None => return failed(grad_rates, grad_weights),
+    };
+
+    let MixtureWorkspace {
+        buffers,
+        edge_data,
+        scaled_distances,
+        edge_grad,
+        log_likelihoods,
+        root_grads,
+    } = workspace;
+
+    // Forward pass of every category
+    for c in 0..num_categories {
+        for (scaled, &t) in scaled_distances.iter_mut().zip(tree.distances) {
+            *scaled = rates[c] * t;
+        }
+        forward_data_precompute_param_into(&param, scaled_distances, &mut edge_data[c]);
+        let ColumnBuffers {
+            internal_pl,
+            offsets,
+            lin_child_contributions,
+            lin_sibling_prefix,
+        } = &mut buffers[c];
+        offsets.fill(0);
+        forward_column(
+            Leaves::Discrete(leaves),
+            internal_pl,
+            lin_child_contributions,
+            lin_sibling_prefix,
+            tree.parents,
+            offsets,
+            &edge_data[c],
+            &param,
+        );
+        let root_offset: u32 = offsets.iter().sum();
+        let (log_likelihood, d_root, d_sqrt_pi) = final_likelihood(
+            internal_pl.last().unwrap().as_view(),
+            param.sqrt_pi.as_view(),
+            root_offset,
+        );
+        log_likelihoods[c] = log_likelihood;
+        root_grads[c] = (d_root, d_sqrt_pi);
+    }
+
+    // log sum_c w_c L_c
+    let max = (0..num_categories)
+        .map(|c| weights[c].ln() + log_likelihoods[c])
+        .fold(f64::NEG_INFINITY, f64::max);
+    if !max.is_finite() {
+        return failed(grad_rates, grad_weights);
+    }
+    let log_likelihood = max
+        + (0..num_categories)
+            .map(|c| (weights[c].ln() + log_likelihoods[c] - max).exp())
+            .sum::<f64>()
+            .ln();
+
+    // Backward pass of every category, weighted with its posterior probability, in the shared eigenbasis
+    let mut d_Q_eigen = na::SMatrix::<f64, DIM, DIM>::zeros();
+    let mut grad_sqrt_pi = na::SVector::<f64, DIM>::zeros();
+    for c in 0..num_categories {
+        // L_c / L
+        let likelihood_ratio = (log_likelihoods[c] - log_likelihood).exp();
+        grad_weights[c] = likelihood_ratio;
+        let posterior = weights[c] * likelihood_ratio;
+        if posterior == 0.0 || !posterior.is_finite() {
+            grad_rates[c] = 0.0;
+            continue;
+        }
+        let (d_root, d_sqrt_pi) = &root_grads[c];
+        grad_sqrt_pi += d_sqrt_pi * posterior;
+
+        for (scaled, &t) in scaled_distances.iter_mut().zip(tree.distances) {
+            *scaled = rates[c] * t;
+        }
+        edge_grad.fill(0.0);
+        let ColumnBuffers {
+            internal_pl,
+            offsets,
+            lin_child_contributions,
+            lin_sibling_prefix,
+        } = &mut buffers[c];
+        d_Q(
+            &(d_root * posterior),
+            Tree::new(tree.parents, scaled_distances, tree.num_leaves),
+            Leaves::Discrete(leaves),
+            internal_pl,
+            lin_child_contributions,
+            lin_sibling_prefix,
+            &param,
+            &edge_data[c],
+            offsets,
+            Some(edge_grad),
+            &mut d_Q_eigen,
+        );
+
+        // edge_grad is the derivative with respect to the scaled branch lengths r_c * t
+        grad_rates[c] = edge_grad
+            .iter()
+            .zip(tree.distances)
+            .map(|(g, t)| g * t)
+            .sum::<f64>();
+        if let Some(grad) = grad_edge_lengths.as_deref_mut() {
+            for (out, g) in grad.iter_mut().zip(edge_grad.iter()) {
+                *out += rates[c] * g;
+            }
+        }
+    }
+
+    let d_Q = d_Q_from_eigenbasis(&d_Q_eigen, &param);
+    let (grad_s, d_sqrt_pi) = d_param(d_Q.as_view(), &param);
+    grad_sqrt_pi += d_sqrt_pi;
+
+    SingleSideResult::<f64, DIM> {
         log_likelihood,
         grad_s,
         grad_sqrt_pi,
